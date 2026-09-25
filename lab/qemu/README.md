@@ -1,4 +1,4 @@
-# LS-200 QEMU prototype
+# LS-200 QEMU model
 
 This directory builds QEMU's `ti8168-ls200` machine and starts recovered
 AREC LS-200 firmware from the full recovered NAND layout. It is a bounded
@@ -63,8 +63,8 @@ address space.
 | 8 | `0x1d640000` | 41.75 MiB | `mtd8-User-Data.bin` | `mtd8.oob` |
 
 Slot 1 loads MTD3 and mounts MTD4 with the recovered UBI layout. Slot 2 loads
-MTD5 and mounts MTD6. The full runtime evidence is in
-[BOOT_STATUS.md](BOOT_STATUS.md).
+MTD5 and mounts MTD6. The current fidelity statement is in
+[FIDELITY.md](FIDELITY.md).
 
 ## Web and Linux development
 

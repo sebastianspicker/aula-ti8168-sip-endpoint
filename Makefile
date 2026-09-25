@@ -112,7 +112,7 @@ package-ls200:
 
 package-qemu: package-ls200
 	@mkdir -p $(WORK)/dist/qemu
-	sh lab/qemu/scripts/stage-zoom-deployment.sh $(PAYLOAD) $(QEMU_OVERLAY) "$$(cat $(WORK)/dist/ls200/payload-manifest.sha256)"
+	sh deployment/payload/build-overlay.sh $(PAYLOAD) $(QEMU_OVERLAY) "$$(cat $(WORK)/dist/ls200/payload-manifest.sha256)"
 
 qemu-build:
 	sh lab/qemu/scripts/fetch-qemu.sh
@@ -131,7 +131,7 @@ qemu-acceptance: qemu-verify package-ls200
 	@mkdir -p $(WORK)/dist/qemu
 	LS200_ZOOM_QEMU_PROFILE=1 \
 	LS200_ZOOM_QEMU_ENTROPY_HELPER=$(QEMU_ENTROPY_HELPER) \
-		sh lab/qemu/scripts/stage-zoom-deployment.sh $(PAYLOAD) $(QEMU_OVERLAY) "$$(cat $(WORK)/dist/ls200/payload-manifest.sha256)"
+		sh deployment/payload/build-overlay.sh $(PAYLOAD) $(QEMU_OVERLAY) "$$(cat $(WORK)/dist/ls200/payload-manifest.sha256)"
 	QEMU_BINARY=$(QEMU_BINARY) python3 -B lab/qemu/tests/test_qemu_zoom_two_slots.py \
 		--overlay $(QEMU_OVERLAY)
 

@@ -30,7 +30,7 @@ reviewed inputs may live outside the repository and never require recovered
 firmware. Pass the receipt value independently when staging an overlay:
 
 ```sh
-sh lab/qemu/scripts/stage-zoom-deployment.sh \
+sh deployment/payload/build-overlay.sh \
   "$PWD/.work/dist/ls200/runtime" \
   "$PWD/.work/dist/qemu/ls200-zoom-overlay" \
   "$(cat "$PWD/.work/dist/ls200/payload-manifest.sha256")"

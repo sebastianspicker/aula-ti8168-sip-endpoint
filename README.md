@@ -110,7 +110,7 @@ Complete device-derived or authenticated evidence belongs under ignored
 - [Security and disclosure boundary](docs/SECURITY.md)
 - [Physical private-lab workflow](docs/operator/physical-private-lab.md)
 - [Product purpose](docs/product/PRODUCT.md) and [console design system](docs/product/DESIGN.md)
-- [QEMU fidelity and boot status](lab/qemu/BOOT_STATUS.md)
+- [QEMU model fidelity](lab/qemu/FIDELITY.md)
 - [Logical-emulator fidelity](lab/emulator/FIDELITY.md)
 - [Firmware-analysis results](evidence/firmware-analysis/report.md)
 
