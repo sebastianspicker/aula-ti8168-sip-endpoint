@@ -22,7 +22,7 @@ export UV_OFFLINE := 1
 verify: check-layout quality test-product-core test-lab-core test-deployment
 	@echo "Host baseline passed; native features and rebuilt QEMU model require verify-native and verify-qemu-model."
 
-.PHONY: verify-native quality-qemu-model verify-qemu-model verify-all
+.PHONY: verify-native quality-qemu-model verify-qemu-model verify-all verify-evidence
 verify-native:
 	@test -n "$(NATIVE_INPUTS)" || { echo "native lane unavailable: set NATIVE_INPUTS to reviewed native dependency-path JSON" >&2; exit 2; }
 	python3 -B tooling/quality/native.py --inputs "$(NATIVE_INPUTS)"
@@ -35,7 +35,18 @@ verify-qemu-model:
 	@test -n "$(QEMU_BASE_SOURCE)" || { echo "QEMU model lane unavailable: set QEMU_BASE_SOURCE to the reviewed local pinned checkout" >&2; exit 2; }
 	UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(QUALITY_ENV) uv run --offline --project tooling/quality --locked python tooling/quality/qemu_model.py --source "$(QEMU_BASE_SOURCE)" --verify $(if $(QEMU_NINJA),--ninja "$(QEMU_NINJA)") $(if $(QEMU_PYTHON),--python "$(QEMU_PYTHON)") $(if $(QEMU_SUBPROJECT_SOURCE),--subproject-source "$(QEMU_SUBPROJECT_SOURCE)")
 
-verify-all: verify verify-native verify-qemu-model
+verify-all: verify verify-native verify-qemu-model verify-evidence
+
+verify-evidence:
+	@test -d evidence/firmware-analysis/reverse_engineering/tools/tests || \
+		{ echo "evidence lane unavailable: the evidence/ research corpus is not present" >&2; exit 2; }
+	@mkdir -p $(WORK)/locks
+	@mkdir -p $(UV_CACHE)
+	UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(QUALITY_ENV) uv run --project tooling/quality --locked python tooling/quality/check.py --scope evidence
+	python3 -B -m unittest discover -s evidence/firmware-analysis/reverse_engineering/tools/tests -p 'test_*.py'
+	python3 -B evidence/firmware-analysis/reverse_engineering/deep/application/tools/test_generate_declarative_dataflow.py
+	python3 -B evidence/firmware-analysis/reverse_engineering/deep/kernel_modules/test_recover_kernel_abi_bindings.py
+	python3 -B evidence/firmware-analysis/reverse_engineering/deep/userland/test_rebuild_deep_userland.py
 
 .PHONY: test-fastcgi benchmark-latency
 test-fastcgi:
@@ -62,21 +73,16 @@ quality:
 test-product-core:
 	@mkdir -p $(WORK)/build $(WORK)/cache $(WORK)/dist $(WORK)/reports
 	python3 -B -m unittest discover -s tooling/performance/tests
-	UV_CACHE_DIR=$(UV_CACHE) LS200_SKIP_QUALITY=1 LS200_SIPD_VERIFY_ENABLE=1 sh product/sipd/tools/verify-repository.sh --run
+	UV_CACHE_DIR=$(UV_CACHE) LS200_SIPD_VERIFY_ENABLE=1 sh product/sipd/tools/verify-repository.sh --run
 	$(MAKE) -C product/console test
-	sh product/console/tests/preview/run.sh
 	LS200_CONSOLE_REQUIRE_READY=1 $(MAKE) -C product/console ui-install ui-test ui-build
 
 test-lab-core:
 	@mkdir -p $(WORK)/build/qemu $(WORK)/cache $(WORK)/dist/qemu $(WORK)/reports/qemu
-	python3 -B -m unittest discover -s evidence/firmware-analysis/reverse_engineering/tools/tests -p 'test_*.py'
-	python3 -B evidence/firmware-analysis/reverse_engineering/deep/application/tools/test_generate_declarative_dataflow.py
-	python3 -B evidence/firmware-analysis/reverse_engineering/deep/kernel_modules/test_recover_kernel_abi_bindings.py
-	python3 -B evidence/firmware-analysis/reverse_engineering/deep/userland/test_rebuild_deep_userland.py
 	$(MAKE) -C lab/emulator verify-core
 	UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(EMULATOR_ENV) uv run --project lab/emulator pytest -q lab/qemu/tests
 	UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(EMULATOR_ENV) uv run --project lab/emulator pytest -q lab/live/tests
-	UV_CACHE_DIR=$(UV_CACHE) LS200_SKIP_QUALITY=1 LS200_SKIP_DEPLOYMENT_TESTS=1 sh lab/qemu/scripts/verify.sh
+	UV_CACHE_DIR=$(UV_CACHE) sh lab/qemu/scripts/verify.sh
 
 test-deployment:
 	python3 -B deployment/tests/test_console_assets.py

@@ -61,6 +61,7 @@ make quality
 make test-product
 make test-lab
 make test-deployment
+make verify-evidence
 ```
 
 Build and start the recovered QEMU development machine with:

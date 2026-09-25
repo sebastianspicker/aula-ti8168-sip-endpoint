@@ -15,21 +15,6 @@ SKIP_PARTS = frozenset({
 SOURCE_ROOTS = tuple(ROOT / name for name in (
     "Makefile", "deployment", "docs", "lab", "product", "tooling", "dependencies",
 ))
-EVIDENCE_SOURCE_ROOTS = tuple(ROOT / "evidence/firmware-analysis" / name for name in (
-    "tools", "reverse_engineering/tools", "reverse_engineering/ghidra",
-    "reverse_engineering/deep",
-))
-EVIDENCE_SKIPS = frozenset({
-    "archive", "archives", "work", "reports", "extracted", "decompiled_python",
-    "decompilations", "decompiled_full", "binary_evidence", "segments", "vendor",
-})
-EVIDENCE_SUFFIXES = frozenset({
-    ".c", ".h", ".inc", ".py", ".sh", ".mjs", ".js", ".java",
-})
-EVIDENCE_GENERATOR = (
-    ROOT / "evidence/firmware-analysis/reverse_engineering/deep/m3/reports/"
-    "rebuild_reports.mjs"
-)
 
 
 class SourceProvenanceError(RuntimeError):
@@ -44,36 +29,22 @@ def _file_digest(path: Path) -> bytes:
     return value.digest()
 
 
-def source_candidates(
-    source_roots: tuple[Path, ...], evidence_source_roots: tuple[Path, ...],
-    evidence_generator: Path,
-) -> list[Path]:
+def source_candidates(source_roots: tuple[Path, ...]) -> list[Path]:
     candidates: list[Path] = []
-    for root in (*source_roots, *evidence_source_roots):
+    for root in source_roots:
         mode = root.lstat().st_mode
         if stat.S_ISLNK(mode) or not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
             raise SourceProvenanceError(f"maintained source root is unsafe: {root}")
         paths = [root] if stat.S_ISREG(mode) else root.rglob("*")
-        if root in evidence_source_roots:
-            paths = (
-                path for path in paths
-                if path.suffix in EVIDENCE_SUFFIXES
-                and not any(part in EVIDENCE_SKIPS for part in path.relative_to(root).parts)
-            )
         candidates.extend(paths)
-    candidates.append(evidence_generator)
     return candidates
 
 
 def source_digest(
     *, root: Path = ROOT, source_roots: tuple[Path, ...] = SOURCE_ROOTS,
-    evidence_source_roots: tuple[Path, ...] = EVIDENCE_SOURCE_ROOTS,
-    evidence_generator: Path = EVIDENCE_GENERATOR,
 ) -> str:
     value = hashlib.sha256()
-    candidates = source_candidates(
-        source_roots, evidence_source_roots, evidence_generator,
-    )
+    candidates = source_candidates(source_roots)
     for path in sorted(set(candidates)):
         try:
             relative_path = path.relative_to(root)

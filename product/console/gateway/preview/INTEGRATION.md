@@ -7,19 +7,16 @@ responsibilities.
 
 ## Build inventory
 
-Compile these preview sources:
-
-- `preview_reader.c`
-- `preview_reader_protocol.c`
-- `preview_reader_rtp.c`
-- `preview_flv.c`
-
-Also compile the maintained parser/depacketizer implementations without local
-copies:
-
-- `../../../sipd/src/backends/rtsp_parser.c`
-- `../../../sipd/src/media/h264.c`
-- `../../../sipd/src/media/h264_depacketizer.c`
+The canonical source list lives once in
+[`sources.mk`](sources.mk), included by `../../Makefile`. It compiles the
+local preview media core (`preview_reader.c`, `preview_reader_protocol.c`,
+`preview_reader_rtp.c`, `preview_flv.c`) together with the maintained sipd
+parser/depacketizer implementations, reused at build time without local
+copies: `../../../sipd/src/backends/rtsp_parser.c`,
+`../../../sipd/src/media/h264.c`, and
+`../../../sipd/src/media/h264_depacketizer.c`. `../../tests/preview/run.sh`
+reads the same list via `make -s -C product/console print-preview-sources`
+instead of repeating it.
 
 Add include roots `gateway/preview`, `../sipd/include`, and
 `../sipd/src/backends`. The code is C99-compatible and is tested with the

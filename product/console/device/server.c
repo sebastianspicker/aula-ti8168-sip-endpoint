@@ -1,41 +1,10 @@
-#include "protocol.h"
+#include "server.h"
+#include "credentials.h"
 #include "projection.h"
 #include "transport.h"
-#include "credentials.h"
-#include <openssl/crypto.h>
-#include <arpa/inet.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "wire.h"
 #include <string.h>
 #include <unistd.h>
-
-static json_t *receive_device_message(int fd, uint64_t deadline) {
-  uint32_t size;
-  char buffer[LS200_DEVICE_LIMIT];
-  json_error_t error;
-  if (!ls200_device_transfer(fd, &size, sizeof(size), 0, deadline)) return NULL;
-  size = ntohl(size);
-  if (size == 0 || size > sizeof(buffer) ||
-      !ls200_device_transfer(fd, buffer, size, 0, deadline)) return NULL;
-  json_t *message = json_loadb(buffer, size, JSON_REJECT_DUPLICATES, &error);
-  OPENSSL_cleanse(buffer, sizeof(buffer));
-  return message;
-}
-
-static int send_device_message(int fd, json_t *message, uint64_t deadline) {
-  char *encoded = json_dumps(message, JSON_COMPACT | JSON_SORT_KEYS);
-  uint32_t size;
-  int result = 0;
-  if (encoded == NULL) return 0;
-  if (strlen(encoded) <= LS200_DEVICE_LIMIT) {
-    size = htonl((uint32_t)strlen(encoded));
-    result = ls200_device_transfer(fd, &size, sizeof(size), 1, deadline) &&
-        ls200_device_transfer(fd, encoded, strlen(encoded), 1, deadline);
-  }
-  OPENSSL_cleanse(encoded, strlen(encoded));
-  free(encoded);
-  return result;
-}
 
 static int revision_one_request(json_t *request) {
   const char *operation = json_string_value(json_object_get(request, "operation"));
@@ -115,11 +84,11 @@ int ls200_device_serve_commands(int fd, uint32_t peer_uid, ls200_device_read_fn 
   json_t *request, *response;
   int result;
   if (read_status == NULL || !ls200_device_peer(fd, peer_uid)) return 0;
-  request = receive_device_message(fd, deadline);
+  request = ls200_device_receive_message(fd, deadline);
   response = revision_one_request(request) ? status_response(read_status) :
       query_response(request, read_status, read_jobs, dispatch);
   json_decref(request);
-  result = response != NULL && send_device_message(fd, response, deadline);
+  result = response != NULL && ls200_device_send_message(fd, response, deadline);
   json_decref(response);
   return result;
 }
@@ -129,38 +98,6 @@ int ls200_device_serve_queries(int fd, ls200_device_read_fn read_status,
   return ls200_device_serve_commands(fd, (uint32_t)geteuid(), read_status, read_jobs, NULL);
 }
 
-json_t *ls200_device_exchange(json_t *request) {
-  uint64_t deadline = ls200_device_clock() + 4500;
-  json_t *response = NULL;
-  int fd = ls200_device_connect(LS200_DEVICE_SOCKET, 0, 500);
-  if (fd < 0) return NULL;
-  if (send_device_message(fd, request, deadline)) response = receive_device_message(fd, deadline);
-  close(fd);
-  return response;
-}
-
 int ls200_device_serve_request(int fd, ls200_device_read_fn read_status) {
   return ls200_device_serve_queries(fd, read_status, NULL);
-}
-
-int ls200_device_read_status(char *output, size_t capacity) {
-  int fd = ls200_device_connect(LS200_DEVICE_SOCKET, 0, 1000);
-  uint64_t deadline = ls200_device_clock() + 4500;
-  json_t *request, *response = NULL;
-  char *encoded = NULL;
-  int result = 0;
-  if (fd < 0) return 0;
-  request = json_pack("{s:i,s:s}", "revision", 1, "operation", "status");
-  if (request != NULL && send_device_message(fd, request, deadline))
-    response = receive_device_message(fd, deadline);
-  json_decref(request);
-  close(fd);
-  if (ls200_device_status_valid(response)) encoded = json_dumps(response, JSON_COMPACT);
-  if (encoded != NULL && strlen(encoded) < capacity) {
-    snprintf(output, capacity, "%s", encoded);
-    result = 1;
-  }
-  free(encoded);
-  json_decref(response);
-  return result;
 }

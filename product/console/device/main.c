@@ -4,11 +4,11 @@
 #define _GNU_SOURCE 1
 #endif
 #define _POSIX_C_SOURCE 200809L
-#include "protocol.h"
+#include "server.h"
 #include "oem.h"
 #include "transport.h"
 #include "jobs.h"
-#include "credentials.h"
+#include "credentials_store.h"
 #include "launcher.h"
 #include "commands.h"
 #include <errno.h>

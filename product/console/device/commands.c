@@ -1,5 +1,5 @@
 #include "commands.h"
-#include "credentials.h"
+#include "credentials_store.h"
 #include "oem.h"
 #include <string.h>
 

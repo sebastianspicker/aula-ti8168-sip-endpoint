@@ -42,13 +42,13 @@ static int backend_persistence_uncertain(const char *backend) {
   json_decref(root);
   return valid;
 }
-static int backend_event_response(ls200_gateway *gateway,const route_plan *plan,const char *normalized,ls200_gateway_response *response) { if(plan->opcode!=OPCODE_EVENTS) return 0; if(!record_events(gateway,normalized)||!write_events(gateway,response)) write_error(response,500U,"INTERNAL","event history could not be encoded"); return 1; }
+static int backend_event_response(ls200_gateway *gateway,const route_plan *plan,const char *normalized,ls200_gateway_response *response) { if(plan->opcode!=LS200_CONTROL_OPCODE_SUBSCRIBE) return 0; if(!record_events(gateway,normalized)||!write_events(gateway,response)) write_error(response,500U,"INTERNAL","event history could not be encoded"); return 1; }
 static int backend_recent_call(ls200_gateway *gateway,const ls200_gateway_session *session,const ls200_gateway_request *request,const route_plan *plan,ls200_gateway_response *response) {
   int store_result; if(strcmp(request->path,"/zoom/api/v1/calls")!=0||strcmp(request->method,"POST")!=0) return 1; store_result=record_recent(gateway,request->body);
   if(store_result==1) return 1; if(store_result==2) { write_error(response,503U,"PERSISTENCE_UNCERTAIN","recent call was committed but restart durability was not confirmed"); save_mutation(gateway,session,request,plan,response); return 0; }
   write_error(response,500U,"PERSISTENCE_FAILED","recent call state was not saved"); save_mutation(gateway,session,request,plan,response); return 0;
 }
-static int backend_status_shape(const ls200_gateway *gateway,const route_plan *plan,const ls200_gateway_request *request,char normalized[1024]) { const char *path=(plan->flags&R_EXPORT)!=0U?"/zoom/api/v1/diagnostics":request->path; return plan->opcode!=OPCODE_STATUS||shape_status_route(gateway,path,normalized,normalized,1024U); }
+static int backend_status_shape(const ls200_gateway *gateway,const route_plan *plan,const ls200_gateway_request *request,char normalized[1024]) { const char *path=(plan->flags&R_EXPORT)!=0U?"/zoom/api/v1/diagnostics":request->path; return plan->opcode!=LS200_CONTROL_OPCODE_STATUS||shape_status_route(gateway,path,normalized,normalized,1024U); }
 static int bind_diagnostics_export(ls200_gateway_session *session,const ls200_gateway_request *request,char normalized[1024]) { json_error_t error; json_t *data; if(strcmp(request->path,"/zoom/api/v1/diagnostics")!=0) return 1; if(session->diagnostics_export_id[0]=='\0'||session->diagnostics_export_expires_at<request->now) { uint8_t random[16]; if(RAND_bytes(random,sizeof(random))!=1||!hex_encode(random,sizeof(random),session->diagnostics_export_id,sizeof(session->diagnostics_export_id))) { OPENSSL_cleanse(random,sizeof(random)); return 0; } OPENSSL_cleanse(random,sizeof(random)); } session->diagnostics_export_expires_at=request->now+LS200_GATEWAY_SESSION_IDLE_SECONDS; data=json_loads(normalized,JSON_REJECT_DUPLICATES,&error); if(data==NULL||json_object_set_new(data,"export_id",json_string(session->diagnostics_export_id))!=0||!serialize_json(data,normalized,1024U)) { if(data!=NULL) json_decref(data); return 0; } json_decref(data); return 1; }
 static int write_diagnostics_export(ls200_gateway_session *session,const ls200_gateway_request *request,const route_plan *plan,const char *normalized,ls200_gateway_response *response) {
   const char *id; size_t id_length,expected_length; json_error_t error; json_t *data=NULL; char export_data[1400]={0}; int result=0;
@@ -65,13 +65,13 @@ static void finish_backend_error(ls200_gateway *gateway,
                                  const ls200_gateway_request *request,
                                  const route_plan *plan,const char *backend,
                                  ls200_gateway_response *response) {
-  if(plan->opcode==6U&&backend_persistence_uncertain(backend)) {
+  if(plan->opcode==LS200_CONTROL_OPCODE_REPLACE_CREDENTIAL&&backend_persistence_uncertain(backend)) {
     write_error(response,503U,"PERSISTENCE_UNCERTAIN","credential changed but restart durability was not confirmed");
     save_mutation(gateway,identity,request,plan,response);
-  } else if(plan->opcode==OPCODE_SETTINGS&&backend_persistence_uncertain(backend)) {
+  } else if(plan->opcode==LS200_CONTROL_OPCODE_SETTINGS&&backend_persistence_uncertain(backend)) {
     write_error(response,503U,"PERSISTENCE_UNCERTAIN","settings changed but restart durability was not confirmed");
     save_mutation(gateway,identity,request,plan,response);
-  } else if(plan->opcode==OPCODE_SETTINGS&&settings_revision_conflict(backend))
+  } else if(plan->opcode==LS200_CONTROL_OPCODE_SETTINGS&&settings_revision_conflict(backend))
     write_error(response,409U,"REVISION_CONFLICT","settings revision is stale");
   else write_error(response,502U,"BACKEND_PROTOCOL","control daemon rejected the request");
 }

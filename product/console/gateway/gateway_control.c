@@ -7,16 +7,16 @@ int ls200_gateway_frame_validate(const uint8_t *frame, size_t frame_length,
   uint16_t flags;
   uint32_t request_id;
   uint32_t length;
-  if (frame == NULL || frame_length < LSZ1_HEADER_BYTES ||
-      memcmp(frame, "LSZ1", 4U) != 0 || frame[4] != LSZ1_VERSION ||
-      frame[5] != expected_opcode || expected_opcode < 1U || expected_opcode > OPCODE_METRICS) return 0;
+  if (frame == NULL || frame_length < LS200_CONTROL_HEADER_BYTES ||
+      memcmp(frame, LS200_CONTROL_MAGIC, 4U) != 0 || frame[4] != LS200_CONTROL_PROTOCOL_VERSION ||
+      frame[5] != expected_opcode || expected_opcode < 1U || expected_opcode > LS200_CONTROL_OPCODE_METRICS) return 0;
   (void)memcpy(&flags, frame + 6U, sizeof(flags));
   (void)memcpy(&request_id, frame + 8U, sizeof(request_id));
   (void)memcpy(&length, frame + 12U, sizeof(length));
   flags = ntohs(flags); request_id = ntohl(request_id); length = ntohl(length);
-  return (flags & LSZ1_RESPONSE) != 0U && (flags & ~(LSZ1_RESPONSE | LSZ1_ERROR | 4U)) == 0U &&
-      request_id == expected_request_id && length <= LSZ1_MAX_PAYLOAD &&
-      frame_length == LSZ1_HEADER_BYTES + (size_t)length;
+  return (flags & LS200_CONTROL_FRAME_RESPONSE) != 0U && (flags & ~(LS200_CONTROL_FRAME_RESPONSE | LS200_CONTROL_FRAME_ERROR | LS200_CONTROL_FRAME_EVENT)) == 0U &&
+      request_id == expected_request_id && length <= GATEWAY_LSZ1_MAX_PAYLOAD &&
+      frame_length == LS200_CONTROL_HEADER_BYTES + (size_t)length;
 }
 
 int ls200_gateway_peer_uid_matches(int descriptor, uint32_t expected_uid) {
@@ -239,19 +239,19 @@ static int connect_control_socket(const ls200_gateway_config *config,
   return descriptor;
 }
 
-static void build_control_request(uint8_t request[LSZ1_HEADER_BYTES + LSZ1_MAX_PAYLOAD],
+static void build_control_request(uint8_t request[LS200_CONTROL_HEADER_BYTES + GATEWAY_LSZ1_MAX_PAYLOAD],
                                   uint8_t opcode, uint32_t request_id,
                                   const char *payload, size_t payload_length) {
   uint16_t flags = 0U;
   uint32_t wire_id = htonl(request_id);
   uint32_t length = htonl((uint32_t)payload_length);
-  (void)memcpy(request, "LSZ1", 4U);
-  request[4] = LSZ1_VERSION;
+  (void)memcpy(request, LS200_CONTROL_MAGIC, 4U);
+  request[4] = LS200_CONTROL_PROTOCOL_VERSION;
   request[5] = opcode;
   (void)memcpy(request + 6U, &flags, sizeof(flags));
   (void)memcpy(request + 8U, &wire_id, sizeof(wire_id));
   (void)memcpy(request + 12U, &length, sizeof(length));
-  (void)memcpy(request + LSZ1_HEADER_BYTES, payload, payload_length);
+  (void)memcpy(request + LS200_CONTROL_HEADER_BYTES, payload, payload_length);
 }
 
 static int send_control_request(int descriptor, const uint8_t *request,
@@ -312,7 +312,7 @@ static int stream_reply_has_no_trailing_bytes(int descriptor, uint64_t deadline)
 }
 
 static int receive_control_reply(int descriptor,
-                                 uint8_t reply[LSZ1_HEADER_BYTES + LSZ1_MAX_PAYLOAD],
+                                 uint8_t reply[LS200_CONTROL_HEADER_BYTES + GATEWAY_LSZ1_MAX_PAYLOAD],
                                  uint8_t opcode, uint32_t request_id,
                                  int packet_socket, uint64_t deadline) {
   uint32_t payload_length;
@@ -324,7 +324,7 @@ static int receive_control_reply(int descriptor,
     if (!wait_for_control_socket(descriptor, POLLIN, deadline, &revents)) return 0;
     (void)memset(&message, 0, sizeof(message));
     iov.iov_base = reply;
-    iov.iov_len = LSZ1_HEADER_BYTES + LSZ1_MAX_PAYLOAD;
+    iov.iov_len = LS200_CONTROL_HEADER_BYTES + GATEWAY_LSZ1_MAX_PAYLOAD;
     message.msg_iov = &iov;
     message.msg_iovlen = 1U;
     do {
@@ -333,18 +333,18 @@ static int receive_control_reply(int descriptor,
     return received > 0 && (message.msg_flags & MSG_TRUNC) == 0 &&
         ls200_gateway_frame_validate(reply, (size_t)received, opcode, request_id);
   }
-  if (!receive_control_bytes(descriptor, reply, LSZ1_HEADER_BYTES, deadline)) return 0;
+  if (!receive_control_bytes(descriptor, reply, LS200_CONTROL_HEADER_BYTES, deadline)) return 0;
   (void)memcpy(&payload_length, reply + 12U, sizeof(payload_length));
   payload_length = ntohl(payload_length);
-  if (payload_length > LSZ1_MAX_PAYLOAD ||
-      !receive_control_bytes(descriptor, reply + LSZ1_HEADER_BYTES,
+  if (payload_length > GATEWAY_LSZ1_MAX_PAYLOAD ||
+      !receive_control_bytes(descriptor, reply + LS200_CONTROL_HEADER_BYTES,
                              (size_t)payload_length, deadline) ||
       !stream_reply_has_no_trailing_bytes(descriptor, deadline)) return 0;
-  return ls200_gateway_frame_validate(reply, LSZ1_HEADER_BYTES + (size_t)payload_length,
+  return ls200_gateway_frame_validate(reply, LS200_CONTROL_HEADER_BYTES + (size_t)payload_length,
                                       opcode, request_id);
 }
 
-static int copy_control_reply(const uint8_t reply[LSZ1_HEADER_BYTES + LSZ1_MAX_PAYLOAD],
+static int copy_control_reply(const uint8_t reply[LS200_CONTROL_HEADER_BYTES + GATEWAY_LSZ1_MAX_PAYLOAD],
                               uint8_t opcode, char *response,
                               size_t response_capacity) {
   uint16_t flags;
@@ -358,11 +358,11 @@ static int copy_control_reply(const uint8_t reply[LSZ1_HEADER_BYTES + LSZ1_MAX_P
   length = ntohl(length);
   (void)wire_id;
   if (length + 1U > response_capacity) return 0;
-  (void)memcpy(response, reply + LSZ1_HEADER_BYTES, length);
+  (void)memcpy(response, reply + LS200_CONTROL_HEADER_BYTES, length);
   response[length] = '\0';
   /* Keep a bounded daemon error available to the settings route only, so a
    * stale revision remains distinguishable from a transport failure. */
-  if ((flags & LSZ1_ERROR) != 0U) return 2;
+  if ((flags & LS200_CONTROL_FRAME_ERROR) != 0U) return 2;
   return ls200_gateway_backend_response_normalize(opcode, response, response,
                                                    response_capacity);
 }
@@ -371,8 +371,8 @@ int ls200_gateway_control_exchange(void *context, uint8_t opcode, uint32_t reque
                                    const char *payload, char *response, size_t response_capacity) {
   const ls200_gateway_config *config = (const ls200_gateway_config *)context;
   struct sockaddr_un address;
-  uint8_t request[LSZ1_HEADER_BYTES + LSZ1_MAX_PAYLOAD];
-  uint8_t reply[LSZ1_HEADER_BYTES + LSZ1_MAX_PAYLOAD];
+  uint8_t request[LS200_CONTROL_HEADER_BYTES + GATEWAY_LSZ1_MAX_PAYLOAD];
+  uint8_t reply[LS200_CONTROL_HEADER_BYTES + GATEWAY_LSZ1_MAX_PAYLOAD];
   size_t payload_length;
   int descriptor;
   int packet_socket;
@@ -382,13 +382,13 @@ int ls200_gateway_control_exchange(void *context, uint8_t opcode, uint32_t reque
   (void)memset(reply, 0, sizeof(reply));
   if (!control_exchange_input_is_valid(config, payload, response, response_capacity)) goto cleanup;
   payload_length = strlen(payload);
-  if (payload_length > LSZ1_MAX_PAYLOAD) goto cleanup;
+  if (payload_length > GATEWAY_LSZ1_MAX_PAYLOAD) goto cleanup;
   prepare_control_address(&address, config->control_socket_path);
   if (!control_deadline(config, &deadline)) goto cleanup;
   descriptor = connect_control_socket(config, &address, deadline, &packet_socket);
   if (descriptor < 0) goto cleanup;
   build_control_request(request, opcode, request_id, payload, payload_length);
-  if (!send_control_request(descriptor, request, LSZ1_HEADER_BYTES + payload_length,
+  if (!send_control_request(descriptor, request, LS200_CONTROL_HEADER_BYTES + payload_length,
                             packet_socket, deadline) ||
       !receive_control_reply(descriptor, reply, opcode, request_id, packet_socket, deadline)) {
     (void)close(descriptor);

@@ -139,9 +139,12 @@ documented `EINVAL` or `ENOTSUP` directory-sync capability results are accepted
 after `F_FULLFSYNC` when available (then file `fsync`).
 
 The optional FastCGI 2.4.7 adapter and nginx 1.31.4 profile never download
-third-party sources. The LSZ1 client mirrors the frozen control header: magic,
-version, opcode, network-order flags/request ID/length, and bounded JSON.
-Gateway tests cover the capability-unavailable settings response, account and
+third-party sources. The LSZ1 client reuses the daemon's public
+`ls200_sipd/control_protocol.h` directly for the magic, version, opcode enum,
+header size, and frame flags; a gateway-local `GATEWAY_LSZ1_MAX_PAYLOAD`
+enforces the gateway's own tighter payload bound (statically asserted against
+the daemon's wire limit) over network-order flags/request ID/length and
+bounded JSON. Gateway tests cover the capability-unavailable settings response, account and
 directory revision conflicts, v1/v2/v3 persistence, safe recents and event
 history, export expiry, and the typed supported request boundaries; they are
 not a guest deployment or live-device result.
@@ -164,6 +167,12 @@ bounded revision-1 message with the privileged device companion. This runs in th
 read lane, independently of SIPD mutations, and rechecks the console session
 before releasing the result. The response exposes only recording/streaming
 activity enums; unavailable transport returns `DEVICE_UNAVAILABLE` (503).
+
+The gateway links only the client half of the device protocol (`device/client.c`,
+transport, wire framing, the recorder projection, and credential *schema*
+validation). The companion's serving loop and its persistent credential store
+(`device/server.c`, `device/credentials_store.c`) link only into
+`ls200-device-control`; see the [companion contract](../device/README.md).
 
 `GET /zoom/api/v1/library` and `/zoom/api/v1/schedule` require viewer access.
 `GET /zoom/api/v1/device/settings` and `/zoom/api/v1/maintenance` require admin

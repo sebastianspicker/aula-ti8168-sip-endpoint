@@ -308,8 +308,8 @@ reviewed build receipt, package, private session, and action-specific
 confirmations to physical-device campaigns. A live session supplies the
 private target and exact same-subnet host, while the campaign pins the approved
 interface, SSH port, MAC, and host key for every contact. Local gate receipts bind
-the exercised product, lab, dependency, and verification tooling source, including
-maintained evidence scripts, while excluding private and generated evidence.
+the tracked maintained product, lab, dependency, and verification tooling source
+that `make verify` exercises, excluding the untracked evidence research corpus.
 The ordered private-lab campaign starts the inert A release during smoke,
 returns to A after testing B installation, then selects B and enables autostart
 for the separately authorized reboot phase. Removal validates its saved
@@ -462,7 +462,7 @@ field. Live certificate telemetry is outside this interface.
 
 The canonical visible roots are `product`, `lab`, `deployment`, `dependencies`,
 `evidence`, `tooling`, and `docs`. The machine-readable layout policy is
-[`docs/reference/repository-layout.json`](reference/repository-layout.json).
+[`tooling/quality/layout-policy.json`](../tooling/quality/layout-policy.json).
 
 - `.work/` is the only generated build/cache/distribution/report root.
 - `evidence/private/` holds complete firmware, dumps, extracted filesystems,

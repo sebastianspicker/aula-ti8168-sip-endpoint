@@ -1,4 +1,4 @@
-#include "../device/protocol.h"
+#include "../device/client.h"
 static int monotonic_milliseconds(uint64_t *milliseconds);
 
 typedef struct gateway_request_storage {

@@ -46,7 +46,8 @@ done
     -DLS200_GATEWAY_WITH_FCGI \
     "$console_dir/gateway/gateway.c" \
     "$console_dir/device/transport.c" \
-    "$console_dir/device/protocol.c" \
+    "$console_dir/device/wire.c" \
+    "$console_dir/device/client.c" \
     "$console_dir/device/projection.c" \
     "$console_dir/device/credentials.c" \
     "$console_dir/gateway/fastcgi_main.c" \

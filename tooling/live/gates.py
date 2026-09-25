@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from source_provenance import EVIDENCE_GENERATOR, EVIDENCE_SOURCE_ROOTS, SOURCE_ROOTS
+from source_provenance import SOURCE_ROOTS
 from source_provenance import SourceProvenanceError
 from source_provenance import source_digest as maintained_source_digest
 
@@ -181,11 +181,7 @@ def _host_tool_environment(search_path: str) -> tuple[dict[str, str], dict[str, 
 
 def source_digest() -> str:
     try:
-        return maintained_source_digest(
-            root=ROOT, source_roots=SOURCE_ROOTS,
-            evidence_source_roots=EVIDENCE_SOURCE_ROOTS,
-            evidence_generator=EVIDENCE_GENERATOR,
-        )
+        return maintained_source_digest(root=ROOT, source_roots=SOURCE_ROOTS)
     except (OSError, SourceProvenanceError) as error:
         raise GateError(f"local gate source is unavailable or unsafe: {error}") from error
 

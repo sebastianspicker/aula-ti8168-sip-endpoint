@@ -7,6 +7,8 @@
 
 #include "gateway.h"
 
+#include "ls200_sipd/control_protocol.h"
+
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
@@ -42,17 +44,11 @@
 extern int getpeereid(int descriptor, uid_t *uid, gid_t *gid);
 #endif
 
-#define LSZ1_HEADER_BYTES 16U
-#define LSZ1_MAX_PAYLOAD 2048U
-#define LSZ1_VERSION 1U
-#define LSZ1_RESPONSE 1U
-#define LSZ1_ERROR 2U
-#define OPCODE_STATUS 1U
-#define OPCODE_HANGUP 3U
-#define OPCODE_MEDIA 5U
-#define OPCODE_EVENTS 8U
-#define OPCODE_SETTINGS 9U
-#define OPCODE_METRICS 10U
+/* The gateway enforces a stricter payload cap than the daemon's wire limit;
+ * the frame layout, magic, version and opcodes come from the shared header. */
+#define GATEWAY_LSZ1_MAX_PAYLOAD 2048U
+_Static_assert(GATEWAY_LSZ1_MAX_PAYLOAD <= LS200_CONTROL_MAX_PAYLOAD_BYTES,
+              "gateway payload cap must not exceed the daemon's control wire limit");
 #define AUTH_BUCKET_CAPACITY 3U
 #define AUTH_GLOBAL_CAPACITY 8U
 #define AUTH_REFILL_SECONDS 30U

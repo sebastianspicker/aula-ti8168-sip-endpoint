@@ -49,6 +49,7 @@ third-party policy.
 | `make test-product` | SIP daemon verifier, gateway tests, preview tests, UI tests, and UI build |
 | `make test-lab` | Emulator verification, QEMU/live pytest suites, QEMU script checks, and deployment contracts |
 | `make test-deployment` | Payload, live-target, QEMU-target, and campaign contract suites |
+| `make verify-evidence` | Evidence-corpus quality and reproducibility tests, when `evidence/` is present |
 
 `make verify` shares the quality and deployment prerequisites across components,
 so each runs once, including under `make -j verify`. Standalone component gates

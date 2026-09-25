@@ -7,10 +7,8 @@ PROTO_DIR=$(CDPATH='' cd "$SCRIPT_DIR/.." && pwd)
 REPO_DIR=$(CDPATH='' cd "$PROTO_DIR/../.." && pwd)
 WORK_DIR=${QEMU_WORK_DIR:-"$REPO_DIR/.work/build/qemu"}
 SOURCE_DIR=${QEMU_SOURCE:-"$WORK_DIR/qemu-v11.0.3"}
-QUALITY_PROJECT="$REPO_DIR/tooling/quality"
 PYTHONPYCACHEPREFIX=${PYTHONPYCACHEPREFIX:-"$REPO_DIR/.work/cache/python"}
 export PYTHONPYCACHEPREFIX
-QUALITY_ENVIRONMENT=${LS200_QUALITY_ENVIRONMENT:-"$REPO_DIR/.work/cache/quality-venv"}
 require_source=0
 
 # shellcheck source=lib/common.sh
@@ -29,23 +27,12 @@ require_patch_stack
 set -- $PATCH_STACK
 
 require_command python3
-require_command uv
-if [ "${LS200_SKIP_QUALITY:-0}" != 1 ]; then
-UV_PROJECT_ENVIRONMENT="$QUALITY_ENVIRONMENT" uv run --project "$QUALITY_PROJECT" --locked python \
-    "$QUALITY_PROJECT/check.py" --scope qemu
-
-fi
 
 for script in "$SCRIPT_DIR"/*.sh; do
     sh -n "$script" || die "shell syntax failed: $script"
 done
 python3 -m py_compile "$SCRIPT_DIR"/probe_*.py
-python3 -B "$PROTO_DIR/tests/test_boot_matrix.py"
 sh "$PROTO_DIR/tests/test_web_boot.sh"
-if [ "${LS200_SKIP_DEPLOYMENT_TESTS:-0}" != 1 ]; then
-python3 -B "$REPO_DIR/deployment/tests/test_deployment_contract.py"
-python3 -B "$REPO_DIR/deployment/tests/test_qemu_zoom_two_slots_contract.py"
-fi
 python3 -B "$PROTO_DIR/fixtures/fixture_services.py" --self-test
 
 if command -v shellcheck >/dev/null 2>&1; then
