@@ -1,0 +1,33 @@
+include_guard(GLOBAL)
+include(CheckSymbolExists)
+
+check_symbol_exists(clock_gettime "time.h" LS200_SIPD_HAVE_CLOCK_GETTIME)
+check_symbol_exists(getrandom "sys/random.h" LS200_SIPD_HAVE_GETRANDOM)
+check_symbol_exists(posix_spawn "spawn.h" LS200_SIPD_HAVE_POSIX_SPAWN)
+
+function(ls200_sipd_apply_platform_libraries target_name)
+  if(UNIX)
+    find_package(Threads REQUIRED)
+    target_link_libraries(${target_name} PRIVATE Threads::Threads m)
+    if(NOT LS200_SIPD_HAVE_CLOCK_GETTIME)
+      target_link_libraries(${target_name} PRIVATE rt)
+    endif()
+  endif()
+
+  target_compile_definitions(
+    ${target_name}
+    PRIVATE
+      LS200_SIPD_HAVE_CLOCK_GETTIME=$<BOOL:${LS200_SIPD_HAVE_CLOCK_GETTIME}>
+      LS200_SIPD_HAVE_GETRANDOM=$<BOOL:${LS200_SIPD_HAVE_GETRANDOM}>
+      LS200_SIPD_HAVE_POSIX_SPAWN=$<BOOL:${LS200_SIPD_HAVE_POSIX_SPAWN}>)
+
+  if(LS200_SIPD_ENABLE_SANITIZERS)
+    if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+      target_compile_options(${target_name} PRIVATE -fsanitize=address,undefined
+                                                    -fno-omit-frame-pointer)
+      target_link_options(${target_name} PRIVATE -fsanitize=address,undefined)
+    else()
+      message(FATAL_ERROR "Sanitizers require a Clang or GNU host compiler")
+    endif()
+  endif()
+endfunction()

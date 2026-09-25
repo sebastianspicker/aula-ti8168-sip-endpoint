@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "reviewed_utc": "2026-08-27",
+  "policy": {
+    "downloads_during_build": false,
+    "missing_hash_behavior": "fail_closed",
+    "target": "ARM EABI5, Linux 2.6.37, glibc 2.12 ceiling",
+    "note": "Versions are frozen by the implementation plan. A null archive_sha256 blocks acquisition, packaging, and release."
+  },
+  "packages": [
+    {
+      "name": "pjproject",
+      "version": "git-b7317ffcaf1d20a38eb231cf15b7b65c4734dbb4",
+      "immutable_url": "https://github.com/pjsip/pjproject/archive/b7317ffcaf1d20a38eb231cf15b7b65c4734dbb4.tar.gz",
+      "archive_sha256": "2d70c0b0cb49c7ca071a46179e9a0a9af28371a2585ac085da9e59e2dab3589b",
+      "license": "GPL-2.0-or-later OR LicenseRef-Teluu-Commercial",
+      "enabled": ["pjlib", "pjlib-util without asynchronous resolver attachment", "pjsip-core", "pjsip-ua", "pjsip-simple", "UDP", "TCP", "TLS 1.2 and TLS 1.3"],
+      "disabled": ["PJSUA", "pjmedia devices/codecs/conference", "STUN", "TURN", "ICE", "H.263", "RED", "XML", "samples", "applications", "incoming multipart forwarding or re-serialization"],
+            "host_closure": "exact-commit low-level signaling compile/link, UDP private-lab call, authenticated TLS hostname acceptance/rejection, and SHA-256 digest TLS proxy REGISTER/contact-specific unregister verified; the combined exact-source dependency suite passes 13/13 CTests",
+      "arm_closure": "exact pinned signaling-only static libraries built for ARM EABI5 with the digest-gated media/C++ exclusion patch, linked into ls200-sipd, passed the recovered-reference ABI gate, and executed in both recovered QEMU firmware slots; live SIP/TLS interoperability remains unproven"
+    },
+        {
+            "name": "nginx",
+      "version": "1.31.4",
+      "immutable_url": "https://nginx.org/download/nginx-1.31.4.tar.gz",
+      "archive_sha256": "e6f20b644a17a643f059ae6467a1971fe2811587d025e071068753a1f1e3b3c3",
+      "license": "BSD-2-Clause",
+      "enabled": ["http", "static files", "FastCGI", "TLS"],
+      "disabled": ["HTTP/2", "WebSocket proxying", "CGI", "Lua", "SSI", "WebDAV", "directory listings", "compression", "arbitrary proxying", "mail", "stream"],
+            "host_closure": null,
+      "arm_closure": "exact 1.31.4 source built for ARM EABI5 with the digest-gated LS200 cross patch and minimal HTTP/static/SSL/FastCGI module set, passed the recovered-reference ABI gate, and reported nginx/1.31.4 with OpenSSL 3.5.8 in both recovered QEMU firmware slots"
+    },
+    {
+      "name": "OpenSSL",
+      "version": "3.5.8",
+      "immutable_url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz",
+      "archive_sha256": "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2",
+      "license": "Apache-2.0",
+      "enabled": ["TLS", "SHA-256", "HMAC", "PBKDF2", "CSPRNG"],
+      "disabled": ["legacy provider"],
+      "host_closure": "compatible host OpenSSL used by gateway tests; exact 3.5.8 not acquired",
+      "arm_closure": "exact 3.5.8 source built no-asm as static ARM EABI5 libraries, linked into sipd, gateway, and nginx candidates whose dynamic closure and GLIBC ceiling passed; guest nginx reported OpenSSL 3.5.8, while live TLS and the unused async-context path remain unproven"
+    },
+    {
+      "name": "FastCGI",
+      "version": "2.4.7",
+      "immutable_url": "https://github.com/FastCGI-Archives/fcgi2/archive/refs/tags/2.4.7.tar.gz",
+      "archive_sha256": "e41ddc3a473b555bdc0cbd80703dcb1f4610c1a7700d3b9d3d0c14a416e1074b",
+      "license": "LicenseRef-Open-Market-FastCGI",
+      "enabled": ["unprivileged C gateway adapter"],
+      "disabled": ["generic CGI execution"],
+      "host_closure": null,
+      "arm_closure": "exact 2.4.7 source built statically for ARM EABI5 and linked into the gateway candidate; the candidate passed the recovered-reference ABI gate and executed to its expected no-request exit in both recovered QEMU firmware slots"
+    },
+    {
+      "name": "Jansson",
+      "version": "2.14",
+      "immutable_url": "https://github.com/akheron/jansson/releases/download/v2.14/jansson-2.14.tar.gz",
+      "archive_sha256": "5798d010e41cf8d76b66236cfb2f2543c8d082181d16bc3085ab49538d4b9929",
+      "license": "MIT",
+      "enabled": ["bounded JSON parsing and serialization"],
+      "disabled": [],
+      "host_closure": "compatible system library used by gateway tests; exact source not acquired",
+      "arm_closure": "exact 2.14 source built statically for ARM EABI5 and linked into the gateway candidate; the candidate passed the recovered-reference ABI gate and executed in both recovered QEMU firmware slots"
+    },
+    {
+      "name": "FAAD2",
+      "version": "2.11.2",
+      "immutable_url": "https://github.com/knik0/faad2/archive/refs/tags/2.11.2.tar.gz",
+      "archive_sha256": "3fcbd305e4abd34768c62050e18ca0986f7d9c5eca343fb98275418013065c0e",
+      "license": "GPL-2.0-or-later",
+      "enabled": ["AAC-LC decode only"],
+      "disabled": ["CLI applications"],
+      "host_closure": "exact locked source archive built statically without CLI or DRC and linked into the native AAC host gate; successful persistent AAC-LC priming/decode oracle passes",
+      "arm_closure": "exact 2.11.2 source built statically for ARM EABI5 and linked into ls200-sipd; the daemon passed the recovered-reference ABI gate and executed in both recovered QEMU firmware slots, but target AAC decode and live media remain unproven"
+    },
+    {
+      "name": "SpeexDSP",
+      "version": "1.2.1",
+      "immutable_url": "https://github.com/xiph/speexdsp/archive/refs/tags/SpeexDSP-1.2.1.tar.gz",
+      "archive_sha256": "d17ca363654556a4ff1d02cc13d9eb1fc5a8642c90b40bd54ce266c3807b91a7",
+      "license": "BSD-3-Clause",
+      "enabled": ["resampler", "echo canceller"],
+      "disabled": [],
+      "host_closure": "exact locked source archive built statically without examples or SSE and linked into the native AAC host gate; 8 kHz mono resampling oracle passes",
+      "arm_closure": "exact 1.2.1 source built statically for ARM EABI5 and linked into ls200-sipd; the daemon passed the recovered-reference ABI gate and executed in both recovered QEMU firmware slots, but target resampling, AEC, and live media remain unproven"
+    },
+        {
+            "name": "libsrtp",
+      "version": "2.8.0",
+      "immutable_url": "https://github.com/cisco/libsrtp/archive/refs/tags/v2.8.0.tar.gz",
+      "archive_sha256": "d123dcff5c56d4f1a9006f2b311ea99a85016cbf3bb24b1007885d422237db85",
+      "license": "BSD-3-Clause",
+      "enabled": ["AES_CM_128_HMAC_SHA1_80"],
+      "disabled": ["test applications", "unsupported crypto policies"],
+            "host_closure": "exact locked source archive built statically with the built-in crypto backend; upstream make runtest passes; strict AES_CM_128_HMAC_SHA1_80 RTP/SRTCP protect, unprotect, pre-unprotect tuple authorization, replay, tamper, wrong-key, full and mixed re-INVITE downgrade, and staged-timeout cleanup host oracles pass in the combined 13/13 CTest and ASan/UBSan suites",
+      "arm_closure": "exact 2.8.0 source built statically for ARM EABI5 and linked into ls200-sipd; the daemon passed the recovered-reference ABI gate and executed in both recovered QEMU firmware slots, but target SRTP traffic and Zoom negotiation remain unproven"
+    }
+  ]
+}

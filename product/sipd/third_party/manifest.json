@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "project": "ls200-sipd",
+  "policy": {
+    "network_downloads_during_build": false,
+    "vendored_dependencies": false,
+    "selection_required_before_use": true,
+    "target_profile": "ARM EABI5, Linux 2.6.37, glibc 2.12"
+  },
+  "dependencies": [
+    {
+      "name": "sip-stack",
+      "role": "SIP signaling adapter implementation",
+      "selection": "pinned_opt_in_not_approved_for_distribution",
+      "current_candidate_status": {
+        "PJSIP": "user-selected immutable source pin and archive hash are available only through an opt-in external build wrapper; distribution approval and target validation remain open",
+        "evidence_retrieved_utc": "2026-08-26",
+        "selected_source_revision": "b7317ffcaf1d20a38eb231cf15b7b65c4734dbb4",
+        "official_source_url": "https://github.com/pjsip/pjproject",
+        "license": "GPL-2.0-or-later or commercial licensing, pending distribution decision",
+        "known_security_gate": "The 2026-08-26 upstream review found two applicable advisories with no published fix: GHSA-pvmg-ph43-54r2 in the asynchronous DNS resolver and GHSA-pjx6-7vrm-3w6f when re-serializing received multipart bodies. This adapter does not create the bundled asynchronous resolver and never forwards or re-serializes received multipart bodies, but a source-level exclusion is not equivalent to an upstream patch. Distribution and live use remain blocked pending the security review and minimal-library build proof."
+      },
+      "pinned_source": {
+        "revision": "b7317ffcaf1d20a38eb231cf15b7b65c4734dbb4",
+        "source_url": "https://github.com/pjsip/pjproject.git",
+      "source_archive_sha256": "2d70c0b0cb49c7ca071a46179e9a0a9af28371a2585ac085da9e59e2dab3589b",
+        "build_acquisition": "external reviewed input only; CMake has no FetchContent, ExternalProject, package-manager, or network retrieval path"
+      },
+      "enabled_feature_contract": [
+        "RFC 3263 DNS preflight",
+        "UDP, TCP fallback, and TLS transport selection",
+        "digest authentication seam; runtime challenge ownership remains fail-closed",
+        "optional REGISTER for proxy_registration profile",
+        "outgoing INVITE, ACK, CANCEL, BYE, and re-INVITE lifecycle",
+        "portable adapter scope authorization before every invite resolution"
+      ],
+      "excluded_features": [
+        "PJSIP fetch, vendoring, or implicit package installation",
+        "HTTP or HTTPS signaling targets",
+        "H.323, Zoom SDK, Enhanced Zoom Connector reserved dial fields",
+        "PJSUA, pjmedia codec/device/conference facilities, STUN, TURN, ICE, H.263, RED, XML, samples, and applications",
+        "incoming multipart forwarding or re-serialization",
+        "unreviewed TLS verification bypasses"
+      ],
+      "advisory_ancestry_reviewed_utc": "2026-08-26",
+      "applicable_advisories_requiring_fix_ancestry": [
+        "GHSA-277r-3q2j-mxcw",
+        "GHSA-xc62-j9h2-mp84 (proxy_registration)",
+        "GHSA-382p-87mh-r3q8 (TLS)",
+        "GHSA-pvmg-ph43-54r2 (bundled asynchronous DNS resolver excluded)"
+      ],
+      "excluded_feature_advisories_requiring_build_proof": [
+        "GHSA-893w-fmvw-qvg7 (simple STUN)",
+        "GHSA-8cxh-7rcw-x2m7 (H.263)",
+        "GHSA-wf9x-v65x-5qh3 (RED)",
+        "GHSA-6p2p-5wf8-h5hr (AVI)",
+        "GHSA-rfwg-w9gq-9mw2 (remote payload-type map)",
+        "GHSA-m9g3-jcj8-qjfm (SDP crypto)",
+        "GHSA-59fr-724j-6fjv (HTTP client)",
+        "GHSA-rpq9-9fx7-95xw (telnet CLI)",
+        "GHSA-jr2p-p2w4-rr9q (PJSIP DNS resolver)",
+        "GHSA-pjx6-7vrm-3w6f (incoming multipart forwarding and re-serialization)"
+      ],
+      "verified_fix_ancestry": {
+        "selected_revision": "b7317ffcaf1d20a38eb231cf15b7b65c4734dbb4",
+        "verified_utc": "2026-08-26",
+        "method": "git merge-base --is-ancestor against the official pjproject repository after deepening the selected revision history",
+        "ancestors": [
+          "d6a0e7f (GHSA-277r-3q2j-mxcw)",
+          "acc03b57cef7a7d31b8e1f5b9117437d7e87c591 (GHSA-xc62-j9h2-mp84)",
+          "43d3bd77bb6833eab4c493503b8d564a754ddfdd (GHSA-382p-87mh-r3q8)",
+          "082948b (GHSA-893w-fmvw-qvg7)",
+          "5311aee (GHSA-jr2p-p2w4-rr9q)",
+          "673b978 (GHSA-rfwg-w9gq-9mw2)",
+          "c82123e (digest parser fix)"
+        ],
+        "unpatched_applicable_or_conditionally_applicable": [
+          "GHSA-pvmg-ph43-54r2",
+          "GHSA-pjx6-7vrm-3w6f"
+        ]
+      },
+      "required_evidence": [
+        "immutable source URL and SHA-256",
+        "license compatibility decision",
+        "CVE snapshot date and findings",
+        "host build and self-test result",
+        "ARM EABI5 build result",
+        "static and dynamic dependency closure",
+        "disabled features and modules"
+      ],
+      "candidates": ["PJSIP", "Sofia-SIP", "libre"]
+    },
+    {
+      "name": "target-sysroot",
+      "role": "reconstructed development sysroot only",
+      "selection": "unapproved",
+      "required_evidence": [
+        "source and runtime artifact hashes",
+        "loader and GLIBC version report",
+        "header provenance",
+        "generation commands",
+        "read-only evidence-root containment check"
+      ]
+    },
+    {
+      "name": "SIPp",
+      "role": "isolated private-lab SIP scenario peer",
+      "selection": "blocked_pending_hash",
+      "source_url": "https://github.com/SIPp/sipp",
+      "release_url": "https://github.com/sipp/sipp/releases",
+      "tag": "v3.7.7",
+      "observed_release_commit": "369b3c1",
+      "license": "GPL-3.0-or-later",
+      "evidence_retrieved_utc": "2026-08-20",
+      "archive_sha256": null,
+      "required_evidence": [
+        "immutable release archive SHA-256",
+        "reviewed license text",
+        "local version match",
+        "private-netns confinement proof"
+      ]
+    }
+  ]
+}

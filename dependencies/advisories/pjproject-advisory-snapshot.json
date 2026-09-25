@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "reviewed_utc": "2026-08-26",
+  "pin": "b7317ffcaf1d20a38eb231cf15b7b65c4734dbb4",
+  "required_ancestor_commits": [
+    {"advisory": "GHSA-277r-3q2j-mxcw", "commit": "d6a0e7f76611c3a6f530ee051e3e7a622bb1748c"},
+    {"advisory": "GHSA-382p-87mh-r3q8", "commit": "43d3bd77bb6833eab4c493503b8d564a754ddfdd"},
+    {"advisory": "GHSA-893w-fmvw-qvg7", "commit": "082948b0a2ed658229fc6a50e475b411c69b0d2a"},
+    {"advisory": "published DNS hardening", "commit": "5311aee398ae9d623829a6bad7b679a193c9e199"},
+    {"advisory": "GHSA-rfwg-w9gq-9mw2", "commit": "673b978aab1fe3ab874247be32c871acc880cbeb"},
+    {"advisory": "published digest overflow fix", "commit": "c82123ea6f3c3652bbc9ebd5e9e658c301451687"}
+  ],
+  "no_fix_exclusions": [
+    {"advisory": "GHSA-pvmg-ph43-54r2", "excluded_surface": "pjlib-util asynchronous DNS resolver"},
+    {"advisory": "GHSA-cgmx-7mqj-77qp", "excluded_surface": "pjlib-util XML parser and SIP XML event bodies"},
+    {"advisory": "GHSA-pjx6-7vrm-3w6f", "excluded_surface": "forwarding or re-serialization of received multipart bodies"}
+  ],
+  "disabled_feature_advisories": [
+    {"advisory": "GHSA-8cxh-7rcw-x2m7", "feature": "H.263 and pjmedia"},
+    {"advisory": "GHSA-wf9x-v65x-5qh3", "feature": "RED and pjmedia SDP negotiation"},
+    {"advisory": "GHSA-893w-fmvw-qvg7", "feature": "STUN"}
+  ]
+}

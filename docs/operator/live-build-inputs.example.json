@@ -1,0 +1,36 @@
+{
+  "schema": "ls200-live-build-inputs-v1",
+  "toolchain": {
+    "cross_prefix": "/reviewed/toolchain/bin/arm-linux-gnueabi-",
+    "node": {"path": "/reviewed/host/bin/node", "sha256": "REPLACE_WITH_LOWERCASE_SHA256"},
+    "gcc": {"path": "/reviewed/toolchain/bin/arm-linux-gnueabi-gcc", "sha256": "REPLACE_WITH_LOWERCASE_SHA256"},
+    "ar": {"path": "/reviewed/toolchain/bin/arm-linux-gnueabi-ar", "sha256": "REPLACE_WITH_LOWERCASE_SHA256"},
+    "ranlib": {"path": "/reviewed/toolchain/bin/arm-linux-gnueabi-ranlib", "sha256": "REPLACE_WITH_LOWERCASE_SHA256"},
+    "strip": {"path": "/reviewed/toolchain/bin/arm-linux-gnueabi-strip", "sha256": "REPLACE_WITH_LOWERCASE_SHA256"},
+    "readelf": {"path": "/reviewed/toolchain/bin/arm-linux-gnueabi-readelf", "sha256": "REPLACE_WITH_LOWERCASE_SHA256"}
+  },
+  "sysroot": {
+    "path": "/reviewed/sysroot",
+    "tree_manifest": {"path": "/private/manifests/sysroot.sha256.tsv", "sha256": "REPLACE_WITH_LOWERCASE_SHA256"}
+  },
+  "nginx_source": {
+    "path": "/reviewed/src/nginx-1.31.4",
+    "tree_manifest": {"path": "/private/manifests/nginx-1.31.4.sha256.tsv", "sha256": "REPLACE_WITH_LOWERCASE_SHA256"}
+  },
+  "dependencies": {
+    "pjsip_include": "/reviewed/sysroot/usr/include",
+    "pjsip_libraries": "/reviewed/sysroot/usr/lib/libpjsip.a;/reviewed/sysroot/usr/lib/libpj.a",
+    "pjsip_ua_library": "/reviewed/sysroot/usr/lib/libpjsip-ua.a",
+    "pjmedia_library": "/reviewed/sysroot/usr/lib/libpjmedia.a",
+    "faad2_include": "/reviewed/sysroot/usr/include",
+    "faad2_library": "/reviewed/sysroot/usr/lib/libfaad.a",
+    "speexdsp_include": "/reviewed/sysroot/usr/include",
+    "speexdsp_library": "/reviewed/sysroot/usr/lib/libspeexdsp.a",
+    "srtp_include": "/reviewed/sysroot/usr/include",
+    "srtp_library": "/reviewed/sysroot/usr/lib/libsrtp2.a"
+  },
+  "reference_binary": {
+    "path": "/private/reviewed/ls200-reference-arm-binary",
+    "sha256": "REPLACE_WITH_LOWERCASE_SHA256"
+  }
+}

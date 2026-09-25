@@ -1,0 +1,32 @@
+{
+  "format": "ls200-sipd-linux-2.6.37-interface-policy-v1",
+  "kernel_ceiling": "2.6.37",
+  "glibc_max": "2.12",
+  "direct_syscall_markers": [
+    "syscall"
+  ],
+  "forbidden_source_interfaces": [
+    "bpf",
+    "clone3",
+    "close_range",
+    "copy_file_range",
+    "execveat",
+    "faccessat2",
+    "fchmodat2",
+    "getrandom",
+    "io_uring_enter",
+    "io_uring_register",
+    "io_uring_setup",
+    "landlock_add_rule",
+    "landlock_create_ruleset",
+    "landlock_restrict_self",
+    "memfd_create",
+    "openat2",
+    "pidfd_getfd",
+    "pidfd_open",
+    "pidfd_send_signal",
+    "process_madvise",
+    "renameat2",
+    "statx"
+  ]
+}
