@@ -17,7 +17,7 @@ done
 }
 project_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
 repository_root=$(CDPATH='' cd -- "$project_dir/../.." && pwd -P)
-path_guard=$project_dir/tools/protected_output.py
+path_guard=$repository_root/tooling/workspace/protected_output.py
 canonical_sysroot=$(python3 "$path_guard" --input "$repository_root" "$sysroot") || exit 2
 canonical_binary=$(python3 "$path_guard" --input "$repository_root" "$binary") || exit 2
 [ "${LS200_QEMU_ARM_ENABLE:-}" = 1 ] || { echo "run-qemu-arm: set LS200_QEMU_ARM_ENABLE=1 after authorization" >&2; exit 2; }

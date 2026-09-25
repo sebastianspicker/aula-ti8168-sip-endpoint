@@ -4,7 +4,7 @@ set -eu
 
 project_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
 repository_root=$(CDPATH='' cd -- "$project_dir/../.." && pwd -P)
-path_guard="$project_dir/tools/protected_output.py"
+path_guard="$repository_root/tooling/workspace/protected_output.py"
 cross_prefix=${LS200_CROSS_PREFIX:?set LS200_CROSS_PREFIX to an ARM EABI5 toolchain prefix}
 sysroot=${LS200_SYSROOT:?set LS200_SYSROOT to a separately generated development sysroot}
 build_dir=${LS200_ARM_BUILD_DIR:-"$repository_root/.work/build/sipd-arm"}

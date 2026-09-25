@@ -14,13 +14,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import receipts
 from source_provenance import SourceProvenanceError
 from source_provenance import source_digest as maintained_source_digest
 
 
 ROOT = Path(__file__).resolve().parents[2]
 WORK = ROOT / ".work"
-sys.path.insert(0, str(ROOT / "product/sipd/tools"))
+sys.path.insert(0, str(ROOT / "tooling/workspace"))
 from protected_output import input_path, output_path  # noqa: E402
 
 ENV_PATH_KEYS = {
@@ -72,28 +73,12 @@ def _private_directory(info: os.stat_result) -> bool:
     )
 
 
-def _is_sha256(value: Any) -> bool:
-    return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
-
-
-def digest(path: Path) -> str:
-    value = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            value.update(block)
-    return value.hexdigest()
+_is_sha256 = receipts.is_sha256
+digest = receipts.digest
 
 
 def exact_json(raw: bytes) -> Any:
-    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        value: dict[str, Any] = {}
-        for key, child in pairs:
-            if key in value:
-                raise BuildError(f"duplicate build-input field: {key}")
-            value[key] = child
-        return value
-
-    return json.loads(raw, object_pairs_hook=reject_duplicates)
+    return receipts.exact_json(raw, error=BuildError, context="build-input")
 
 
 def _validate_private_manifest_parent(path: Path) -> None:

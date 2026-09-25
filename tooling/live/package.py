@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import stat
@@ -11,6 +10,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import receipts
 from payload_receipt import read_manifest_digest
 from source_provenance import SourceProvenanceError
 from source_provenance import source_digest as maintained_source_digest
@@ -20,13 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RECEIPT = ROOT / ".work/build/live/receipt.json"
 OUTPUT = ROOT / ".work/dist/ls200-live/runtime"
 
-
-def digest(path: Path) -> str:
-    value = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            value.update(block)
-    return value.hexdigest()
+digest = receipts.digest
 
 
 def source_digest() -> str:
@@ -49,15 +43,7 @@ def _verify_receipt_source(receipt: dict[str, Any]) -> None:
 
 
 def _exact_json(raw: bytes) -> Any:
-    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        value: dict[str, Any] = {}
-        for key, child in pairs:
-            if key in value:
-                raise ValueError(f"duplicate package receipt field: {key}")
-            value[key] = child
-        return value
-
-    return json.loads(raw, object_pairs_hook=reject_duplicates)
+    return receipts.exact_json(raw, context="package receipt")
 
 
 def _safe_operator_directory(path: Path, *, create: bool, label: str) -> None:

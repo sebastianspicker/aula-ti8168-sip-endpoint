@@ -4,7 +4,7 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 REPOSITORY=$(CDPATH='' cd "$SCRIPT_DIR/../.." && pwd -P)
-PATH_GUARD=$REPOSITORY/product/sipd/tools/protected_output.py
+PATH_GUARD=$REPOSITORY/tooling/workspace/protected_output.py
 OUTPUT=${1:-}
 CC=${CC:-arm-linux-gnueabi-gcc}
 

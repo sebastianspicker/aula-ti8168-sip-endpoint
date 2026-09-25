@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -15,6 +14,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import receipts
 from source_provenance import SOURCE_ROOTS
 from source_provenance import SourceProvenanceError
 from source_provenance import source_digest as maintained_source_digest
@@ -38,24 +38,11 @@ class GateError(RuntimeError):
     pass
 
 
-def is_sha256(value: Any) -> bool:
-    return (
-        isinstance(value, str)
-        and len(value) == 64
-        and all(character in "0123456789abcdef" for character in value)
-    )
+is_sha256 = receipts.is_sha256
 
 
 def exact_json(raw: bytes) -> Any:
-    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-        for key, value in pairs:
-            if key in result:
-                raise GateError(f"duplicate local-gate field: {key}")
-            result[key] = value
-        return result
-
-    return json.loads(raw, object_pairs_hook=reject_duplicates)
+    return receipts.exact_json(raw, error=GateError, context="local-gate")
 
 
 def safe_repo_directory(path: Path) -> None:
@@ -103,12 +90,7 @@ def read_private_json(path: Path) -> Any:
     return exact_json(raw)
 
 
-def digest(path: Path) -> str:
-    value = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            value.update(block)
-    return value.hexdigest()
+digest = receipts.digest
 
 
 def _validate_host_tools(value: Any) -> None:

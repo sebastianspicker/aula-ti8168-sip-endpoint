@@ -8,7 +8,7 @@ REPOSITORY=$(CDPATH='' cd "$DEPLOYMENT_DIR/.." && pwd)
 QEMU_TARGET="$DEPLOYMENT_DIR/targets/qemu"
 TRUSTED_VERIFIER="$DEPLOYMENT_DIR/targets/ls200/verify-payload.sh"
 BOOTSTRAP_HELPER="$DEPLOYMENT_DIR/targets/ls200/bootstrap-transaction.sh"
-PATH_GUARD="$REPOSITORY/product/sipd/tools/protected_output.py"
+PATH_GUARD="$REPOSITORY/tooling/workspace/protected_output.py"
 PAYLOAD=${1:-}
 OUTPUT=${2:-}
 MANIFEST_SHA256=${3:-${LS200_ZOOM_MANIFEST_SHA256:-}}

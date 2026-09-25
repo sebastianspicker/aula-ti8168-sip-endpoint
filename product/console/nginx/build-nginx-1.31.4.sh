@@ -5,7 +5,7 @@ set -eu
 # reviewed source hashes and supplies the recovered LS200 cross-probe facts.
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 repo_dir=$(CDPATH='' cd -- "$script_dir/../../.." && pwd -P)
-path_guard=$repo_dir/product/sipd/tools/protected_output.py
+path_guard=$repo_dir/tooling/workspace/protected_output.py
 cross_prefix=${LS200_CROSS_PREFIX:?set LS200_CROSS_PREFIX to an ARM EABI5 toolchain prefix}
 sysroot=${LS200_SYSROOT:?set LS200_SYSROOT to the reviewed development sysroot}
 build_dir=${LS200_NGINX_ARM_BUILD_DIR:?set LS200_NGINX_ARM_BUILD_DIR to the staged nginx source}

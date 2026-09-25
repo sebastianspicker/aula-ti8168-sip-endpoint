@@ -10,7 +10,7 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / 'product/sipd/tools'))
+sys.path.insert(0, str(ROOT / 'tooling/workspace'))
 from protected_output import input_path, output_path
 
 

@@ -67,7 +67,7 @@ def _peer_process(session: LiveSession, timeout_seconds: int, *extra: str,
     except OSError as error:
         raise CampaignError("private SIP peer startup handshake could not be created") from error
     argv = [
-        sys.executable, str(ROOT / "lab/qemu/scripts/run_private_sip_peer.py"),
+        sys.executable, str(ROOT / "lab/sip-peer/run_private_sip_peer.py"),
         "--bind-address", session.host_ipv4, "--advertised-address", session.host_ipv4,
         "--authorized-source-address", session.target_ipv4, "--sip-port", str(session.peer_sip_port),
         "--timeout", str(timeout_seconds), "--ready-fd", str(ready_write), *extra,

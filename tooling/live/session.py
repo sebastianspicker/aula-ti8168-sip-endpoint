@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import receipts
+
 
 SCHEMA = "ls200-live-session-v1"
 TARGET_INTERFACE = "en5"
@@ -178,16 +180,8 @@ def _read_session_file(path: Path) -> bytes:
 
 
 def _decode_session(raw: bytes) -> Any:
-    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        value: dict[str, Any] = {}
-        for key, child in pairs:
-            if key in value:
-                raise SessionError(f"duplicate JSON field: {key}")
-            value[key] = child
-        return value
-
     try:
-        return json.loads(raw, object_pairs_hook=reject_duplicates)
+        return receipts.exact_json(raw, error=SessionError, context="JSON")
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise SessionError("LIVE_SESSION is not valid UTF-8 JSON") from error
 

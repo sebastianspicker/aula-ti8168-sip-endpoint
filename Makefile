@@ -69,6 +69,7 @@ quality:
 	UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(QUALITY_ENV) uv run --project tooling/quality --locked python tooling/quality/check.py --scope all
 	UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(QUALITY_ENV) uv run --project tooling/quality --locked python -m unittest discover -s tooling/quality/tests
 	python3 -B -m unittest discover -s tooling/console/tests
+	python3 -B -m unittest discover -s tooling/workspace/tests
 
 test-product-core:
 	@mkdir -p $(WORK)/build $(WORK)/cache $(WORK)/dist $(WORK)/reports
@@ -81,7 +82,7 @@ test-lab-core:
 	@mkdir -p $(WORK)/build/qemu $(WORK)/cache $(WORK)/dist/qemu $(WORK)/reports/qemu
 	$(MAKE) -C lab/emulator verify-core
 	UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(EMULATOR_ENV) uv run --project lab/emulator pytest -q lab/qemu/tests
-	UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(EMULATOR_ENV) uv run --project lab/emulator pytest -q lab/live/tests
+	UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(EMULATOR_ENV) uv run --project lab/emulator pytest -q lab/sip-peer/tests
 	UV_CACHE_DIR=$(UV_CACHE) sh lab/qemu/scripts/verify.sh
 
 test-deployment:
@@ -174,4 +175,4 @@ live-remove:
 	python3 -B tooling/live/campaign.py remove
 
 clean:
-	sh tooling/quality/trash-work.sh "$(TRASH_BUNDLE)"
+	sh tooling/workspace/trash-work.sh "$(TRASH_BUNDLE)"

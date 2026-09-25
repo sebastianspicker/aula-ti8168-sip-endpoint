@@ -6,7 +6,7 @@ script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 console_dir=$(CDPATH='' cd -- "$script_dir/../.." && pwd -P)
 repository_dir=$(CDPATH='' cd -- "$console_dir/../.." && pwd -P)
 sipd_dir=$repository_dir/product/sipd
-path_guard=$sipd_dir/tools/protected_output.py
+path_guard=$repository_dir/tooling/workspace/protected_output.py
 cross_prefix=${LS200_CROSS_PREFIX:?set LS200_CROSS_PREFIX to an ARM EABI5 toolchain prefix}
 sysroot=${LS200_SYSROOT:?set LS200_SYSROOT to the reviewed development sysroot}
 build_dir=${LS200_GATEWAY_ARM_BUILD_DIR:?set LS200_GATEWAY_ARM_BUILD_DIR to an existing output directory}
