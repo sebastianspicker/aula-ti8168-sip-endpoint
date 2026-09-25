@@ -91,6 +91,9 @@ test-deployment:
 	python3 -B deployment/tests/test_live_deployment_contract.py
 	python3 -B deployment/tests/test_payload_trust.py
 	python3 -B deployment/tests/test_qemu_zoom_two_slots_contract.py
+	python3 -B deployment/tests/test_root_access_contract.py
+	shellcheck -x -P deployment/targets/ls200/access deployment/targets/ls200/access/*.sh deployment/targets/ls200/access/lib/*.sh
+	cd tooling/device-evidence && shellcheck -x -P collectors collectors/*.sh
 	python3 -B -m unittest discover -s tooling/live/tests -p 'test_*.py'
 	python3 -B -m unittest discover -s tooling/device-evidence/tests -p 'test_*.py'
 	python3 -B -m unittest discover -s dependencies/scripts/tests -p 'test_*.py'
