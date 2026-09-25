@@ -43,13 +43,14 @@ third-party policy.
 
 | Command | What it runs |
 | --- | --- |
-| `make verify` | Layout, quality, product, lab, and deployment gates |
+| `make verify` | Layout, quality, product, lab, and deployment gates over tracked source; passes from a clean clone |
 | `make check-layout` | Canonical roots, generated/private paths, and symlink policy |
 | `make quality` | Locked Lizard and exact-clone checks over the maintained-source manifest |
 | `make test-product` | SIP daemon verifier, gateway tests, preview tests, UI tests, and UI build |
 | `make test-lab` | Emulator verification, QEMU/live pytest suites, QEMU script checks, and deployment contracts |
 | `make test-deployment` | Payload, live-target, QEMU-target, and campaign contract suites |
-| `make verify-evidence` | Evidence-corpus quality and reproducibility tests, when `evidence/` is present |
+| `make verify-evidence` | Evidence-corpus quality and reproducibility tests |
+| `make verify-all` | `verify` plus `verify-native`, `verify-qemu-model`, and `verify-evidence` |
 
 `make verify` shares the quality and deployment prerequisites across components,
 so each runs once, including under `make -j verify`. Standalone component gates
@@ -58,6 +59,44 @@ layout rules, dependency leases, and compiler dependency rebuilding.
 
 There is no repository-wide Markdown, C, Python, or TypeScript formatter target.
 Do not substitute an inferred formatter for a configured gate.
+
+### Evidence lane
+
+`make verify-evidence` covers the untracked `evidence/` research corpus: it
+runs `tooling/quality/check.py --scope evidence`, the evidence-tool test
+suites under `evidence/firmware-analysis/reverse_engineering/tools/tests`, the
+reproducibility checks for the declarative-dataflow, kernel-ABI, and
+deep-userland generators, and every test marked `corpus` in
+`tooling/quality`, `tooling/console`, `lab/emulator`, and `lab/qemu` with
+`LS200_REQUIRE_EVIDENCE=1` set. It exits 2 when
+`evidence/firmware-analysis/reverse_engineering/tools/tests` is absent, so it
+fails clearly rather than silently skipping in a clean clone. `make verify`
+does not depend on it and does not require `evidence/` to be present;
+corpus-marked tests are skipped visibly when the corpus is absent. Only
+`make verify-evidence` and `make verify-all` require the corpus.
+
+## Local environment
+
+`make verify` and the sipd verifier need a few macOS-specific paths that this
+repository does not set automatically. This is a documented local recipe for
+running the full gate on macOS with Homebrew LLVM, not a requirement on other
+hosts:
+
+```sh
+export PATH="$PWD/.work/cache/cmake-format-venv/bin:$PATH"
+export LS200_FUZZ_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang
+export LS200_FUZZ_BUILD_DIR="$PWD/.work/build/sipd-fuzz"
+export DYLD_LIBRARY_PATH=/opt/homebrew/opt/llvm@22/lib:/opt/homebrew/opt/zstd/lib
+```
+
+The fuzz build directory needs a pre-seeded CMake cache before
+`verify-repository.sh --run`, because Homebrew's `ar`/`ranlib` do not match
+the Homebrew Clang toolchain by default:
+
+```sh
+cmake -S product/sipd -B .work/build/sipd-fuzz -DLS200_SIPD_BUILD_TESTS=OFF -DLS200_SIPD_BUILD_FUZZ=ON \
+  -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang -DCMAKE_AR=/usr/bin/ar -DCMAKE_RANLIB=/usr/bin/ranlib
+```
 
 ## SIP daemon
 
@@ -84,6 +123,10 @@ mkdir -p .work/build .work/cache .work/dist .work/reports
 LS200_SIPD_VERIFY_ENABLE=1 \
   sh product/sipd/tools/verify-repository.sh --run
 ```
+
+On macOS, run the [local environment](#local-environment) exports and the
+pre-seeded fuzz build first; the verifier's fuzz smoke test otherwise fails to
+link against Homebrew LLVM.
 
 Verification, coverage, and sanitizer output paths are resolved through existing
 ancestors and rejected if they enter evidence, including through symlinks. The
@@ -211,19 +254,28 @@ developer commands. They are fail-closed physical-lab phases requiring private
 reviewed inputs and action-specific authorization. Follow
 [`docs/operator/physical-private-lab.md`](operator/physical-private-lab.md).
 
-## Documentation-only validation
+## Performance benchmarking
 
-For Markdown-only changes:
+Run the maintained synthetic gateway and SIP/media workloads against a
+preserved source checkout with:
 
-1. verify repository-relative links and documented paths;
-2. compare every command with the owning Makefile, manifest, or script;
-3. run an existing Markdown check if the repository later configures one;
-4. run `git diff --check`; and
-5. inspect `git status` and the final diff to confirm that only intended
-   Markdown files changed.
+```sh
+make benchmark-latency BENCHMARK_BASELINE=/absolute/path/preserved-source
+```
 
-The full application suite is optional for documentation-only changes unless a
-repository instruction explicitly requires it.
+The harness builds both revisions below `.work/build/performance` and writes
+`.work/reports/optimization/runtime-benchmarks.json`. It measures status
+response latency during login hashing and delayed mutations, plus synthetic
+SIP/media work, retaining latency distributions, CPU, memory, and workload
+counters. Gateway CPU samples cover the measured status-request window, so
+they do not represent total login hashing cost. Run both revisions under
+comparable host load. These measurements do not predict physical LS-200 or
+network performance.
+
+Optimization measurements belong under `.work/reports/optimization`. Compare
+fixed inputs with seed `1`, one warmup, and at least five measured repetitions.
+Keep CPU measurements and latency distributions separate from functional test
+results and from unavailable native or deployed-server lanes.
 
 ## Explicit native and model gates
 
@@ -256,27 +308,6 @@ checks only owned machine files/tests, and builds with downloads disabled.
 Missing host build tools or QEMU subprojects fail clearly. Its qtests use
 synthetic machine inputs and do not boot firmware.
 
-Optimization measurements belong under `.work/reports/optimization`. Compare
-fixed inputs with seed `1`, one warmup, and at least five measured repetitions.
-Keep CPU measurements and latency distributions separate from functional test
-results and from unavailable native or deployed-server lanes.
-
-Run the maintained synthetic gateway and SIP/media workloads against a preserved
-source checkout with:
-
-```sh
-make benchmark-latency BENCHMARK_BASELINE=/absolute/path/preserved-source
-```
-
-The harness builds both revisions below `.work/build/performance` and writes
-`.work/reports/optimization/runtime-benchmarks.json`. It measures status response
-latency during login hashing and delayed mutations, plus synthetic SIP/media
-work, retaining latency distributions, CPU, memory, and workload counters.
-Gateway CPU samples cover the measured status-request window, so they do not
-represent total login hashing cost. Run
-both revisions under comparable host load. These measurements do not predict
-physical LS-200 or network performance.
-
 For a local QEMU tool/subproject cache outside `PATH`, pass
 `QEMU_NINJA=/absolute/path/ninja` and
 `QEMU_SUBPROJECT_SOURCE=/absolute/path/pinned-qemu/subprojects` to
@@ -288,3 +319,17 @@ untracked donor build output or downloads a missing subproject.
 `QEMU_PYTHON=/absolute/path/python3` can select an existing reviewed build
 interpreter with QEMU's pinned Python requirements. Its virtual-environment
 path is retained so QEMU can reuse installed parent packages without downloads.
+
+## Documentation-only validation
+
+For Markdown-only changes:
+
+1. verify repository-relative links and documented paths;
+2. compare every command with the owning Makefile, manifest, or script;
+3. run an existing Markdown check if the repository later configures one;
+4. run `git diff --check`; and
+5. inspect `git status` and the final diff to confirm that only intended
+   Markdown files changed.
+
+The full application suite is optional for documentation-only changes unless a
+repository instruction explicitly requires it.

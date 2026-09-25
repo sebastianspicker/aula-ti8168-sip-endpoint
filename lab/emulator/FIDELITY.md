@@ -75,5 +75,5 @@ firmware parity, physical media behavior, or conferencing interoperability.
 The separate full-system research track is documented in the
 [`lab/qemu/README.md`](../qemu/README.md). Its public dependencies and known
 missing device models are catalogued in
-[`PUBLIC_HARDWARE_EMULATION_RESOURCES.md`](../../evidence/firmware-analysis/reverse_engineering/PUBLIC_HARDWARE_EMULATION_RESOURCES.md).
+`evidence/firmware-analysis/reverse_engineering/PUBLIC_HARDWARE_EMULATION_RESOURCES.md` (in the private corpus).
 Planning those phases does not raise any row's current fidelity rating.

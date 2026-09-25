@@ -20,10 +20,16 @@ behavior.
 | [`product/console/`](product/console/README.md) | HTTPS console, FastCGI policy gateway, and React UI | C gateway plus TypeScript/Vite application |
 | [`lab/emulator/`](lab/emulator/README.md) | Logical control, web, state, media-fixture, and investigation environment | Python 3.11 package with independent CLIs |
 | [`lab/qemu/`](lab/qemu/README.md) | Recovered Linux and NAND model for the TI8168-based unit | Pinned QEMU build and run lane |
+| [`lab/sip-peer/`](lab/sip-peer/README.md) | Deterministic SIP/RTP peer for the QEMU and physical private-lab counterpart | Python package shared by both callers |
 | [`deployment/`](deployment/README.md) | Manifest-verified payload assembly, QEMU staging, and physical-target lifecycle | Python and shell packaging/installation tools |
 | [`dependencies/`](dependencies/README.md) | Third-party pins, advisories, and digest-gated preparation | Policy and offline input verification |
-| [`evidence/`](evidence/firmware-analysis/README.md) | Sanitized firmware findings, reproducibility records, and private/archive boundaries | Research evidence; never a product dependency |
-| [`tooling/`](tooling/quality/README.md) | Repository quality, live-campaign, console, and evidence utilities | Developer and authorized-operator tooling |
+| `evidence/` | Untracked private corpus of sanitized firmware findings, reproducibility records, and private/archive boundaries; present only in checkouts that hold it | Research evidence; never a product dependency |
+| [`tooling/quality/`](tooling/quality/README.md) | Maintained-source complexity/clone gate and layout policy | Locked Python analyzer |
+| [`tooling/workspace/`](tooling/workspace/README.md) | Shared `.work` output guard, trash-based cleanup, evidence-corpus helpers | Python/shell used by every component's build |
+| [`tooling/console/`](tooling/console/) | Console dependency install/cleanup coordination | Python/shell dependency-lease tooling |
+| [`tooling/live/`](tooling/live/) | Physical-lab build, package, gate, and campaign orchestration | Python; see [`docs/operator/physical-private-lab.md`](docs/operator/physical-private-lab.md) |
+| [`tooling/device-evidence/`](tooling/device-evidence/README.md) | Owned-device evidence collectors and on-device read-only inventory scripts | Authorized-operator tooling |
+| [`tooling/performance/`](tooling/performance/README.md) | Synthetic gateway/SIP/media benchmark harness | Python benchmark tooling |
 
 The [architecture guide](docs/ARCHITECTURE.md) describes component boundaries,
 dependency direction, state ownership, and the principal runtime flows.
@@ -53,16 +59,8 @@ From the repository root, run the complete local verification gate:
 make verify
 ```
 
-Useful narrower checks are:
-
-```sh
-make check-layout
-make quality
-make test-product
-make test-lab
-make test-deployment
-make verify-evidence
-```
+See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the narrower component
+gates, the evidence and native/QEMU-model lanes, and prerequisites.
 
 Build and start the recovered QEMU development machine with:
 
@@ -112,7 +110,7 @@ Complete device-derived or authenticated evidence belongs under ignored
 - [Product purpose](docs/product/PRODUCT.md) and [console design system](docs/product/DESIGN.md)
 - [QEMU model fidelity](lab/qemu/FIDELITY.md)
 - [Logical-emulator fidelity](lab/emulator/FIDELITY.md)
-- [Firmware-analysis results](evidence/firmware-analysis/report.md)
+- Firmware-analysis results: `evidence/firmware-analysis/report.md` (in the private corpus)
 
 There is no license file in this worktree and no public release or support
 policy is asserted here.
