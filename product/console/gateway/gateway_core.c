@@ -5,16 +5,11 @@
 #endif
 #define _POSIX_C_SOURCE 200809L
 
-#include "gateway.h"
-
-#include "ls200_sipd/control_protocol.h"
+#include "gateway_internal.h"
 
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <jansson.h>
-#include <limits.h>
 #if defined(__APPLE__)
 #include <malloc/malloc.h>
 #elif defined(__linux__)
@@ -32,33 +27,16 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#ifndef NAME_MAX
-#define NAME_MAX 255
-#endif
-#ifdef O_NOFOLLOW
-#define LS200_O_NOFOLLOW O_NOFOLLOW
-#else
-#define LS200_O_NOFOLLOW 0
-#endif
 #if defined(__APPLE__)
 extern int getpeereid(int descriptor, uid_t *uid, gid_t *gid);
 #endif
 
-/* The gateway enforces a stricter payload cap than the daemon's wire limit;
- * the frame layout, magic, version and opcodes come from the shared header. */
-#define GATEWAY_LSZ1_MAX_PAYLOAD 2048U
-_Static_assert(GATEWAY_LSZ1_MAX_PAYLOAD <= LS200_CONTROL_MAX_PAYLOAD_BYTES,
-              "gateway payload cap must not exceed the daemon's control wire limit");
-#define AUTH_BUCKET_CAPACITY 3U
-#define AUTH_GLOBAL_CAPACITY 8U
-#define AUTH_REFILL_SECONDS 30U
-
-static int gateway_state_lock(ls200_gateway *gateway) {
+int gateway_state_lock(ls200_gateway *gateway) {
   return gateway != NULL && gateway->synchronization_ready != 0 &&
       pthread_mutex_lock(&gateway->state_mutex) == 0;
 }
 
-static void gateway_state_unlock(ls200_gateway *gateway) {
+void gateway_state_unlock(ls200_gateway *gateway) {
   (void)pthread_mutex_unlock(&gateway->state_mutex);
 }
 
@@ -66,7 +44,7 @@ static void *secure_json_malloc(size_t size) {
   return malloc(size);
 }
 
-static void secure_json_free(void *memory) {
+void gateway_secure_json_free(void *memory) {
   size_t size;
   if (memory == NULL) return;
 #if defined(__APPLE__)
@@ -80,14 +58,13 @@ static void secure_json_free(void *memory) {
   free(memory);
 }
 
-static void install_secure_json_allocator(void) {
+void gateway_install_secure_json_allocator(void) {
   /* Gateway initialization precedes FastCGI worker creation. Reinstalling
    * these identical process-global callbacks is safe in unit fixtures too. */
-  json_set_alloc_funcs(secure_json_malloc, secure_json_free);
+  json_set_alloc_funcs(secure_json_malloc, gateway_secure_json_free);
 }
 
-int ls200_gateway_parse_content_length(const char *text, size_t maximum,
-                                       size_t *length_out) {
+int ls200_gateway_parse_content_length(const char *text, size_t maximum, size_t *length_out) {
   char *end = NULL;
   unsigned long value;
   if (length_out == NULL) return 0;
@@ -102,7 +79,7 @@ int ls200_gateway_parse_content_length(const char *text, size_t maximum,
   return 1;
 }
 
-static int is_safe_username(const char *value) {
+int gateway_is_safe_username(const char *value) {
   size_t index;
   if (value == NULL || value[0] == '\0' || strlen(value) > 32U) return 0;
   for (index = 0U; value[index] != '\0'; ++index)
@@ -110,7 +87,7 @@ static int is_safe_username(const char *value) {
   return 1;
 }
 
-static int is_safe_idempotency_key(const char *value) {
+int gateway_is_safe_idempotency_key(const char *value) {
   size_t index;
   if (value == NULL || strlen(value) < 16U || strlen(value) > 80U) return 0;
   for (index = 0U; value[index] != '\0'; ++index)
@@ -118,11 +95,11 @@ static int is_safe_idempotency_key(const char *value) {
   return 1;
 }
 
-static int secure_equal(const void *left, const void *right, size_t length) {
+int gateway_secure_equal(const void *left, const void *right, size_t length) {
   return left != NULL && right != NULL && CRYPTO_memcmp(left, right, length) == 0;
 }
 
-static int hex_encode(const uint8_t *input, size_t length, char *output, size_t capacity) {
+int gateway_hex_encode(const uint8_t *input, size_t length, char *output, size_t capacity) {
   static const char digits[] = "0123456789abcdef";
   size_t index;
   if (input == NULL || output == NULL || capacity < length * 2U + 1U) return 0;
@@ -134,7 +111,7 @@ static int hex_encode(const uint8_t *input, size_t length, char *output, size_t 
   return 1;
 }
 
-static int hex_decode_32(const char *input, uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
+int gateway_hex_decode_32(const char *input, uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
   size_t index;
   if (input == NULL || strlen(input) != LS200_GATEWAY_HASH_BYTES * 2U) return 0;
   for (index = 0U; index < LS200_GATEWAY_HASH_BYTES; ++index) {
@@ -148,7 +125,7 @@ static int hex_decode_32(const char *input, uint8_t output[LS200_GATEWAY_HASH_BY
   return 1;
 }
 
-static int hex_decode(const char *input, uint8_t *output, size_t output_length) {
+int gateway_hex_decode(const char *input, uint8_t *output, size_t output_length) {
   size_t index;
   if (input == NULL || output == NULL || strlen(input) != output_length * 2U) return 0;
   for (index = 0U; index < output_length; ++index) {
@@ -162,30 +139,30 @@ static int hex_decode(const char *input, uint8_t *output, size_t output_length) 
   return 1;
 }
 
-static int sha256(const uint8_t *input, size_t input_length, uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
+int gateway_sha256(const uint8_t *input, size_t input_length, uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
   unsigned int output_length = 0U;
   return EVP_Digest(input, input_length, output, &output_length, EVP_sha256(), NULL) == 1 &&
       output_length == LS200_GATEWAY_HASH_BYTES;
 }
 
-static int password_hash(const char *password, const uint8_t salt[LS200_GATEWAY_SALT_BYTES],
-                         uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
+int gateway_password_hash(const char *password, const uint8_t salt[LS200_GATEWAY_SALT_BYTES],
+                          uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
   if (password == NULL || strlen(password) < 12U || strlen(password) > 256U) return 0;
-  return PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt,
-                           LS200_GATEWAY_SALT_BYTES, LS200_GATEWAY_PBKDF2_ITERATIONS,
-                           EVP_sha256(), LS200_GATEWAY_HASH_BYTES, output) == 1;
+  return PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt, LS200_GATEWAY_SALT_BYTES,
+                           LS200_GATEWAY_PBKDF2_ITERATIONS, EVP_sha256(),
+                           LS200_GATEWAY_HASH_BYTES, output) == 1;
 }
 
-static int password_hash_candidate(const char *password, const uint8_t salt[LS200_GATEWAY_SALT_BYTES],
-                                   uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
+int gateway_password_hash_candidate(const char *password, const uint8_t salt[LS200_GATEWAY_SALT_BYTES],
+                                    uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
   if (password == NULL || strlen(password) > 256U) return 0;
-  return PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt,
-                           LS200_GATEWAY_SALT_BYTES, LS200_GATEWAY_PBKDF2_ITERATIONS,
-                           EVP_sha256(), LS200_GATEWAY_HASH_BYTES, output) == 1;
+  return PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt, LS200_GATEWAY_SALT_BYTES,
+                           LS200_GATEWAY_PBKDF2_ITERATIONS, EVP_sha256(),
+                           LS200_GATEWAY_HASH_BYTES, output) == 1;
 }
 
-static void write_error(ls200_gateway_response *response, unsigned int status,
-                        const char *code, const char *message) {
+void gateway_write_error(ls200_gateway_response *response, unsigned int status,
+                         const char *code, const char *message) {
   response->status = status;
   (void)snprintf(response->content_type, sizeof(response->content_type), "application/json");
   (void)snprintf(response->body, sizeof(response->body),
@@ -193,12 +170,12 @@ static void write_error(ls200_gateway_response *response, unsigned int status,
                  LS200_GATEWAY_API_REVISION, code, message);
 }
 
-static void write_rate_limited(ls200_gateway_response *response, unsigned int retry_after) {
-  write_error(response, 429U, "AUTH_RATE_LIMITED", "try again later");
+void gateway_write_rate_limited(ls200_gateway_response *response, unsigned int retry_after) {
+  gateway_write_error(response, 429U, "AUTH_RATE_LIMITED", "try again later");
   response->retry_after = retry_after == 0U ? 1U : retry_after;
 }
 
-static void write_success(ls200_gateway_response *response, unsigned int status, const char *data) {
+void gateway_write_success(ls200_gateway_response *response, unsigned int status, const char *data) {
   response->status = status;
   (void)snprintf(response->content_type, sizeof(response->content_type), "application/json");
   (void)snprintf(response->body, sizeof(response->body),
@@ -206,7 +183,7 @@ static void write_success(ls200_gateway_response *response, unsigned int status,
                  LS200_GATEWAY_API_REVISION, data == NULL ? "{}" : data);
 }
 
-static int json_object_exact(json_t *object, const char *const *keys, size_t key_count) {
+int gateway_json_object_exact(json_t *object, const char *const *keys, size_t key_count) {
   const char *key;
   json_t *value;
   void *iterator;
@@ -224,12 +201,12 @@ static int json_object_exact(json_t *object, const char *const *keys, size_t key
   return 1;
 }
 
-static json_t *parse_json(const char *body, json_error_t *error) {
+json_t *gateway_parse_json(const char *body, json_error_t *error) {
   if (body == NULL || strlen(body) > 1024U) return NULL;
   return json_loads(body, JSON_REJECT_DUPLICATES, error);
 }
 
-static int safe_absolute_path(const char *path) {
+int gateway_safe_absolute_path(const char *path) {
   return path != NULL && path[0] == '/' && path[1] != '\0' && strstr(path, "/../") == NULL &&
       strcmp(path + strlen(path) - (strlen(path) >= 3U ? 3U : 0U), "/..") != 0;
 }
@@ -288,12 +265,13 @@ static int open_verified_child_directory(int directory, const char *name) {
 /* Walk each ancestor by descriptor so later pathname replacement cannot change
  * the object whose metadata we validate. Sticky system directories are safe
  * ancestors for per-user test and deployment state. */
-static int open_parent_directory(const char *path, int *parent_out, char name[NAME_MAX + 1U]) {
+int gateway_open_parent_directory(const char *path, int *parent_out, char name[NAME_MAX + 1U]) {
   char copy[512];
   char *cursor;
   char *next;
   int directory;
-  if (!safe_absolute_path(path) || strlen(path) >= sizeof(copy) || parent_out == NULL || name == NULL) return 0;
+  if (!gateway_safe_absolute_path(path) || strlen(path) >= sizeof(copy) ||
+      parent_out == NULL || name == NULL) return 0;
   if (strncmp(path, "/run/", 5U) == 0) {
     (void)snprintf(copy, sizeof(copy), "%s", path + 5U);
     directory = open("/run", O_RDONLY | O_DIRECTORY | LS200_O_NOFOLLOW);
@@ -325,13 +303,13 @@ static int open_parent_directory(const char *path, int *parent_out, char name[NA
   return 1;
 }
 
-static int open_verified_regular(const char *path, int missing_is_ok, int *descriptor_out) {
+int gateway_open_verified_regular(const char *path, int missing_is_ok, int *descriptor_out) {
   char name[NAME_MAX + 1U];
   struct stat details;
   struct stat expected;
   int parent;
   int descriptor;
-  if (!open_parent_directory(path, &parent, name)) {
+  if (!gateway_open_parent_directory(path, &parent, name)) {
     (void)fputs("gateway storage: parent walk failed\n", stderr);
     return 0;
   }
@@ -354,7 +332,8 @@ static int open_verified_regular(const char *path, int missing_is_ok, int *descr
     return 0;
   }
   if (!S_ISREG(details.st_mode) || details.st_uid != geteuid() ||
-      (details.st_mode & 0077U) != 0U || details.st_nlink != 1 || details.st_dev != expected.st_dev || details.st_ino != expected.st_ino) {
+      (details.st_mode & 0077U) != 0U || details.st_nlink != 1 ||
+      details.st_dev != expected.st_dev || details.st_ino != expected.st_ino) {
     (void)fprintf(stderr,
         "gateway storage: final verification failed euid=%lu owner=%lu mode=%04o links=%lu regular=%d same_object=%d\n",
         (unsigned long)geteuid(), (unsigned long)details.st_uid,
@@ -368,7 +347,7 @@ static int open_verified_regular(const char *path, int missing_is_ok, int *descr
   return 1;
 }
 
-static int sync_account_file(int descriptor) {
+int gateway_sync_account_file(int descriptor) {
 #if defined(__APPLE__) && defined(F_FULLFSYNC)
   /* APFS/HFS may require the stronger request before ordinary fsync. */
   if (fcntl(descriptor, F_FULLFSYNC) == 0) return 1;
@@ -376,7 +355,7 @@ static int sync_account_file(int descriptor) {
   return fsync(descriptor) == 0;
 }
 
-static int sync_parent_directory(int descriptor) {
+int gateway_sync_parent_directory(int descriptor) {
   if (fsync(descriptor) == 0) return 1;
 #if defined(__APPLE__)
   /* Darwin does not implement directory fsync. The renamed file itself was

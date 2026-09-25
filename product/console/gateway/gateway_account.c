@@ -1,8 +1,26 @@
+#define _POSIX_C_SOURCE 200809L
+
+#include "gateway_internal.h"
+
+#include <arpa/inet.h>
+#include <ctype.h>
+#include <netinet/in.h>
+#include <openssl/crypto.h>
+#include <openssl/rand.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
+#define AUTH_BUCKET_CAPACITY 3U
+#define AUTH_GLOBAL_CAPACITY 8U
+#define AUTH_REFILL_SECONDS 30U
+
 static int client_identity_is_safe(const char *identity) {
   size_t index;
   if (identity == NULL || identity[0] == '\0' || strlen(identity) > 64U) return 0;
   for (index = 0U; identity[index] != '\0'; ++index)
-    if (!isalnum((unsigned char)identity[index]) && identity[index] != '.' && identity[index] != ':' && identity[index] != '-') return 0;
+    if (!isalnum((unsigned char)identity[index]) && identity[index] != '.' &&
+        identity[index] != ':' && identity[index] != '-') return 0;
   return 1;
 }
 
@@ -20,17 +38,20 @@ static ls200_gateway_auth_bucket *find_auth_bucket(ls200_gateway_auth_bucket *bu
 static void initialize_auth_bucket(ls200_gateway_auth_bucket *bucket, const char *key,
                                    unsigned int capacity, uint64_t now) {
   if (!bucket->used || strcmp(bucket->key, key) != 0) {
-    (void)memset(bucket, 0, sizeof(*bucket)); bucket->used = 1; bucket->tokens = capacity; bucket->last_refill_at = now;
+    (void)memset(bucket, 0, sizeof(*bucket));
+    bucket->used = 1;
+    bucket->tokens = capacity;
+    bucket->last_refill_at = now;
     (void)snprintf(bucket->key, sizeof(bucket->key), "%s", key);
   }
 }
 
-static void refill_auth_bucket(ls200_gateway_auth_bucket *bucket, unsigned int capacity,
-                               uint64_t now) {
+static void refill_auth_bucket(ls200_gateway_auth_bucket *bucket, unsigned int capacity, uint64_t now) {
   if (now >= bucket->last_refill_at) {
     uint64_t refill = (now - bucket->last_refill_at) / AUTH_REFILL_SECONDS;
     if (refill > 0U) {
-      bucket->tokens = (unsigned int)((refill >= capacity || bucket->tokens + refill >= capacity) ? capacity : bucket->tokens + refill);
+      bucket->tokens = (unsigned int)((refill >= capacity || bucket->tokens + refill >= capacity) ?
+          capacity : bucket->tokens + refill);
       bucket->last_refill_at += refill * AUTH_REFILL_SECONDS;
     }
   }
@@ -44,34 +65,37 @@ static int auth_bucket_take(ls200_gateway_auth_bucket *buckets, size_t bucket_co
   bucket = find_auth_bucket(buckets, bucket_count, key);
   initialize_auth_bucket(bucket, key, capacity, now);
   refill_auth_bucket(bucket, capacity, now);
-  if (bucket->tokens == 0U) { if (retry_after != NULL) *retry_after = AUTH_REFILL_SECONDS - (unsigned int)(now - bucket->last_refill_at); return 0; }
+  if (bucket->tokens == 0U) {
+    if (retry_after != NULL) *retry_after = AUTH_REFILL_SECONDS - (unsigned int)(now - bucket->last_refill_at);
+    return 0;
+  }
   --bucket->tokens;
   return 1;
 }
 
-static int auth_budget_take(ls200_gateway *gateway, const char *account_key,
-                            const ls200_gateway_request *request, unsigned int *retry_after) {
+int gateway_auth_budget_take(ls200_gateway *gateway, const char *account_key,
+                             const ls200_gateway_request *request, unsigned int *retry_after) {
   static const char global_key[] = "global";
   if (gateway == NULL || request == NULL || !client_identity_is_safe(request->client_identity)) return 0;
   if (!auth_bucket_take(gateway->account_buckets, LS200_GATEWAY_AUTH_BUCKETS, account_key,
                         AUTH_BUCKET_CAPACITY, request->now, retry_after) ||
       !auth_bucket_take(gateway->source_buckets, LS200_GATEWAY_AUTH_BUCKETS, request->client_identity,
                         AUTH_BUCKET_CAPACITY, request->now, retry_after) ||
-      !auth_bucket_take(&gateway->global_bucket, 1U, global_key, AUTH_GLOBAL_CAPACITY, request->now, retry_after)) return 0;
+      !auth_bucket_take(&gateway->global_bucket, 1U, global_key, AUTH_GLOBAL_CAPACITY, request->now,
+                        retry_after)) return 0;
   return 1;
 }
 
 void ls200_gateway_init(ls200_gateway *gateway, const ls200_gateway_config *config) {
   if (gateway == NULL) return;
-  install_secure_json_allocator();
+  gateway_install_secure_json_allocator();
   (void)memset(gateway, 0, sizeof(*gateway));
   gateway->directory_revision = 1U;
   if (config != NULL) gateway->config = *config;
   if (gateway->config.bootstrap_code != NULL &&
       strlen(gateway->config.bootstrap_code) < sizeof(gateway->policy_bootstrap_code)) {
-    (void)snprintf(gateway->policy_bootstrap_code,
-                   sizeof(gateway->policy_bootstrap_code), "%s",
-                   gateway->config.bootstrap_code);
+    (void)snprintf(gateway->policy_bootstrap_code, sizeof(gateway->policy_bootstrap_code),
+                   "%s", gateway->config.bootstrap_code);
     gateway->config.bootstrap_code = gateway->policy_bootstrap_code;
   } else if (gateway->config.bootstrap_code != NULL) {
     gateway->config.bootstrap_code = NULL;
@@ -93,10 +117,9 @@ void ls200_gateway_init(ls200_gateway *gateway, const ls200_gateway_config *conf
   gateway->synchronization_ready = 1;
 }
 
-static void disable_bootstrap_code(ls200_gateway *gateway) {
+void gateway_disable_bootstrap_code(ls200_gateway *gateway) {
   if (gateway == NULL) return;
-  OPENSSL_cleanse(gateway->policy_bootstrap_code,
-                  sizeof(gateway->policy_bootstrap_code));
+  OPENSSL_cleanse(gateway->policy_bootstrap_code, sizeof(gateway->policy_bootstrap_code));
   gateway->config.bootstrap_code = NULL;
 }
 
@@ -125,8 +148,7 @@ static int policy_origin_host_is_valid(const char *start, size_t length) {
   for (index = 0U; index < length; ++index) {
     unsigned char character = (unsigned char)start[index];
     if (!policy_origin_host_character_is_valid(character)) return 0;
-    if (character == '.' && index + 1U < length && start[index + 1U] == '.')
-      return 0;
+    if (character == '.' && index + 1U < length && start[index + 1U] == '.') return 0;
   }
   return 1;
 }
@@ -182,7 +204,7 @@ static int load_policy_origin(ls200_gateway *gateway, json_t *root) {
 static int load_policy_path(json_t *root, const char *key, char *destination, size_t capacity) {
   json_t *value = json_object_get(root, key);
   if (!json_is_string(value) || strlen(json_string_value(value)) >= capacity ||
-      !safe_absolute_path(json_string_value(value))) return 0;
+      !gateway_safe_absolute_path(json_string_value(value))) return 0;
   (void)snprintf(destination, capacity, "%s", json_string_value(value));
   return 1;
 }
@@ -195,8 +217,7 @@ static int load_policy_uid(ls200_gateway *gateway, json_t *root) {
   return 1;
 }
 
-static int load_policy_control_timeout(ls200_gateway *gateway, json_t *root,
-                                       int *present) {
+static int load_policy_control_timeout(ls200_gateway *gateway, json_t *root, int *present) {
   json_t *value = json_object_get(root, "control_timeout_milliseconds");
   *present = value != NULL;
   if (value == NULL) return 1;
@@ -213,7 +234,8 @@ static int load_policy_bootstrap(ls200_gateway *gateway, json_t *root, int *pres
   if (value == NULL) return 1;
   if (!json_is_string(value) || strlen(json_string_value(value)) < 16U ||
       strlen(json_string_value(value)) >= sizeof(gateway->policy_bootstrap_code)) return 0;
-  (void)snprintf(gateway->policy_bootstrap_code, sizeof(gateway->policy_bootstrap_code), "%s", json_string_value(value));
+  (void)snprintf(gateway->policy_bootstrap_code, sizeof(gateway->policy_bootstrap_code),
+                 "%s", json_string_value(value));
   return 1;
 }
 
@@ -235,9 +257,8 @@ static int load_policy_preview(ls200_gateway *gateway, json_t *root) {
       !preview_ipv4_is_private(json_string_value(ipv4)) || !json_is_integer(port) ||
       json_integer_value(port) < 1 || json_integer_value(port) > 65535)
     return 0;
-  (void)snprintf(gateway->policy_preview_rtsp_ipv4,
-                 sizeof(gateway->policy_preview_rtsp_ipv4), "%s",
-                 json_string_value(ipv4));
+  (void)snprintf(gateway->policy_preview_rtsp_ipv4, sizeof(gateway->policy_preview_rtsp_ipv4),
+                 "%s", json_string_value(ipv4));
   gateway->config.preview_enabled = json_is_true(enabled);
   gateway->config.preview_rtsp_ipv4 = gateway->policy_preview_rtsp_ipv4;
   gateway->config.preview_rtsp_port = (uint16_t)json_integer_value(port);
@@ -255,8 +276,7 @@ static int load_policy_fields(ls200_gateway *gateway, json_t *root,
       load_policy_preview(gateway, root) &&
       load_policy_control_timeout(gateway, root, timeout_present) &&
       load_policy_bootstrap(gateway, root, bootstrap_present) &&
-      json_object_size(root) == 7U + (*bootstrap_present ? 1U : 0U) +
-          (*timeout_present ? 1U : 0U);
+      json_object_size(root) == 7U + (*bootstrap_present ? 1U : 0U) + (*timeout_present ? 1U : 0U);
 }
 
 int ls200_gateway_load_policy(ls200_gateway *gateway) {
@@ -266,7 +286,7 @@ int ls200_gateway_load_policy(ls200_gateway *gateway) {
   int bootstrap_present;
   int timeout_present;
   if (gateway == NULL || gateway->config.policy_path == NULL) return 1;
-  if (open_verified_regular(gateway->config.policy_path, 0, &descriptor) != 1) {
+  if (gateway_open_verified_regular(gateway->config.policy_path, 0, &descriptor) != 1) {
     (void)fputs("gateway policy: verified open failed\n", stderr);
     return 0;
   }
@@ -283,23 +303,23 @@ int ls200_gateway_load_policy(ls200_gateway *gateway) {
     return 0;
   }
   json_decref(root);
-  if (!bootstrap_present) disable_bootstrap_code(gateway);
+  if (!bootstrap_present) gateway_disable_bootstrap_code(gateway);
   gateway->config.allowed_origin = gateway->policy_origin;
   gateway->config.control_socket_path = gateway->policy_control_socket;
   gateway->config.account_store_path = gateway->policy_account_store;
   gateway->config.expected_sipd_uid = gateway->policy_sipd_uid;
-  gateway->config.bootstrap_code = gateway->policy_bootstrap_code[0] != '\0' ? gateway->policy_bootstrap_code : NULL;
+  gateway->config.bootstrap_code =
+      gateway->policy_bootstrap_code[0] != '\0' ? gateway->policy_bootstrap_code : NULL;
   return 1;
 }
 
-int ls200_gateway_set_account(ls200_gateway *gateway, const char *username,
-                             const char *password, ls200_gateway_role role,
-                             const uint8_t salt[LS200_GATEWAY_SALT_BYTES]) {
+int ls200_gateway_set_account(ls200_gateway *gateway, const char *username, const char *password,
+                              ls200_gateway_role role, const uint8_t salt[LS200_GATEWAY_SALT_BYTES]) {
   ls200_gateway_account account = {0};
   int result = 0;
-  if (gateway == NULL || !is_safe_username(username) || salt == NULL ||
+  if (gateway == NULL || !gateway_is_safe_username(username) || salt == NULL ||
       role < LS200_GATEWAY_ROLE_VIEWER || role > LS200_GATEWAY_ROLE_ADMIN) return 0;
-  if (!password_hash(password, salt, account.password_hash)) goto cleanup;
+  if (!gateway_password_hash(password, salt, account.password_hash)) goto cleanup;
   account.configured = 1;
   account.role = role;
   (void)memcpy(account.salt, salt, LS200_GATEWAY_SALT_BYTES);
@@ -314,7 +334,7 @@ cleanup:
   return result;
 }
 
-static void sync_legacy_account(ls200_gateway *gateway) {
+void gateway_sync_legacy_account(ls200_gateway *gateway) {
   size_t index;
   (void)memset(&gateway->account, 0, sizeof(gateway->account));
   for (index = 0U; index < LS200_GATEWAY_MAX_ACCOUNTS; ++index)
@@ -324,24 +344,20 @@ static void sync_legacy_account(ls200_gateway *gateway) {
     }
 }
 
-const ls200_gateway_account *ls200_gateway_find_account(
-    const ls200_gateway *gateway, const char *username) {
+const ls200_gateway_account *ls200_gateway_find_account(const ls200_gateway *gateway, const char *username) {
   size_t index;
-  if (gateway == NULL || !is_safe_username(username)) return NULL;
+  if (gateway == NULL || !gateway_is_safe_username(username)) return NULL;
   for (index = 0U; index < LS200_GATEWAY_MAX_ACCOUNTS; ++index)
-    if (gateway->accounts[index].configured &&
-        strcmp(gateway->accounts[index].username, username) == 0)
+    if (gateway->accounts[index].configured && strcmp(gateway->accounts[index].username, username) == 0)
       return &gateway->accounts[index];
   return NULL;
 }
 
-static ls200_gateway_account *find_account_mutable(ls200_gateway *gateway,
-                                                    const char *username) {
+static ls200_gateway_account *find_account_mutable(ls200_gateway *gateway, const char *username) {
   size_t index;
-  if (gateway == NULL || !is_safe_username(username)) return NULL;
+  if (gateway == NULL || !gateway_is_safe_username(username)) return NULL;
   for (index = 0U; index < LS200_GATEWAY_MAX_ACCOUNTS; ++index)
-    if (gateway->accounts[index].configured &&
-        strcmp(gateway->accounts[index].username, username) == 0)
+    if (gateway->accounts[index].configured && strcmp(gateway->accounts[index].username, username) == 0)
       return &gateway->accounts[index];
   return NULL;
 }
@@ -360,8 +376,8 @@ unsigned int ls200_gateway_admin_count(const ls200_gateway *gateway) {
   size_t index;
   if (gateway == NULL) return 0U;
   for (index = 0U; index < LS200_GATEWAY_MAX_ACCOUNTS; ++index)
-    if (gateway->accounts[index].configured &&
-        gateway->accounts[index].role == LS200_GATEWAY_ROLE_ADMIN) ++count;
+    if (gateway->accounts[index].configured && gateway->accounts[index].role == LS200_GATEWAY_ROLE_ADMIN)
+      ++count;
   return count;
 }
 
@@ -372,11 +388,11 @@ int ls200_gateway_upsert_account(ls200_gateway *gateway, const char *username,
   size_t index;
   uint8_t salt[LS200_GATEWAY_SALT_BYTES] = {0};
   int result = 0;
-  if (gateway == NULL || !is_safe_username(username) ||
+  if (gateway == NULL || !gateway_is_safe_username(username) ||
       role < LS200_GATEWAY_ROLE_VIEWER || role > LS200_GATEWAY_ROLE_ADMIN)
     goto cleanup;
   if (RAND_bytes(salt, sizeof(salt)) != 1 ||
-      !password_hash(password, salt, replacement.password_hash)) goto cleanup;
+      !gateway_password_hash(password, salt, replacement.password_hash)) goto cleanup;
   account = find_account_mutable(gateway, username);
   if (account == NULL) {
     for (index = 0U; index < LS200_GATEWAY_MAX_ACCOUNTS; ++index)
@@ -388,7 +404,7 @@ int ls200_gateway_upsert_account(ls200_gateway *gateway, const char *username,
   (void)memcpy(replacement.salt, salt, sizeof(salt));
   (void)snprintf(replacement.username, sizeof(replacement.username), "%s", username);
   *account = replacement;
-  sync_legacy_account(gateway);
+  gateway_sync_legacy_account(gateway);
   result = 1;
 cleanup:
   OPENSSL_cleanse(salt, sizeof(salt));
@@ -400,21 +416,19 @@ int ls200_gateway_delete_account(ls200_gateway *gateway, const char *username) {
   ls200_gateway_account *account = find_account_mutable(gateway, username);
   if (account == NULL) return 0;
   OPENSSL_cleanse(account, sizeof(*account));
-  sync_legacy_account(gateway);
+  gateway_sync_legacy_account(gateway);
   return 1;
 }
 
-void ls200_gateway_revoke_account_sessions(ls200_gateway *gateway,
-                                           const char *username) {
+void ls200_gateway_revoke_account_sessions(ls200_gateway *gateway, const char *username) {
   size_t index;
   if (gateway == NULL || username == NULL) return;
   for (index = 0U; index < gateway->config.max_sessions; ++index)
-    if (gateway->sessions[index].used &&
-        strcmp(gateway->sessions[index].username, username) == 0)
+    if (gateway->sessions[index].used && strcmp(gateway->sessions[index].username, username) == 0)
       OPENSSL_cleanse(&gateway->sessions[index], sizeof(gateway->sessions[index]));
 }
 
-static int safe_reference_id(const char *value) {
+int gateway_safe_reference_id(const char *value) {
   size_t index;
   if (value == NULL || value[0] == '\0' || strlen(value) > 32U) return 0;
   for (index = 0U; value[index] != '\0'; ++index)
@@ -427,14 +441,13 @@ static int reference_name_character_is_safe(unsigned char character) {
       character != '@' && character != '%' && character != '\\';
 }
 
-static int reference_name_has_sip_scheme(const char *value, size_t index,
-                                         size_t length) {
+static int reference_name_has_sip_scheme(const char *value, size_t index, size_t length) {
   return index + 3U < length && tolower((unsigned char)value[index]) == 's' &&
       tolower((unsigned char)value[index + 1U]) == 'i' &&
       tolower((unsigned char)value[index + 2U]) == 'p' && value[index + 3U] == ':';
 }
 
-static int safe_reference_name(const char *value) {
+int gateway_safe_reference_name(const char *value) {
   size_t index;
   size_t length;
   if (value == NULL || value[0] == '\0' || strlen(value) > 64U) return 0;
@@ -446,7 +459,7 @@ static int safe_reference_name(const char *value) {
   return 1;
 }
 
-static int safe_reference_meeting_id(const char *value) {
+int gateway_safe_reference_meeting_id(const char *value) {
   size_t index;
   if (value == NULL || strlen(value) < 9U || strlen(value) > 11U) return 0;
   for (index = 0U; value[index] != '\0'; ++index)
@@ -454,14 +467,12 @@ static int safe_reference_meeting_id(const char *value) {
   return 1;
 }
 
-static int safe_reference_profile(const char *value) {
+int gateway_safe_reference_profile(const char *value) {
   return value != NULL && (strcmp(value, "zoom_direct") == 0 ||
       strcmp(value, "zoom_proxy") == 0 || strcmp(value, "private_lab") == 0);
 }
 
-static int safe_reference_layout(const char *value) {
+int gateway_safe_reference_layout(const char *value) {
   return value != NULL && (strcmp(value, "gallery") == 0 ||
       strcmp(value, "full_screen") == 0 || strcmp(value, "dual_video") == 0);
 }
-
-#include "gateway_account_store.c"

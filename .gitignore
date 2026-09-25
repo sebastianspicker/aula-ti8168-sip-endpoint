@@ -34,6 +34,8 @@ product/sipd/**/*.pcap
 product/sipd/**/*.pcapng
 product/sipd/**/*.cap
 product/sipd/**/*.log
+!product/sipd/tests/tooling/sanitizer-policy-negative.log
+!product/sipd/tests/tooling/sanitizer-policy-positive.log
 product/sipd/**/*.key
 product/sipd/**/*.pem
 product/sipd/**/secrets/

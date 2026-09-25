@@ -38,18 +38,24 @@ for header in jansson.h openssl/ssl.h fcgiapp.h; do
     }
 done
 
-"$compiler" \
+# The gateway's own translation units and the device-client sources it links
+# are defined once in gateway/sources.mk; read them the same way
+# tests/preview/run.sh reads gateway/preview/sources.mk.
+gateway_sources=$(make -s -C "$console_dir" print-gateway-sources)
+device_client_sources=$(make -s -C "$console_dir" print-device-client-sources)
+
+set -- \
     -std=c17 -Wall -Wextra -Werror -pedantic -O2 \
     -I"$console_dir/gateway" -I"$console_dir/gateway/preview" \
     -I"$sipd_dir/include" -I"$sipd_dir/src/backends" \
     -I"$canonical_sysroot/usr/include" \
-    -DLS200_GATEWAY_WITH_FCGI \
-    "$console_dir/gateway/gateway.c" \
-    "$console_dir/device/transport.c" \
-    "$console_dir/device/wire.c" \
-    "$console_dir/device/client.c" \
-    "$console_dir/device/projection.c" \
-    "$console_dir/device/credentials.c" \
+    -DLS200_GATEWAY_WITH_FCGI
+
+for source in $gateway_sources $device_client_sources; do
+    set -- "$@" "$console_dir/$source"
+done
+
+set -- "$@" \
     "$console_dir/gateway/fastcgi_main.c" \
     "$console_dir/gateway/fastcgi_request.c" \
     "$console_dir/gateway/fastcgi_preview.c" \
@@ -66,3 +72,5 @@ done
     "$canonical_sysroot/usr/lib/libfcgi.a" \
     -lm -lpthread -lrt -ldl \
     -o "$canonical_build/ls200-gateway-fcgi"
+
+"$compiler" "$@"

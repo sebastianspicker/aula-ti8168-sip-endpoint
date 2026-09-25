@@ -12,6 +12,9 @@ TRASH_BUNDLE ?= $(HOME)/.Trash/ls200-zoom-clean-$(shell date -u +%Y%m%dT%H%M%SZ)
 export PYTHONPYCACHEPREFIX := $(WORK)/cache/python
 export PYTEST_ADDOPTS := -p no:cacheprovider
 export UV_NO_EDITABLE := 1
+# Lab pytest suites reuse the emulator's synced dev environment (lab/emulator
+# `setup`) without building the emulator package into its source tree.
+LAB_PYTEST = UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(EMULATOR_ENV) uv run --project lab/emulator --no-sync pytest -q
 export UV_OFFLINE := 1
 
 .PHONY: verify check-layout quality test-product test-lab test-deployment \
@@ -47,6 +50,12 @@ verify-evidence:
 	python3 -B evidence/firmware-analysis/reverse_engineering/deep/application/tools/test_generate_declarative_dataflow.py
 	python3 -B evidence/firmware-analysis/reverse_engineering/deep/kernel_modules/test_recover_kernel_abi_bindings.py
 	python3 -B evidence/firmware-analysis/reverse_engineering/deep/userland/test_rebuild_deep_userland.py
+	LS200_REQUIRE_EVIDENCE=1 UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(QUALITY_ENV) \
+		uv run --project tooling/quality --locked python -m unittest tooling.quality.tests.test_check
+	LS200_REQUIRE_EVIDENCE=1 python3 -B -m unittest tooling.console.tests.test_capability_inventory
+	$(MAKE) -C lab/emulator setup
+	LS200_REQUIRE_EVIDENCE=1 PYTHONPATH=$(CURDIR)/lab/emulator/src $(LAB_PYTEST) -m corpus lab/emulator/tests
+	LS200_REQUIRE_EVIDENCE=1 $(LAB_PYTEST) -m corpus lab/qemu/tests
 
 .PHONY: test-fastcgi benchmark-latency
 test-fastcgi:
@@ -81,8 +90,8 @@ test-product-core:
 test-lab-core:
 	@mkdir -p $(WORK)/build/qemu $(WORK)/cache $(WORK)/dist/qemu $(WORK)/reports/qemu
 	$(MAKE) -C lab/emulator verify-core
-	UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(EMULATOR_ENV) uv run --project lab/emulator pytest -q lab/qemu/tests
-	UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(EMULATOR_ENV) uv run --project lab/emulator pytest -q lab/sip-peer/tests
+	$(LAB_PYTEST) lab/qemu/tests
+	$(LAB_PYTEST) lab/sip-peer/tests
 	UV_CACHE_DIR=$(UV_CACHE) sh lab/qemu/scripts/verify.sh
 
 test-deployment:

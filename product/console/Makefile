@@ -8,13 +8,26 @@ DEPENDENCY_RUNNER := ../../tooling/console/with-dependencies.sh
 # gateway/preview/INTEGRATION.md and tests/preview/run.sh, which reads it via
 # `make -s -C product/console print-preview-sources`.
 include gateway/preview/sources.mk
+# Single source of truth for the gateway's own translation units and the
+# device-client sources it links; see gateway/sources.mk, which
+# build-gateway-arm.sh and the performance harness read via
+# `make -s -C product/console print-gateway-sources` and
+# `make -s -C product/console print-device-client-sources`.
+include gateway/sources.mk
 PREVIEW_CPPFLAGS := -Igateway/preview -I../sipd/include \
 	-I../sipd/src/backends
 
-.PHONY: test clean fastcgi test-fastcgi ui-install ui-test ui-build print-preview-sources
+.PHONY: test clean fastcgi test-fastcgi ui-install ui-test ui-build \
+	print-preview-sources print-gateway-sources print-device-client-sources
 
 print-preview-sources:
 	@for source in $(PREVIEW_SOURCES); do echo $$source; done
+
+print-gateway-sources:
+	@for source in $(GATEWAY_SOURCES); do echo $$source; done
+
+print-device-client-sources:
+	@for source in $(DEVICE_CLIENT_SOURCES); do echo $$source; done
 
 test: $(BUILD)/test_device $(BUILD)/test_jobs $(BUILD)/test_queries $(BUILD)/test_credentials $(BUILD)/test_gateway $(BUILD)/test_fastcgi_request
 	$(BUILD)/test_device
@@ -27,20 +40,20 @@ test: $(BUILD)/test_device $(BUILD)/test_jobs $(BUILD)/test_queries $(BUILD)/tes
 	sh tests/preview/run.sh
 
 # Included private C fragments are tracked transitively by the compiler.
-# DEVICE_CLIENT is the only half of the device protocol the unprivileged
-# gateway links: transport, wire framing, the client exchange, the recorder
-# projection, and credential *schema* validation (never the credential
-# store). DEVICE_SERVER (serving loop and the persistent credential store)
-# links only into ls200-device-control and its tests.
-DEVICE_CLIENT := device/transport.c device/wire.c device/client.c device/projection.c device/credentials.c
+# DEVICE_CLIENT_SOURCES (from gateway/sources.mk) is the only half of the
+# device protocol the unprivileged gateway links: transport, wire framing,
+# the client exchange, the recorder projection, and credential *schema*
+# validation (never the credential store). DEVICE_SERVER (serving loop and
+# the persistent credential store) links only into ls200-device-control and
+# its tests.
 DEVICE_SERVER := device/server.c device/credentials_store.c
-DEVICE_CLIENT_OBJECTS := $(patsubst %.c,$(BUILD)/obj/%.o,$(DEVICE_CLIENT))
+DEVICE_CLIENT_OBJECTS := $(patsubst %.c,$(BUILD)/obj/%.o,$(DEVICE_CLIENT_SOURCES))
 DEVICE_SERVER_OBJECTS := $(patsubst %.c,$(BUILD)/obj/%.o,$(DEVICE_SERVER))
 DEVICE_COMPANION_OBJECTS := $(DEVICE_CLIENT_OBJECTS) $(DEVICE_SERVER_OBJECTS)
-GATEWAY_OBJECTS := $(BUILD)/obj/gateway/gateway.o $(DEVICE_CLIENT_OBJECTS)
+GATEWAY_OBJECTS := $(patsubst %.c,$(BUILD)/obj/%.o,$(GATEWAY_SOURCES)) $(DEVICE_CLIENT_OBJECTS)
 TEST_GATEWAY_OBJECTS := $(GATEWAY_OBJECTS) $(BUILD)/obj/tests/gateway/test_gateway.o
 REQUEST_TEST_OBJECTS := $(BUILD)/obj/gateway/fastcgi_request.o $(BUILD)/obj/tests/gateway/test_fastcgi_request.o
-FCGI_SOURCES := $(DEVICE_CLIENT) gateway/gateway.c gateway/fastcgi_main.c gateway/fastcgi_request.c gateway/fastcgi_preview.c $(PREVIEW_SOURCES)
+FCGI_SOURCES := $(DEVICE_CLIENT_SOURCES) $(GATEWAY_SOURCES) gateway/fastcgi_main.c gateway/fastcgi_request.c gateway/fastcgi_preview.c $(PREVIEW_SOURCES)
 FCGI_OBJECTS := $(patsubst %.c,$(BUILD)/fcgi/%.o,$(subst ../sipd/,sipd/,$(FCGI_SOURCES)))
 
 $(BUILD)/test_gateway: $(TEST_GATEWAY_OBJECTS)

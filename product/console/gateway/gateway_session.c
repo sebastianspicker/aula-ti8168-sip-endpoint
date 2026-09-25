@@ -1,6 +1,18 @@
-static ls200_gateway_session *new_session(ls200_gateway *gateway, const char *username,
-                                          ls200_gateway_role role, uint64_t now,
-                                          char cookie[256], char csrf[65]) {
+#define _POSIX_C_SOURCE 200809L
+
+#include "gateway_internal.h"
+
+#include <arpa/inet.h>
+#include <ctype.h>
+#include <netinet/in.h>
+#include <openssl/crypto.h>
+#include <openssl/rand.h>
+#include <stdio.h>
+#include <string.h>
+
+ls200_gateway_session *gateway_new_session(ls200_gateway *gateway, const char *username,
+                                           ls200_gateway_role role, uint64_t now,
+                                           char cookie[256], char csrf[65]) {
   uint8_t token[LS200_GATEWAY_HASH_BYTES] = {0};
   char encoded_token[65] = {0};
   ls200_gateway_session *candidate = NULL;
@@ -12,13 +24,13 @@ static ls200_gateway_session *new_session(ls200_gateway *gateway, const char *us
     if (candidate == NULL || gateway->sessions[index].last_seen_at < candidate->last_seen_at)
       candidate = &gateway->sessions[index];
   }
-  if (candidate == NULL || !is_safe_username(username) ||
+  if (candidate == NULL || !gateway_is_safe_username(username) ||
       RAND_bytes(token, sizeof(token)) != 1) goto cleanup;
   OPENSSL_cleanse(candidate, sizeof(*candidate));
   if (RAND_bytes(candidate->session_id, sizeof(candidate->session_id)) != 1 ||
       RAND_bytes(candidate->csrf, sizeof(candidate->csrf)) != 1 ||
-      !sha256(token, sizeof(token), candidate->token_hash) ||
-      !hex_encode(token, sizeof(token), encoded_token, sizeof(encoded_token)))
+      !gateway_sha256(token, sizeof(token), candidate->token_hash) ||
+      !gateway_hex_encode(token, sizeof(token), encoded_token, sizeof(encoded_token)))
     goto clear_candidate;
   candidate->used = 1;
   candidate->role = role;
@@ -28,7 +40,7 @@ static ls200_gateway_session *new_session(ls200_gateway *gateway, const char *us
   candidate->rotated_at = now;
   (void)snprintf(cookie, 256U, "ls200_session=%s; Path=/zoom/; Secure; HttpOnly; SameSite=Strict; Max-Age=%u",
                  encoded_token, LS200_GATEWAY_SESSION_IDLE_SECONDS);
-  if (!hex_encode(candidate->csrf, sizeof(candidate->csrf), csrf, 65U))
+  if (!gateway_hex_encode(candidate->csrf, sizeof(candidate->csrf), csrf, 65U))
     goto clear_candidate;
   result = candidate;
   goto cleanup;
@@ -51,14 +63,12 @@ static void trim_cookie_pair(const char **start, const char **end) {
   while (*end > *start && cookie_optional_whitespace((*end)[-1])) --*end;
 }
 
-static int cookie_session_value(const char *start, const char *end,
-                                const char **value, size_t *value_length) {
+static int cookie_session_value(const char *start, const char *end, const char **value, size_t *value_length) {
   static const char name[] = "ls200_session";
   size_t pair_length = (size_t)(end - start);
   size_t name_length = sizeof(name) - 1U;
   if (pair_length < name_length || memcmp(start, name, name_length) != 0) return 0;
-  if (pair_length == name_length || cookie_optional_whitespace(start[name_length]))
-    return -1;
+  if (pair_length == name_length || cookie_optional_whitespace(start[name_length])) return -1;
   if (start[name_length] != '=') return 0;
   *value = start + name_length + 1U;
   *value_length = (size_t)(end - *value);
@@ -69,8 +79,7 @@ static int cookie_token_is_lowercase_hex(const char *value, size_t length) {
   size_t index;
   if (length != 64U) return 0;
   for (index = 0U; index < length; ++index)
-    if (!isdigit((unsigned char)value[index]) &&
-        (value[index] < 'a' || value[index] > 'f')) return 0;
+    if (!isdigit((unsigned char)value[index]) && (value[index] < 'a' || value[index] > 'f')) return 0;
   return 1;
 }
 
@@ -86,9 +95,9 @@ static int extract_cookie_token(const char *cookie, char token[65]) {
     const char *pair_start = cursor;
     int session_pair;
     trim_cookie_pair(&pair_start, &pair_end);
-    session_pair=cookie_session_value(pair_start,pair_end,&value,&value_length);
-    if(session_pair<0) return 0;
-    if(session_pair>0) ++matches;
+    session_pair = cookie_session_value(pair_start, pair_end, &value, &value_length);
+    if (session_pair < 0) return 0;
+    if (session_pair > 0) ++matches;
     if (end == NULL) break;
     cursor = end + 1;
   }
@@ -98,8 +107,7 @@ static int extract_cookie_token(const char *cookie, char token[65]) {
   return 1;
 }
 
-static int rotate_session(ls200_gateway_session *session, uint64_t now,
-                          char cookie[256]) {
+static int rotate_session(ls200_gateway_session *session, uint64_t now, char cookie[256]) {
   uint8_t token[LS200_GATEWAY_HASH_BYTES];
   uint8_t token_hash[LS200_GATEWAY_HASH_BYTES];
   char encoded[65];
@@ -108,15 +116,12 @@ static int rotate_session(ls200_gateway_session *session, uint64_t now,
   (void)memset(token_hash, 0, sizeof(token_hash));
   (void)memset(encoded, 0, sizeof(encoded));
   if (RAND_bytes(token, sizeof(token)) != 1 ||
-      !sha256(token, sizeof(token), token_hash) ||
-      !hex_encode(token, sizeof(token), encoded, sizeof(encoded))) goto cleanup;
+      !gateway_sha256(token, sizeof(token), token_hash) ||
+      !gateway_hex_encode(token, sizeof(token), encoded, sizeof(encoded))) goto cleanup;
   {
-    size_t slot = session->next_grace_token++ %
-        LS200_GATEWAY_SESSION_GRACE_TOKENS;
-    (void)memcpy(session->grace_token_hashes[slot], session->token_hash,
-                 LS200_GATEWAY_HASH_BYTES);
-    session->grace_token_valid_until[slot] =
-        now + LS200_GATEWAY_SESSION_TOKEN_GRACE_SECONDS;
+    size_t slot = session->next_grace_token++ % LS200_GATEWAY_SESSION_GRACE_TOKENS;
+    (void)memcpy(session->grace_token_hashes[slot], session->token_hash, LS200_GATEWAY_HASH_BYTES);
+    session->grace_token_valid_until[slot] = now + LS200_GATEWAY_SESSION_TOKEN_GRACE_SECONDS;
   }
   (void)memcpy(session->token_hash, token_hash, sizeof(session->token_hash));
   session->rotated_at = now;
@@ -146,8 +151,7 @@ static int parse_server_port(const char *value, unsigned int *port) {
   return 1;
 }
 
-static int device_origin(const ls200_gateway_request *request,
-                         char origin[80], int *loopback) {
+static int device_origin(const ls200_gateway_request *request, char origin[80], int *loopback) {
   struct in_addr ipv4;
   struct in6_addr ipv6;
   char address[INET6_ADDRSTRLEN];
@@ -156,8 +160,7 @@ static int device_origin(const ls200_gateway_request *request,
   if (request == NULL || origin == NULL || loopback == NULL ||
       !parse_server_port(request->server_port, &port))
     return 0;
-  if (request->server_address != NULL &&
-      inet_pton(AF_INET, request->server_address, &ipv4) == 1) {
+  if (request->server_address != NULL && inet_pton(AF_INET, request->server_address, &ipv4) == 1) {
     if (inet_ntop(AF_INET, &ipv4, address, sizeof(address)) == NULL) return 0;
     *loopback = (ntohl(ipv4.s_addr) >> 24U) == 127U;
     length = snprintf(origin, 80U, "https://%s:%u", address, port);
@@ -172,22 +175,17 @@ static int device_origin(const ls200_gateway_request *request,
   return length > 0 && (size_t)length < 80U;
 }
 
-static int request_origin_is_allowed(const ls200_gateway *gateway,
-                                     const ls200_gateway_request *request) {
+int gateway_request_origin_is_allowed(const ls200_gateway *gateway, const ls200_gateway_request *request) {
   char expected[80];
   char localhost[32];
   int loopback = 0;
   int localhost_length;
-  if (gateway->config.allowed_origin != NULL &&
-      strcmp(gateway->config.allowed_origin, "device") == 0) {
+  if (gateway->config.allowed_origin != NULL && strcmp(gateway->config.allowed_origin, "device") == 0) {
     if (!device_origin(request, expected, &loopback)) return 0;
     if (request->origin != NULL) {
       if (strcmp(request->origin, expected) == 0) return 1;
-      localhost_length = snprintf(localhost, sizeof(localhost),
-                                  "https://localhost:%s",
-                                  request->server_port);
-      return loopback && localhost_length > 0 &&
-          (size_t)localhost_length < sizeof(localhost) &&
+      localhost_length = snprintf(localhost, sizeof(localhost), "https://localhost:%s", request->server_port);
+      return loopback && localhost_length > 0 && (size_t)localhost_length < sizeof(localhost) &&
           strcmp(request->origin, localhost) == 0;
     }
   } else if (request->origin != NULL) {
@@ -198,27 +196,25 @@ static int request_origin_is_allowed(const ls200_gateway *gateway,
       request->fetch_site != NULL && strcmp(request->fetch_site, "same-origin") == 0;
 }
 
-static int request_token_hash(const ls200_gateway_request *request,
-                              uint8_t token_hash[LS200_GATEWAY_HASH_BYTES]) {
+int gateway_request_token_hash(const ls200_gateway_request *request,
+                               uint8_t token_hash[LS200_GATEWAY_HASH_BYTES]) {
   uint8_t token[LS200_GATEWAY_HASH_BYTES];
   char encoded[65];
   int valid = extract_cookie_token(request->cookie, encoded) &&
-      hex_decode_32(encoded, token) && sha256(token, sizeof(token), token_hash);
+      gateway_hex_decode_32(encoded, token) && gateway_sha256(token, sizeof(token), token_hash);
   OPENSSL_cleanse(token, sizeof(token));
   OPENSSL_cleanse(encoded, sizeof(encoded));
   return valid;
 }
 
-static ls200_gateway_session *find_session_by_token(ls200_gateway *gateway,
-                                                     const uint8_t token_hash[LS200_GATEWAY_HASH_BYTES],
-                                                     uint64_t now,
-                                                     int *used_grace) {
+ls200_gateway_session *gateway_find_session_by_token(
+    ls200_gateway *gateway, const uint8_t token_hash[LS200_GATEWAY_HASH_BYTES],
+    uint64_t now, int *used_grace) {
   size_t index;
   for (index = 0U; index < gateway->config.max_sessions; ++index) {
     ls200_gateway_session *session = &gateway->sessions[index];
     if (!session->used) continue;
-    if (secure_equal(session->token_hash, token_hash,
-                     LS200_GATEWAY_HASH_BYTES)) {
+    if (gateway_secure_equal(session->token_hash, token_hash, LS200_GATEWAY_HASH_BYTES)) {
       *used_grace = 0;
       return session;
     }
@@ -226,8 +222,7 @@ static ls200_gateway_session *find_session_by_token(ls200_gateway *gateway,
       size_t slot;
       for (slot = 0U; slot < LS200_GATEWAY_SESSION_GRACE_TOKENS; ++slot) {
         if (session->grace_token_valid_until[slot] >= now &&
-            secure_equal(session->grace_token_hashes[slot], token_hash,
-                         LS200_GATEWAY_HASH_BYTES)) {
+            gateway_secure_equal(session->grace_token_hashes[slot], token_hash, LS200_GATEWAY_HASH_BYTES)) {
           *used_grace = 1;
           return session;
         }
@@ -244,17 +239,15 @@ static int session_is_expired(const ls200_gateway_session *session, uint64_t now
       now - session->created_at > LS200_GATEWAY_SESSION_ABSOLUTE_SECONDS;
 }
 
-static int session_csrf_is_valid(const ls200_gateway_session *session,
-                                 const char *csrf_token) {
+int gateway_session_csrf_is_valid(const ls200_gateway_session *session, const char *csrf_token) {
   uint8_t csrf[LS200_GATEWAY_HASH_BYTES] = {0};
-  int valid = hex_decode_32(csrf_token, csrf) &&
-      secure_equal(csrf, session->csrf, sizeof(csrf));
+  int valid = gateway_hex_decode_32(csrf_token, csrf) &&
+      gateway_secure_equal(csrf, session->csrf, sizeof(csrf));
   OPENSSL_cleanse(csrf, sizeof(csrf));
   return valid;
 }
 
-static int refresh_session(ls200_gateway_session *session, uint64_t now,
-                           char cookie[256], int force_rotation) {
+static int refresh_session(ls200_gateway_session *session, uint64_t now, char cookie[256], int force_rotation) {
   session->last_seen_at = now;
   if (!force_rotation && (now < session->rotated_at ||
       now - session->rotated_at < LS200_GATEWAY_SESSION_ROTATE_SECONDS))
@@ -262,49 +255,44 @@ static int refresh_session(ls200_gateway_session *session, uint64_t now,
   return rotate_session(session, now, cookie);
 }
 
-static ls200_gateway_session *authenticate(ls200_gateway *gateway,
-                                           const ls200_gateway_request *request,
-                                           ls200_gateway_response *response,
-                                           int csrf_required) {
+ls200_gateway_session *gateway_authenticate(ls200_gateway *gateway, const ls200_gateway_request *request,
+                                            ls200_gateway_response *response, int csrf_required) {
   uint8_t token_hash[LS200_GATEWAY_HASH_BYTES] = {0};
   ls200_gateway_session *session = NULL;
   ls200_gateway_session *result = NULL;
   int used_grace = 0;
-  if (!request_origin_is_allowed(gateway, request)) {
-    write_error(response, 403U, "ORIGIN_REQUIRED", "exact Origin is required");
+  if (!gateway_request_origin_is_allowed(gateway, request)) {
+    gateway_write_error(response, 403U, "ORIGIN_REQUIRED", "exact Origin is required");
     goto cleanup;
   }
-  if (!request_token_hash(request, token_hash)) {
-    write_error(response, 401U, "UNAUTHORIZED", "session is required");
+  if (!gateway_request_token_hash(request, token_hash)) {
+    gateway_write_error(response, 401U, "UNAUTHORIZED", "session is required");
     goto cleanup;
   }
-  session = find_session_by_token(gateway, token_hash, request->now,
-                                  &used_grace);
+  session = gateway_find_session_by_token(gateway, token_hash, request->now, &used_grace);
   if (session == NULL) {
-    write_error(response, 401U, "UNAUTHORIZED", "session is required");
+    gateway_write_error(response, 401U, "UNAUTHORIZED", "session is required");
     goto cleanup;
   }
   if (session_is_expired(session, request->now)) {
     (void)memset(session, 0, sizeof(*session));
-    write_error(response, 401U, "SESSION_EXPIRED", "session expired");
+    gateway_write_error(response, 401U, "SESSION_EXPIRED", "session expired");
     goto cleanup;
   }
   {
-    const ls200_gateway_account *account =
-        ls200_gateway_find_account(gateway, session->username);
+    const ls200_gateway_account *account = ls200_gateway_find_account(gateway, session->username);
     if (account == NULL || account->role != session->role) {
       OPENSSL_cleanse(session, sizeof(*session));
-      write_error(response, 401U, "UNAUTHORIZED", "session is required");
+      gateway_write_error(response, 401U, "UNAUTHORIZED", "session is required");
       goto cleanup;
     }
   }
-  if (csrf_required && !session_csrf_is_valid(session, request->csrf_token)) {
-    write_error(response, 403U, "CSRF_INVALID", "CSRF token is invalid");
+  if (csrf_required && !gateway_session_csrf_is_valid(session, request->csrf_token)) {
+    gateway_write_error(response, 403U, "CSRF_INVALID", "CSRF token is invalid");
     goto cleanup;
   }
-  if (!refresh_session(session, request->now, response->set_cookie,
-                       used_grace)) {
-    write_error(response, 500U, "INTERNAL", "session rotation failed");
+  if (!refresh_session(session, request->now, response->set_cookie, used_grace)) {
+    gateway_write_error(response, 500U, "INTERNAL", "session rotation failed");
     goto cleanup;
   }
   result = session;
@@ -313,60 +301,59 @@ cleanup:
   return result;
 }
 
-static int require_role(ls200_gateway_session *session, ls200_gateway_role required,
-                        ls200_gateway_response *response) {
-  if (session->role < required) { write_error(response, 403U, "FORBIDDEN", "role is insufficient"); return 0; }
+int gateway_require_role(ls200_gateway_session *session, ls200_gateway_role required,
+                         ls200_gateway_response *response) {
+  if (session->role < required) {
+    gateway_write_error(response, 403U, "FORBIDDEN", "role is insufficient");
+    return 0;
+  }
   return 1;
 }
 
-static int preview_request_is_allowed(const ls200_gateway *gateway,
-                                      const ls200_gateway_request *request,
+static int preview_request_is_allowed(const ls200_gateway *gateway, const ls200_gateway_request *request,
                                       ls200_gateway_response *response) {
   if (!gateway->config.preview_enabled) {
-    write_error(response, 503U, "PREVIEW_UNAVAILABLE",
-                "local preview is not configured");
+    gateway_write_error(response, 503U, "PREVIEW_UNAVAILABLE", "local preview is not configured");
     return 0;
   }
   if (request->method == NULL || request->path == NULL ||
       strcmp(request->method, "GET") != 0 ||
       strcmp(request->path, "/zoom/api/v1/media/preview.flv") != 0) {
-    write_error(response, 404U, "ROUTE_NOT_FOUND", "route is not available");
+    gateway_write_error(response, 404U, "ROUTE_NOT_FOUND", "route is not available");
     return 0;
   }
-  if (!request_origin_is_allowed(gateway, request)) {
-    write_error(response, 403U, "ORIGIN_REQUIRED", "exact Origin is required");
+  if (!gateway_request_origin_is_allowed(gateway, request)) {
+    gateway_write_error(response, 403U, "ORIGIN_REQUIRED", "exact Origin is required");
     return 0;
   }
   return 1;
 }
 
 static ls200_gateway_session *preview_session_authorize(
-    ls200_gateway *gateway, const ls200_gateway_request *request,
-    ls200_gateway_response *response) {
+    ls200_gateway *gateway, const ls200_gateway_request *request, ls200_gateway_response *response) {
   uint8_t token_hash[LS200_GATEWAY_HASH_BYTES] = {0};
   ls200_gateway_session *session = NULL;
   ls200_gateway_session *result = NULL;
   const ls200_gateway_account *account;
   int used_grace = 0;
-  if (!request_token_hash(request, token_hash)) {
-    write_error(response, 401U, "UNAUTHORIZED", "session is required");
+  if (!gateway_request_token_hash(request, token_hash)) {
+    gateway_write_error(response, 401U, "UNAUTHORIZED", "session is required");
     goto cleanup;
   }
-  session = find_session_by_token(gateway, token_hash, request->now, &used_grace);
+  session = gateway_find_session_by_token(gateway, token_hash, request->now, &used_grace);
   if (session == NULL || session_is_expired(session, request->now)) {
     if (session != NULL) OPENSSL_cleanse(session, sizeof(*session));
-    write_error(response, 401U, "SESSION_EXPIRED", "session expired");
+    gateway_write_error(response, 401U, "SESSION_EXPIRED", "session expired");
     goto cleanup;
   }
   account = ls200_gateway_find_account(gateway, session->username);
-  if (account == NULL || account->role != session->role ||
-      session->role < LS200_GATEWAY_ROLE_VIEWER) {
+  if (account == NULL || account->role != session->role || session->role < LS200_GATEWAY_ROLE_VIEWER) {
     OPENSSL_cleanse(session, sizeof(*session));
-    write_error(response, 401U, "UNAUTHORIZED", "session is required");
+    gateway_write_error(response, 401U, "UNAUTHORIZED", "session is required");
     goto cleanup;
   }
-  if (!session_csrf_is_valid(session, request->csrf_token)) {
-    write_error(response, 403U, "CSRF_INVALID", "CSRF token is invalid");
+  if (!gateway_session_csrf_is_valid(session, request->csrf_token)) {
+    gateway_write_error(response, 403U, "CSRF_INVALID", "CSRF token is invalid");
     goto cleanup;
   }
   (void)used_grace;
@@ -376,14 +363,11 @@ cleanup:
   return result;
 }
 
-int ls200_gateway_preview_authorize(ls200_gateway *gateway,
-                                    const ls200_gateway_request *request,
-                                    ls200_gateway_preview_lease *lease,
-                                    ls200_gateway_response *response) {
+int ls200_gateway_preview_authorize(ls200_gateway *gateway, const ls200_gateway_request *request,
+                                    ls200_gateway_preview_lease *lease, ls200_gateway_response *response) {
   ls200_gateway_session *session;
   int result = 0;
-  if (gateway == NULL || request == NULL || lease == NULL || response == NULL)
-    return 0;
+  if (gateway == NULL || request == NULL || lease == NULL || response == NULL) return 0;
   (void)memset(response, 0, sizeof(*response));
   (void)memset(lease, 0, sizeof(*lease));
   if (!gateway_state_lock(gateway)) return 0;
@@ -402,19 +386,17 @@ cleanup:
   return result;
 }
 
-int ls200_gateway_preview_lease_valid(ls200_gateway *gateway,
-                                      const ls200_gateway_preview_lease *lease,
+int ls200_gateway_preview_lease_valid(ls200_gateway *gateway, const ls200_gateway_preview_lease *lease,
                                       uint64_t now) {
   size_t index;
   int result = 0;
-  if (gateway == NULL || lease == NULL || now == 0U || now > lease->expires_at)
-    return 0;
+  if (gateway == NULL || lease == NULL || now == 0U || now > lease->expires_at) return 0;
   if (!gateway_state_lock(gateway)) return 0;
   for (index = 0U; index < gateway->config.max_sessions; ++index) {
     ls200_gateway_session *session = &gateway->sessions[index];
     const ls200_gateway_account *account;
-    if (!session->used || !secure_equal(session->session_id, lease->session_id,
-                                        sizeof(session->session_id))) continue;
+    if (!session->used ||
+        !gateway_secure_equal(session->session_id, lease->session_id, sizeof(session->session_id))) continue;
     account = ls200_gateway_find_account(gateway, session->username);
     if (session_is_expired(session, now) || account == NULL ||
         account->role != session->role || session->role < LS200_GATEWAY_ROLE_VIEWER)
@@ -426,93 +408,4 @@ int ls200_gateway_preview_lease_valid(ls200_gateway *gateway,
 cleanup:
   gateway_state_unlock(gateway);
   return result;
-}
-
-static ls200_gateway_idempotency *find_idempotency(ls200_gateway *gateway,
-                                                    const ls200_gateway_session *session,
-                                                    const char *key, const char *route) {
-  size_t index;
-  for (index = 0U; index < sizeof(gateway->idempotency) / sizeof(gateway->idempotency[0]); ++index) {
-    ls200_gateway_idempotency *entry = &gateway->idempotency[index];
-    if (entry->used && strcmp(entry->key, key) == 0 && strcmp(entry->route, route) == 0 &&
-        secure_equal(entry->session_hash, session->session_id, sizeof(entry->session_hash))) return entry;
-  }
-  return NULL;
-}
-
-static int idempotency_request_hash(
-    const ls200_gateway_request *request,
-    uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
-  const char *body;
-  json_error_t error;
-  json_t *root;
-  char *canonical;
-  size_t canonical_length;
-  unsigned int output_length = 0U;
-  uint8_t separator = 0U;
-  EVP_MD_CTX *context;
-  int valid;
-  if (request == NULL || request->method == NULL || output == NULL) return 0;
-  body = request->body == NULL || request->body[0] == '\0' ? "{}" : request->body;
-  root = parse_json(body, &error);
-  if (root == NULL) return 0;
-  canonical = json_dumps(root, JSON_COMPACT | JSON_SORT_KEYS);
-  json_decref(root);
-  if (canonical == NULL) return 0;
-  canonical_length = strlen(canonical);
-  context = EVP_MD_CTX_new();
-  valid = context != NULL &&
-      EVP_DigestInit_ex(context, EVP_sha256(), NULL) == 1 &&
-      EVP_DigestUpdate(context, request->method, strlen(request->method)) == 1 &&
-      EVP_DigestUpdate(context, &separator, sizeof(separator)) == 1 &&
-      EVP_DigestUpdate(context, canonical, canonical_length) == 1 &&
-      EVP_DigestFinal_ex(context, output, &output_length) == 1 &&
-      output_length == LS200_GATEWAY_HASH_BYTES;
-  EVP_MD_CTX_free(context);
-  secure_json_free(canonical);
-  if (!valid) OPENSSL_cleanse(output, LS200_GATEWAY_HASH_BYTES);
-  return valid;
-}
-
-static void save_idempotency(ls200_gateway *gateway, const ls200_gateway_session *session,
-                             const char *key, const char *route,
-                             const uint8_t request_hash[LS200_GATEWAY_HASH_BYTES],
-                             const ls200_gateway_response *response) {
-  ls200_gateway_idempotency *entry = &gateway->idempotency[gateway->next_idempotency++ % (sizeof(gateway->idempotency) / sizeof(gateway->idempotency[0]))];
-  (void)memset(entry, 0, sizeof(*entry)); entry->used = 1; entry->status = response->status;
-  (void)memcpy(entry->session_hash, session->session_id, sizeof(entry->session_hash));
-  (void)memcpy(entry->request_hash, request_hash, sizeof(entry->request_hash));
-  (void)snprintf(entry->key, sizeof(entry->key), "%s", key);
-  (void)snprintf(entry->route, sizeof(entry->route), "%s", route);
-  (void)snprintf(entry->response, sizeof(entry->response), "%s", response->body);
-}
-
-static int no_body_schema(const char *body) {
-  json_error_t error;
-  if (body == NULL || body[0] == '\0') return 1;
-  json_t *root = parse_json(body, &error);
-  int valid = root != NULL && json_is_object(root) && json_object_size(root) == 0U;
-  if (root != NULL) json_decref(root);
-  return valid;
-}
-
-static int schema_keys(const char *body, const char *const *keys, size_t key_count) {
-  json_error_t error;
-  json_t *root = parse_json(body, &error);
-  int valid = root != NULL && json_object_exact(root, keys, key_count);
-  if (root != NULL) json_decref(root);
-  return valid;
-}
-
-static int schema_enum(const char *body, const char *key, const char *const *values, size_t value_count) {
-  json_error_t error;
-  json_t *root = parse_json(body, &error);
-  const char *value;
-  size_t index;
-  if (root == NULL) return 0;
-  value = json_string_value(json_object_get(root, key));
-  for (index = 0U; value != NULL && index < value_count; ++index)
-    if (strcmp(value, values[index]) == 0) { json_decref(root); return 1; }
-  json_decref(root);
-  return 0;
 }

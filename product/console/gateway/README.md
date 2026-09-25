@@ -5,6 +5,43 @@ path, executable, or environment-driven control input. Every response uses
 revision 1: `{"revision":1,"ok":true,"data":...}` or
 `{"revision":1,"ok":false,"error":{"code":"...","message":"..."}}`.
 
+## Module map
+
+`gateway.h` is the only header other components may include; `gateway_internal.h`
+is the interface shared by the modules below, and nothing outside this
+directory may include it. Each module below is its own translation unit, compiled and linked separately
+(`gateway/sources.mk`, read via `make -s -C product/console print-gateway-sources`);
+`fastcgi_main.c`, `fastcgi_request.c`, and `fastcgi_preview.c` are additional,
+independent translation units that use only the public `gateway.h`/`fastcgi_*.h`
+interfaces.
+
+| Module | Responsibility |
+| --- | --- |
+| `gateway_core.c` | Crypto, hex, JSON-shape, and verified-filesystem primitives shared by every other module |
+| `gateway_account.c` | Account identity/CRUD, the login/bootstrap auth-rate budget, and `gateway.conf` policy loading |
+| `gateway_account_store.c` | Deserializes and validates the persisted account/directory/recents store (v1/v2/v3) |
+| `gateway_store.c` | Loads and atomically rewrites the persisted account store; password verification |
+| `gateway_session.c` | Session lifecycle, cookie/token handling, Origin policy, and request authentication |
+| `gateway_schema.c` | Generic JSON request-body schema helpers (`{}`, exact-keys, enum-value) |
+| `gateway_idempotency.c` | Per-session mutation idempotency records and their request fingerprint |
+| `gateway_preview_metadata.c` | Local preview capability projection |
+| `gateway_settings.c` | Backend settings envelope validation |
+| `gateway_aec.c` | Backend AEC status envelope validation |
+| `gateway_status.c` | Backend call/media status envelope validation and safe media projection |
+| `gateway_metrics.c` | Backend diagnostics-metrics envelope validation |
+| `gateway_route_schema.c` | HTTP request-body schema validators referenced by the route table |
+| `gateway_route_backend.c` | Backend response normalization (`ls200_gateway_backend_response_normalize`) and status-route shaping |
+| `gateway_route_events.c` | Call-state event validation and the bounded, de-duplicated event history |
+| `gateway_route_directory.c` | Safe directory and recent-call collection validation, storage, and mutation |
+| `gateway_route_users.c` | HTTP-driven account listing and mutation |
+| `gateway_auth_routes.c` | `/auth/login` and `/auth/bootstrap` |
+| `gateway.c` | The route table (`ROUTES[]`) and the per-request dispatch plan built from it |
+| `gateway_route_response.c` | Shapes the HTTP response for local and backend-dispatched routes |
+| `gateway_route_request.c` | Request validation and redacted/cleansed payload preparation |
+| `gateway_device.c` | Unprivileged passthrough to the device companion's credential/status protocol |
+| `gateway_transaction.c` | Copies and revalidates a request across control I/O; `ls200_gateway_handle` |
+| `gateway_control.c` | The LSZ1 wire transport to `ls200-sipd` |
+
 Request handling uses a state mutex and separate serialized read and mutation
 control lanes. At most one read and one mutation exchange may run concurrently. Bounded
 transactions retain copied requests and principals across I/O, then recheck

@@ -1,6 +1,23 @@
-/* This file is included by gateway.c after its portability definitions. */
+#define _POSIX_C_SOURCE 200809L
+
+#include "gateway_internal.h"
+
+#include <arpa/inet.h>
+#include <ctype.h>
+#include <errno.h>
+#include <openssl/crypto.h>
 #include <poll.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
 #include <time.h>
+#include <unistd.h>
+
+#if defined(__APPLE__)
+extern int getpeereid(int descriptor, uid_t *uid, gid_t *gid);
+#endif
 
 int ls200_gateway_frame_validate(const uint8_t *frame, size_t frame_length,
                                  uint8_t expected_opcode, uint32_t expected_request_id) {
@@ -9,12 +26,16 @@ int ls200_gateway_frame_validate(const uint8_t *frame, size_t frame_length,
   uint32_t length;
   if (frame == NULL || frame_length < LS200_CONTROL_HEADER_BYTES ||
       memcmp(frame, LS200_CONTROL_MAGIC, 4U) != 0 || frame[4] != LS200_CONTROL_PROTOCOL_VERSION ||
-      frame[5] != expected_opcode || expected_opcode < 1U || expected_opcode > LS200_CONTROL_OPCODE_METRICS) return 0;
+      frame[5] != expected_opcode || expected_opcode < 1U || expected_opcode > LS200_CONTROL_OPCODE_METRICS)
+    return 0;
   (void)memcpy(&flags, frame + 6U, sizeof(flags));
   (void)memcpy(&request_id, frame + 8U, sizeof(request_id));
   (void)memcpy(&length, frame + 12U, sizeof(length));
-  flags = ntohs(flags); request_id = ntohl(request_id); length = ntohl(length);
-  return (flags & LS200_CONTROL_FRAME_RESPONSE) != 0U && (flags & ~(LS200_CONTROL_FRAME_RESPONSE | LS200_CONTROL_FRAME_ERROR | LS200_CONTROL_FRAME_EVENT)) == 0U &&
+  flags = ntohs(flags);
+  request_id = ntohl(request_id);
+  length = ntohl(length);
+  return (flags & LS200_CONTROL_FRAME_RESPONSE) != 0U &&
+      (flags & ~(LS200_CONTROL_FRAME_RESPONSE | LS200_CONTROL_FRAME_ERROR | LS200_CONTROL_FRAME_EVENT)) == 0U &&
       request_id == expected_request_id && length <= GATEWAY_LSZ1_MAX_PAYLOAD &&
       frame_length == LS200_CONTROL_HEADER_BYTES + (size_t)length;
 }
@@ -40,13 +61,11 @@ int ls200_gateway_peer_uid_matches(int descriptor, uint32_t expected_uid) {
 #endif
 }
 
-static int split_control_socket_path(const ls200_gateway_config *config,
-                                     char parent_path[512],
+static int split_control_socket_path(const ls200_gateway_config *config, char parent_path[512],
                                      const char **socket_name) {
   const char *slash;
   size_t parent_length;
-  if (config == NULL || config->control_socket_path == NULL ||
-      config->control_socket_path[0] != '/') return 0;
+  if (config == NULL || config->control_socket_path == NULL || config->control_socket_path[0] != '/') return 0;
   slash = strrchr(config->control_socket_path, '/');
   if (slash == NULL || slash == config->control_socket_path || slash[1] == '\0' ||
       strlen(slash + 1U) > NAME_MAX) return 0;
@@ -58,17 +77,15 @@ static int split_control_socket_path(const ls200_gateway_config *config,
   return 1;
 }
 
-static int open_verified_control_directory(const ls200_gateway_config *config,
-                                           const char *parent_path) {
+static int open_verified_control_directory(const ls200_gateway_config *config, const char *parent_path) {
   char parent_name[NAME_MAX + 1U];
   struct stat expected;
   struct stat actual;
   int grandparent;
   int parent;
-  if (!open_parent_directory(parent_path, &grandparent, parent_name)) return -1;
+  if (!gateway_open_parent_directory(parent_path, &grandparent, parent_name)) return -1;
   if (fstatat(grandparent, parent_name, &expected, AT_SYMLINK_NOFOLLOW) != 0 ||
-      !S_ISDIR(expected.st_mode) ||
-      expected.st_uid != (uid_t)config->expected_sipd_uid ||
+      !S_ISDIR(expected.st_mode) || expected.st_uid != (uid_t)config->expected_sipd_uid ||
       (expected.st_mode & 0022U) != 0U) {
     (void)close(grandparent);
     return -1;
@@ -83,13 +100,12 @@ static int open_verified_control_directory(const ls200_gateway_config *config,
   return parent;
 }
 
-static int open_control_parent(const ls200_gateway_config *config, int *parent_out,
-                               char name[NAME_MAX + 1U]) {
+static int open_control_parent(const ls200_gateway_config *config, int *parent_out, char name[NAME_MAX + 1U]) {
   char parent_path[512];
   const char *socket_name;
   int parent;
-  if (parent_out == NULL || name == NULL ||
-      !split_control_socket_path(config, parent_path, &socket_name)) return 0;
+  if (parent_out == NULL || name == NULL || !split_control_socket_path(config, parent_path, &socket_name))
+    return 0;
   parent = open_verified_control_directory(config, parent_path);
   if (parent < 0) return 0;
   (void)snprintf(name, NAME_MAX + 1U, "%s", socket_name);
@@ -109,9 +125,8 @@ int ls200_gateway_control_socket_is_safe(const ls200_gateway_config *config) {
   return result;
 }
 
-static int control_exchange_input_is_valid(const ls200_gateway_config *config,
-                                           const char *payload, char *response,
-                                           size_t response_capacity) {
+static int control_exchange_input_is_valid(const ls200_gateway_config *config, const char *payload,
+                                           char *response, size_t response_capacity) {
   return config != NULL && config->control_socket_path != NULL &&
       payload != NULL && response != NULL && response_capacity != 0U &&
       config->control_timeout_milliseconds <= LS200_GATEWAY_CONTROL_TIMEOUT_MILLISECONDS &&
@@ -119,29 +134,26 @@ static int control_exchange_input_is_valid(const ls200_gateway_config *config,
       ls200_gateway_control_socket_is_safe(config);
 }
 
-static void prepare_control_address(struct sockaddr_un *address,
-                                    const char *socket_path) {
+static void prepare_control_address(struct sockaddr_un *address, const char *socket_path) {
   (void)memset(address, 0, sizeof(*address));
   address->sun_family = AF_UNIX;
   (void)snprintf(address->sun_path, sizeof(address->sun_path), "%s", socket_path);
 }
 
-static int monotonic_milliseconds(uint64_t *milliseconds) {
+int gateway_monotonic_milliseconds(uint64_t *milliseconds) {
   struct timespec now;
-  if (milliseconds == NULL || clock_gettime(CLOCK_MONOTONIC, &now) != 0 ||
-      now.tv_sec < 0 || now.tv_nsec < 0) return 0;
-  *milliseconds = (uint64_t)now.tv_sec * UINT64_C(1000) +
-      (uint64_t)now.tv_nsec / UINT64_C(1000000);
+  if (milliseconds == NULL || clock_gettime(CLOCK_MONOTONIC, &now) != 0 || now.tv_sec < 0 || now.tv_nsec < 0)
+    return 0;
+  *milliseconds = (uint64_t)now.tv_sec * UINT64_C(1000) + (uint64_t)now.tv_nsec / UINT64_C(1000000);
   return 1;
 }
 
 static int control_deadline(const ls200_gateway_config *config, uint64_t *deadline) {
   uint64_t now;
   unsigned int timeout;
-  if (!monotonic_milliseconds(&now) || config == NULL || deadline == NULL) return 0;
-  timeout = config->control_timeout_milliseconds == 0U
-      ? LS200_GATEWAY_CONTROL_TIMEOUT_MILLISECONDS
-      : config->control_timeout_milliseconds;
+  if (!gateway_monotonic_milliseconds(&now) || config == NULL || deadline == NULL) return 0;
+  timeout = config->control_timeout_milliseconds == 0U ?
+      LS200_GATEWAY_CONTROL_TIMEOUT_MILLISECONDS : config->control_timeout_milliseconds;
   *deadline = now + (uint64_t)timeout;
   return 1;
 }
@@ -149,14 +161,13 @@ static int control_deadline(const ls200_gateway_config *config, uint64_t *deadli
 static int deadline_remaining_milliseconds(uint64_t deadline, int *remaining) {
   uint64_t now;
   uint64_t difference;
-  if (!monotonic_milliseconds(&now) || remaining == NULL || now >= deadline) return 0;
+  if (!gateway_monotonic_milliseconds(&now) || remaining == NULL || now >= deadline) return 0;
   difference = deadline - now;
   *remaining = (int)(difference > (uint64_t)INT_MAX ? INT_MAX : difference);
   return *remaining > 0;
 }
 
-static int wait_for_control_socket(int descriptor, short events, uint64_t deadline,
-                                   short *revents) {
+static int wait_for_control_socket(int descriptor, short events, uint64_t deadline, short *revents) {
   struct pollfd waiting;
   int remaining;
   int result;
@@ -200,12 +211,10 @@ static int socket_connect_complete(int descriptor) {
 static int wait_for_control_connect(int descriptor, uint64_t deadline) {
   short revents;
   return wait_for_control_socket(descriptor, POLLOUT, deadline, &revents) &&
-      (revents & (POLLERR | POLLHUP)) == 0 && (revents & POLLOUT) != 0 &&
-      socket_connect_complete(descriptor);
+      (revents & (POLLERR | POLLHUP)) == 0 && (revents & POLLOUT) != 0 && socket_connect_complete(descriptor);
 }
 
-static int connect_control_socket(const ls200_gateway_config *config,
-                                  const struct sockaddr_un *address,
+static int connect_control_socket(const ls200_gateway_config *config, const struct sockaddr_un *address,
                                   uint64_t deadline, int *packet_socket) {
   int descriptor;
   int connected;
@@ -240,8 +249,8 @@ static int connect_control_socket(const ls200_gateway_config *config,
 }
 
 static void build_control_request(uint8_t request[LS200_CONTROL_HEADER_BYTES + GATEWAY_LSZ1_MAX_PAYLOAD],
-                                  uint8_t opcode, uint32_t request_id,
-                                  const char *payload, size_t payload_length) {
+                                  uint8_t opcode, uint32_t request_id, const char *payload,
+                                  size_t payload_length) {
   uint16_t flags = 0U;
   uint32_t wire_id = htonl(request_id);
   uint32_t length = htonl((uint32_t)payload_length);
@@ -254,9 +263,8 @@ static void build_control_request(uint8_t request[LS200_CONTROL_HEADER_BYTES + G
   (void)memcpy(request + LS200_CONTROL_HEADER_BYTES, payload, payload_length);
 }
 
-static int send_control_request(int descriptor, const uint8_t *request,
-                                size_t request_length, int packet_socket,
-                                uint64_t deadline) {
+static int send_control_request(int descriptor, const uint8_t *request, size_t request_length,
+                                int packet_socket, uint64_t deadline) {
   size_t sent = 0U;
   short revents;
   ssize_t result;
@@ -281,8 +289,7 @@ static int send_control_request(int descriptor, const uint8_t *request,
   return 1;
 }
 
-static int receive_control_bytes(int descriptor, uint8_t *destination,
-                                 size_t length, uint64_t deadline) {
+static int receive_control_bytes(int descriptor, uint8_t *destination, size_t length, uint64_t deadline) {
   size_t received = 0U;
   short revents;
   ssize_t result;
@@ -313,8 +320,7 @@ static int stream_reply_has_no_trailing_bytes(int descriptor, uint64_t deadline)
 
 static int receive_control_reply(int descriptor,
                                  uint8_t reply[LS200_CONTROL_HEADER_BYTES + GATEWAY_LSZ1_MAX_PAYLOAD],
-                                 uint8_t opcode, uint32_t request_id,
-                                 int packet_socket, uint64_t deadline) {
+                                 uint8_t opcode, uint32_t request_id, int packet_socket, uint64_t deadline) {
   uint32_t payload_length;
   ssize_t received;
   struct iovec iov;
@@ -337,16 +343,14 @@ static int receive_control_reply(int descriptor,
   (void)memcpy(&payload_length, reply + 12U, sizeof(payload_length));
   payload_length = ntohl(payload_length);
   if (payload_length > GATEWAY_LSZ1_MAX_PAYLOAD ||
-      !receive_control_bytes(descriptor, reply + LS200_CONTROL_HEADER_BYTES,
-                             (size_t)payload_length, deadline) ||
+      !receive_control_bytes(descriptor, reply + LS200_CONTROL_HEADER_BYTES, (size_t)payload_length, deadline) ||
       !stream_reply_has_no_trailing_bytes(descriptor, deadline)) return 0;
   return ls200_gateway_frame_validate(reply, LS200_CONTROL_HEADER_BYTES + (size_t)payload_length,
                                       opcode, request_id);
 }
 
 static int copy_control_reply(const uint8_t reply[LS200_CONTROL_HEADER_BYTES + GATEWAY_LSZ1_MAX_PAYLOAD],
-                              uint8_t opcode, char *response,
-                              size_t response_capacity) {
+                              uint8_t opcode, char *response, size_t response_capacity) {
   uint16_t flags;
   uint32_t wire_id;
   uint32_t length;
@@ -363,8 +367,7 @@ static int copy_control_reply(const uint8_t reply[LS200_CONTROL_HEADER_BYTES + G
   /* Keep a bounded daemon error available to the settings route only, so a
    * stale revision remains distinguishable from a transport failure. */
   if ((flags & LS200_CONTROL_FRAME_ERROR) != 0U) return 2;
-  return ls200_gateway_backend_response_normalize(opcode, response, response,
-                                                   response_capacity);
+  return ls200_gateway_backend_response_normalize(opcode, response, response, response_capacity);
 }
 
 int ls200_gateway_control_exchange(void *context, uint8_t opcode, uint32_t request_id,
@@ -406,12 +409,18 @@ void ls200_gateway_redact(char *destination, size_t capacity, const char *source
   const char *sensitive[] = {"password", "token", "cookie", "authorization", "secret", "sip:"};
   size_t index, offset, match;
   if (destination == NULL || capacity == 0U) return;
-  if (source == NULL) { destination[0] = '\0'; return; }
+  if (source == NULL) {
+    destination[0] = '\0';
+    return;
+  }
   for (index = 0U; index < sizeof(sensitive) / sizeof(sensitive[0]); ++index) {
     for (offset = 0U; source[offset] != '\0'; ++offset) {
       for (match = 0U; sensitive[index][match] != '\0' && source[offset + match] != '\0' &&
            tolower((unsigned char)source[offset + match]) == sensitive[index][match]; ++match) {}
-      if (sensitive[index][match] == '\0') { (void)snprintf(destination, capacity, "[redacted]"); return; }
+      if (sensitive[index][match] == '\0') {
+        (void)snprintf(destination, capacity, "[redacted]");
+        return;
+      }
     }
   }
   (void)snprintf(destination, capacity, "%.*s", (int)(capacity - 1U), source);

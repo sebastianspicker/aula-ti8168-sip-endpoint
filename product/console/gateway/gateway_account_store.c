@@ -1,3 +1,10 @@
+#include "gateway_internal.h"
+
+#include <ctype.h>
+#include <openssl/crypto.h>
+#include <stdio.h>
+#include <string.h>
+
 static int load_account_value(ls200_gateway_account *account, json_t *value);
 
 static unsigned int account_values_admin_count(
@@ -10,8 +17,7 @@ static unsigned int account_values_admin_count(
   return count;
 }
 
-static int load_account_values(ls200_gateway_account accounts[LS200_GATEWAY_MAX_ACCOUNTS],
-                               json_t *values) {
+static int load_account_values(ls200_gateway_account accounts[LS200_GATEWAY_MAX_ACCOUNTS], json_t *values) {
   size_t index;
   if (!json_is_array(values) || json_array_size(values) == 0U ||
       json_array_size(values) > LS200_GATEWAY_MAX_ACCOUNTS) return 0;
@@ -32,15 +38,15 @@ static int load_safe_reference(ls200_gateway_safe_reference *reference, json_t *
   const char *meeting_id;
   const char *profile;
   const char *default_layout;
-  if (reference == NULL || !json_object_exact(value, keys, 5U)) return 0;
+  if (reference == NULL || !gateway_json_object_exact(value, keys, 5U)) return 0;
   id = json_string_value(json_object_get(value, "id"));
   name = json_string_value(json_object_get(value, "name"));
   meeting_id = json_string_value(json_object_get(value, "meeting_id"));
   profile = json_string_value(json_object_get(value, "profile"));
   default_layout = json_string_value(json_object_get(value, "default_layout"));
-  if (!safe_reference_id(id) || !safe_reference_name(name) ||
-      !safe_reference_meeting_id(meeting_id) || !safe_reference_profile(profile) ||
-      !safe_reference_layout(default_layout)) return 0;
+  if (!gateway_safe_reference_id(id) || !gateway_safe_reference_name(name) ||
+      !gateway_safe_reference_meeting_id(meeting_id) || !gateway_safe_reference_profile(profile) ||
+      !gateway_safe_reference_layout(default_layout)) return 0;
   (void)memset(reference, 0, sizeof(*reference));
   reference->used = 1;
   (void)snprintf(reference->id, sizeof(reference->id), "%s", id);
@@ -51,8 +57,7 @@ static int load_safe_reference(ls200_gateway_safe_reference *reference, json_t *
   return 1;
 }
 
-static int load_safe_references(ls200_gateway_safe_reference *references, size_t capacity,
-                                json_t *values) {
+static int load_safe_references(ls200_gateway_safe_reference *references, size_t capacity, json_t *values) {
   size_t index;
   if (references == NULL || !json_is_array(values) || json_array_size(values) > capacity)
     return 0;
@@ -66,7 +71,7 @@ static int load_safe_references(ls200_gateway_safe_reference *references, size_t
   return 1;
 }
 
-static int apply_loaded_account_v1(ls200_gateway *gateway, json_t *root) {
+int gateway_apply_loaded_account_v1(ls200_gateway *gateway, json_t *root) {
   static const char *const keys[] = {"bootstrap_disabled", "password_hash", "revision", "role", "salt", "username"};
   ls200_gateway_account account = {0};
   json_t *role;
@@ -74,17 +79,21 @@ static int apply_loaded_account_v1(ls200_gateway *gateway, json_t *root) {
   const char *salt;
   const char *stored_hash;
   int result = 0;
-  if (gateway == NULL || root == NULL || !json_object_exact(root, keys, 6U) || !json_is_integer(json_object_get(root, "revision")) ||
-      json_integer_value(json_object_get(root, "revision")) != 1 || !json_is_boolean(json_object_get(root, "bootstrap_disabled"))) {
+  if (gateway == NULL || root == NULL || !gateway_json_object_exact(root, keys, 6U) ||
+      !json_is_integer(json_object_get(root, "revision")) ||
+      json_integer_value(json_object_get(root, "revision")) != 1 ||
+      !json_is_boolean(json_object_get(root, "bootstrap_disabled"))) {
     goto cleanup;
   }
   username = json_string_value(json_object_get(root, "username"));
   salt = json_string_value(json_object_get(root, "salt"));
   stored_hash = json_string_value(json_object_get(root, "password_hash"));
   role = json_object_get(root, "role");
-  if (!is_safe_username(username) || !json_is_integer(role) || json_integer_value(role) < LS200_GATEWAY_ROLE_VIEWER ||
-      json_integer_value(role) > LS200_GATEWAY_ROLE_ADMIN || !hex_decode(salt, account.salt, LS200_GATEWAY_SALT_BYTES) ||
-      !hex_decode_32(stored_hash, account.password_hash)) goto cleanup;
+  if (!gateway_is_safe_username(username) || !json_is_integer(role) ||
+      json_integer_value(role) < LS200_GATEWAY_ROLE_VIEWER ||
+      json_integer_value(role) > LS200_GATEWAY_ROLE_ADMIN ||
+      !gateway_hex_decode(salt, account.salt, LS200_GATEWAY_SALT_BYTES) ||
+      !gateway_hex_decode_32(stored_hash, account.password_hash)) goto cleanup;
   account.configured = 1;
   account.role = (ls200_gateway_role)json_integer_value(role);
   (void)snprintf(account.username, sizeof(account.username), "%s", username);
@@ -108,27 +117,27 @@ static int load_account_value(ls200_gateway_account *account, json_t *value) {
   const char *salt;
   const char *stored_hash;
   json_t *role;
-  if (account == NULL || !json_object_exact(value, keys, 4U)) return 0;
+  if (account == NULL || !gateway_json_object_exact(value, keys, 4U)) return 0;
   username = json_string_value(json_object_get(value, "username"));
   salt = json_string_value(json_object_get(value, "salt"));
   stored_hash = json_string_value(json_object_get(value, "password_hash"));
   role = json_object_get(value, "role");
-  if (!is_safe_username(username) || !json_is_integer(role) ||
+  if (!gateway_is_safe_username(username) || !json_is_integer(role) ||
       json_integer_value(role) < LS200_GATEWAY_ROLE_VIEWER ||
       json_integer_value(role) > LS200_GATEWAY_ROLE_ADMIN ||
-      !hex_decode(salt, account->salt, LS200_GATEWAY_SALT_BYTES) ||
-      !hex_decode_32(stored_hash, account->password_hash)) return 0;
+      !gateway_hex_decode(salt, account->salt, LS200_GATEWAY_SALT_BYTES) ||
+      !gateway_hex_decode_32(stored_hash, account->password_hash)) return 0;
   account->configured = 1;
   account->role = (ls200_gateway_role)json_integer_value(role);
   (void)snprintf(account->username, sizeof(account->username), "%s", username);
   return 1;
 }
 
-static int apply_loaded_accounts_v2(ls200_gateway *gateway, json_t *root) {
+int gateway_apply_loaded_accounts_v2(ls200_gateway *gateway, json_t *root) {
   static const char *const keys[] = {"account_revision", "accounts", "bootstrap_disabled", "revision"};
   ls200_gateway_account accounts[LS200_GATEWAY_MAX_ACCOUNTS] = {{0}};
   int result = 0;
-  if (gateway == NULL || !json_object_exact(root, keys, 4U) ||
+  if (gateway == NULL || !gateway_json_object_exact(root, keys, 4U) ||
       !json_is_integer(json_object_get(root, "revision")) ||
       json_integer_value(json_object_get(root, "revision")) != 2 ||
       !json_is_integer(json_object_get(root, "account_revision")) ||
@@ -142,14 +151,14 @@ static int apply_loaded_accounts_v2(ls200_gateway *gateway, json_t *root) {
   gateway->directory_revision = 1U;
   (void)memset(gateway->directory, 0, sizeof(gateway->directory));
   (void)memset(gateway->recents, 0, sizeof(gateway->recents));
-  sync_legacy_account(gateway);
+  gateway_sync_legacy_account(gateway);
   result = 1;
 cleanup:
   OPENSSL_cleanse(accounts, sizeof(accounts));
   return result;
 }
 
-static int apply_loaded_store_v3(ls200_gateway *gateway, json_t *root) {
+int gateway_apply_loaded_store_v3(ls200_gateway *gateway, json_t *root) {
   static const char *const keys[] = {"account_revision", "accounts", "bootstrap_disabled", "directory",
       "directory_revision", "recents", "revision"};
   ls200_gateway_account accounts[LS200_GATEWAY_MAX_ACCOUNTS] = {{0}};
@@ -158,7 +167,7 @@ static int apply_loaded_store_v3(ls200_gateway *gateway, json_t *root) {
   json_t *account_revision;
   json_t *directory_revision;
   int result = 0;
-  if (gateway == NULL || !json_object_exact(root, keys, 7U) ||
+  if (gateway == NULL || !gateway_json_object_exact(root, keys, 7U) ||
       !json_is_integer(json_object_get(root, "revision")) ||
       json_integer_value(json_object_get(root, "revision")) != 3 ||
       !json_is_boolean(json_object_get(root, "bootstrap_disabled"))) goto cleanup;
@@ -179,7 +188,7 @@ static int apply_loaded_store_v3(ls200_gateway *gateway, json_t *root) {
   gateway->bootstrap_disabled = json_is_true(json_object_get(root, "bootstrap_disabled"));
   gateway->account_revision = (unsigned int)json_integer_value(account_revision);
   gateway->directory_revision = (unsigned int)json_integer_value(directory_revision);
-  sync_legacy_account(gateway);
+  gateway_sync_legacy_account(gateway);
   result = 1;
 cleanup:
   OPENSSL_cleanse(accounts, sizeof(accounts));

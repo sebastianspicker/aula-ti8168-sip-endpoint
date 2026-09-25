@@ -1,3 +1,7 @@
+#include "gateway_internal.h"
+
+#include <string.h>
+
 static int json_nonnegative_integer(json_t *object, const char *key) {
   json_t *value = json_object_get(object, key);
   return json_is_integer(value) && json_integer_value(value) >= 0;
@@ -15,8 +19,7 @@ static int aec_state_known(const char *state) {
 }
 
 static int aec_state_consistent(const char *state, int available, int active) {
-  int configured = strcmp(state, "uncalibrated") == 0 ||
-      strcmp(state, "calibrated") == 0;
+  int configured = strcmp(state, "uncalibrated") == 0 || strcmp(state, "calibrated") == 0;
   if (active != 0 && available == 0) return 0;
   if (available == 0 && strcmp(state, "inactive") != 0) return 0;
   if (configured != 0 && available == 0) return 0;
@@ -24,7 +27,7 @@ static int aec_state_consistent(const char *state, int available, int active) {
   return 1;
 }
 
-static int aec_status_valid(json_t *aec) {
+int gateway_aec_status_valid(json_t *aec) {
   static const char *const keys[] = {
       "delay_state", "available", "active", "processed_frames",
       "reference_underflows", "resets"};
@@ -32,7 +35,7 @@ static int aec_status_valid(json_t *aec) {
   int available;
   int active;
   if (aec == NULL) return 0;
-  if (!json_object_exact(aec, keys, 6U)) return 0;
+  if (!gateway_json_object_exact(aec, keys, 6U)) return 0;
   state = json_string_value(json_object_get(aec, "delay_state"));
   available = json_is_true(json_object_get(aec, "available"));
   active = json_is_true(json_object_get(aec, "active"));

@@ -17,8 +17,10 @@ def input_path(repository: Path, requested: str) -> Path:
     repository = repository.resolve(strict=True)
     evidence = repository / "evidence"
     lexical = Path(requested).absolute()
+    if _inside(lexical, evidence):
+        raise ValueError("repository evidence is not a build input")
     resolved = lexical.resolve(strict=True)
-    if _inside(lexical, evidence) or _inside(resolved, evidence.resolve(strict=False)):
+    if _inside(resolved, evidence.resolve(strict=False)):
         raise ValueError("repository evidence is not a build input")
     return resolved
 
