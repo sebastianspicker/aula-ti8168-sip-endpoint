@@ -2,6 +2,7 @@
   "name": "aula-ti8168-sip-endpoint-console",
   "private": true,
   "version": "0.1.0",
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",

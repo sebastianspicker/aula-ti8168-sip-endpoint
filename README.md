@@ -87,6 +87,11 @@ under ignored [`.work/`](docs/ARCHITECTURE.md#repository-and-data-boundaries).
 Private payloads, recovered firmware, vendor UI, credentials, and authenticated
 session material are not part of this repository.
 
+The physical-target scripts refer to a small number of pre-existing firmware
+paths and readiness interfaces. Those references are integration facts only:
+the referenced executables, libraries, services, firmware, and filesystem
+content are not copied, linked into this source tree, or redistributed here.
+
 ## Documentation
 
 - [Development and verification](docs/DEVELOPMENT.md)
@@ -97,5 +102,19 @@ session material are not part of this repository.
 - [QEMU model fidelity](lab/qemu/FIDELITY.md)
 - [Logical-emulator fidelity](lab/emulator/FIDELITY.md)
 
-There is no license file in this worktree, and no public release or supported
-product is currently offered.
+## License
+
+Unless a file or path carries a more specific notice, the maintainer-owned work
+in this repository is Copyright (c) 2026 Sebastian J. Spicker and licensed
+under the [GNU General Public License, version 3 or later](LICENSE).
+
+No upstream source tree, prebuilt dependency, firmware image or recovered
+vendor artifact is vendored here. The repository does contain three textual
+patches representing maintained changes for separately obtained QEMU, PJSIP
+and nginx sources; those paths retain their compatible upstream license terms.
+See [the third-party notices](THIRD_PARTY_NOTICES.md) and the canonical texts
+under [`LICENSES/`](LICENSES/).
+
+The source license does not by itself approve or establish a supported binary
+distribution. Every release artifact still needs its dependency, notice,
+security and target-validation gates completed.

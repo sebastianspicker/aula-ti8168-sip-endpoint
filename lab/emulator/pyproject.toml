@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "aula-emulator"
 version = "0.2.0"
 description = "Synthetic local recording and stream state model"
+license = { text = "GPL-3.0-or-later" }
 requires-python = ">=3.11"
 dependencies = []
 

@@ -73,20 +73,46 @@
 # Private research material
 /evidence/
 
-# Ephemeral dependency link created only while console commands run
-product/console/web/node_modules/
+# Ephemeral dependency stores. The console helper normally links its store
+# below .work, but keep accidental package-manager installs out everywhere.
+**/node_modules/
+**/.pnpm-store/
 
-# Product-sensitive local artifacts. Build, report, and package output belongs
-# below .work.
+# Local environment and credential files. Safe examples may be committed.
+**/.env
+**/.env.*
+**/*.env
+**/*.env.*
+!**/.env.example
+!**/.env.*.example
+!**/*.env.example
+!**/*.example.env
+!**/example.env
+**/.ssh/
+**/secrets/
+
+# Keys, certificates, captures, logs, and local runtime state
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.jks
+**/*.keystore
+**/*.crt
+**/*.cer
+**/*.pcap
+**/*.pcapng
+**/*.cap
+**/*.log
+**/*.sqlite
+**/*.sqlite3
+**/*.pid
+**/*.sock
+**/live-captures/
+
+# Product-local build inputs. Build, report, and package output belongs below
+# .work.
 product/sipd/.cache/
 product/sipd/sysroots/
 product/sipd/toolchains/
 product/sipd/staging/
-product/sipd/**/*.pcap
-product/sipd/**/*.pcapng
-product/sipd/**/*.cap
-product/sipd/**/*.log
-product/sipd/**/*.key
-product/sipd/**/*.pem
-product/sipd/**/secrets/
-product/sipd/**/live-captures/

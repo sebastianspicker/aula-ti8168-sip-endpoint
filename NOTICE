@@ -1,0 +1,16 @@
+Aula TI8168 SIP Endpoint
+Copyright (c) 2026 Sebastian J. Spicker
+
+Unless a file or path carries a more specific notice, the maintainer-owned
+work in this repository is licensed under the GNU General Public License,
+version 3 or (at your option) any later version.
+
+The complete default license is in LICENSE. Path-specific license texts are in
+LICENSES/, and THIRD_PARTY_NOTICES.md identifies the three maintained patches
+whose upstream-compatible terms differ from the repository default.
+
+This source repository does not vendor upstream source trees, prebuilt
+dependencies, firmware images, complete device dumps, recovered vendor
+material, credentials, private captures or authenticated session material.
+References to pre-existing target paths and interfaces do not include or
+redistribute the referenced firmware components.

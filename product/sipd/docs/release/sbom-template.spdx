@@ -5,7 +5,7 @@ DocumentName: aula-sipd-UNVERIFIED-TEMPLATE
 DocumentNamespace: https://example.invalid/aula-sipd/sbom/UNVERIFIED-TEMPLATE
 Creator: Tool: aula-sipd-sbom-template
 Created: 1970-01-01T00:00:00Z
-DocumentComment: TEMPLATE ONLY. Replace all NOASSERTION values from reviewed immutable release records. This document does not attest to a build, hash, license, source, or deployment.
+DocumentComment: TEMPLATE ONLY. The project package's declared source license and copyright are recorded below. Replace all remaining NOASSERTION values from reviewed immutable release records. This document does not attest to a build, hash, dependency-license conclusion, source acquisition, or deployment.
 
 PackageName: aula-sipd
 SPDXID: SPDXRef-Package-aula-sipd
@@ -13,9 +13,9 @@ PackageVersion: NOASSERTION
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
 PackageLicenseConcluded: NOASSERTION
-PackageLicenseDeclared: NOASSERTION
-PackageCopyrightText: NOASSERTION
-PackageComment: Project package. No release artifact has been verified in this template.
+PackageLicenseDeclared: GPL-3.0-or-later
+PackageCopyrightText: Copyright (c) 2026 Sebastian J. Spicker
+PackageComment: Project package default; path-specific licenses remain authoritative. No release artifact has been verified in this template.
 
 Relationship: SPDXRef-DOCUMENT DESCRIBES SPDXRef-Package-aula-sipd
 
