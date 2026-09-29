@@ -15,9 +15,9 @@
 #include <time.h>
 #include <unistd.h>
 
-#define LS200_PREVIEW_CONNECT_TIMEOUT_MS 2000
-#define LS200_PREVIEW_LEASE_POLL_MS 1000
-#define LS200_PREVIEW_ACCESS_UNIT_BYTES (2U * 1024U * 1024U)
+#define AULA_PREVIEW_CONNECT_TIMEOUT_MS 2000
+#define AULA_PREVIEW_LEASE_POLL_MS 1000
+#define AULA_PREVIEW_ACCESS_UNIT_BYTES (2U * 1024U * 1024U)
 
 typedef struct preview_output {
   FCGX_Request *request;
@@ -25,7 +25,7 @@ typedef struct preview_output {
 } preview_output;
 
 static void write_gateway_response(FCGX_Request *request,
-                                   const ls200_gateway_response *response) {
+                                   const aula_gateway_response *response) {
   (void)FCGX_FPrintF(request->out, "Status: %u\r\nContent-Type: %s\r\n",
                     response->status, response->content_type);
   if (response->set_cookie[0] != '\0') {
@@ -49,17 +49,17 @@ static void write_preview_error(FCGX_Request *request, unsigned int status,
       status, code, message);
 }
 
-int ls200_fastcgi_is_preview_path(const char *path) {
+int aula_fastcgi_is_preview_path(const char *path) {
   return path != NULL &&
          strcmp(path, "/zoom/api/v1/media/preview.flv") == 0;
 }
 
-static int reserve_preview(ls200_fastcgi_server *server,
-                           const ls200_gateway_request *request,
-                           ls200_gateway_preview_lease *lease,
-                           ls200_gateway_response *response) {
+static int reserve_preview(aula_fastcgi_server *server,
+                           const aula_gateway_request *request,
+                           aula_gateway_preview_lease *lease,
+                           aula_gateway_response *response) {
   int authorized;
-  authorized = ls200_gateway_preview_authorize(&server->gateway, request, lease,
+  authorized = aula_gateway_preview_authorize(&server->gateway, request, lease,
                                                response);
   (void)pthread_mutex_lock(&server->preview_mutex);
   if (authorized && server->preview_busy) authorized = -1;
@@ -68,15 +68,15 @@ static int reserve_preview(ls200_fastcgi_server *server,
   return authorized;
 }
 
-static void release_preview(ls200_fastcgi_server *server) {
+static void release_preview(aula_fastcgi_server *server) {
   (void)pthread_mutex_lock(&server->preview_mutex);
   server->preview_busy = 0;
   (void)pthread_mutex_unlock(&server->preview_mutex);
 }
 
-static int lease_is_valid(ls200_fastcgi_server *server,
-                          const ls200_gateway_preview_lease *lease) {
-  return ls200_gateway_preview_lease_valid(&server->gateway, lease,
+static int lease_is_valid(aula_fastcgi_server *server,
+                          const aula_gateway_preview_lease *lease) {
+  return aula_gateway_preview_lease_valid(&server->gateway, lease,
                                            (uint64_t)time(NULL));
 }
 
@@ -90,7 +90,7 @@ static int wait_for_descriptor(int descriptor, short events, int timeout_ms) {
          (poll_descriptor.revents & (POLLERR | POLLHUP | POLLNVAL)) == 0;
 }
 
-static int connect_preview_socket(const ls200_gateway_config *config) {
+static int connect_preview_socket(const aula_gateway_config *config) {
   struct sockaddr_in address;
   int descriptor;
   int flags;
@@ -114,7 +114,7 @@ static int connect_preview_socket(const ls200_gateway_config *config) {
               sizeof(address)) == 0) return descriptor;
   if (errno != EINPROGRESS ||
       !wait_for_descriptor(descriptor, POLLOUT,
-                           LS200_PREVIEW_CONNECT_TIMEOUT_MS) ||
+                           AULA_PREVIEW_CONNECT_TIMEOUT_MS) ||
       getsockopt(descriptor, SOL_SOCKET, SO_ERROR, &error, &error_length) != 0 ||
       error != 0) {
     (void)close(descriptor);
@@ -123,12 +123,12 @@ static int connect_preview_socket(const ls200_gateway_config *config) {
   return descriptor;
 }
 
-static int send_all(int descriptor, ls200_bytes bytes) {
+static int send_all(int descriptor, aula_bytes bytes) {
   size_t offset = 0U;
   while (offset < bytes.length) {
     ssize_t written;
     if (!wait_for_descriptor(descriptor, POLLOUT,
-                             LS200_PREVIEW_CONNECT_TIMEOUT_MS)) return 0;
+                             AULA_PREVIEW_CONNECT_TIMEOUT_MS)) return 0;
     written = send(descriptor, bytes.data + offset, bytes.length - offset,
 #ifdef MSG_NOSIGNAL
                    MSG_NOSIGNAL
@@ -146,7 +146,7 @@ static int send_all(int descriptor, ls200_bytes bytes) {
   return 1;
 }
 
-static ls200_status write_flv(void *context, ls200_bytes bytes) {
+static aula_status write_flv(void *context, aula_bytes bytes) {
   preview_output *output = (preview_output *)context;
   size_t offset = 0U;
   if (!output->headers_written) {
@@ -154,7 +154,7 @@ static ls200_status write_flv(void *context, ls200_bytes bytes) {
                     "Status: 200 OK\r\nContent-Type: video/x-flv\r\n"
                     "Cache-Control: no-store\r\n"
                     "X-Content-Type-Options: nosniff\r\n\r\n") < 0) {
-      return LS200_STATUS_IO_ERROR;
+      return AULA_STATUS_IO_ERROR;
     }
     output->headers_written = 1;
   }
@@ -163,52 +163,52 @@ static ls200_status write_flv(void *context, ls200_bytes bytes) {
     int chunk = remaining > (size_t)INT_MAX ? INT_MAX : (int)remaining;
     int written = FCGX_PutStr((const char *)bytes.data + offset, chunk,
                               output->request->out);
-    if (written != chunk) return LS200_STATUS_IO_ERROR;
+    if (written != chunk) return AULA_STATUS_IO_ERROR;
     offset += (size_t)written;
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
 static int consume_reader_output(int descriptor,
-                                 const ls200_mutable_bytes *request_bytes,
-                                 const ls200_preview_access_unit *unit,
-                                 ls200_preview_flv_mux *mux,
+                                 const aula_mutable_bytes *request_bytes,
+                                 const aula_preview_access_unit *unit,
+                                 aula_preview_flv_mux *mux,
                                  preview_output *output) {
   if (request_bytes->length != 0U &&
-      !send_all(descriptor, (ls200_bytes){request_bytes->data,
+      !send_all(descriptor, (aula_bytes){request_bytes->data,
                                          request_bytes->length})) return 0;
   if (unit->annex_b.length != 0U &&
-      ls200_preview_flv_mux_write(mux, unit, write_flv, output) !=
-          LS200_STATUS_OK) return 0;
+      aula_preview_flv_mux_write(mux, unit, write_flv, output) !=
+          AULA_STATUS_OK) return 0;
   return 1;
 }
 
-static int pump_reader(int descriptor, ls200_preview_reader *reader,
-                       ls200_preview_flv_mux *mux, preview_output *output,
-                       ls200_bytes input) {
-  uint8_t request_storage[LS200_PREVIEW_REQUEST_BYTES];
-  ls200_mutable_bytes request_bytes = {
+static int pump_reader(int descriptor, aula_preview_reader *reader,
+                       aula_preview_flv_mux *mux, preview_output *output,
+                       aula_bytes input) {
+  uint8_t request_storage[AULA_PREVIEW_REQUEST_BYTES];
+  aula_mutable_bytes request_bytes = {
       .data = request_storage,
       .capacity = sizeof(request_storage),
       .length = 0U,
   };
-  ls200_preview_access_unit unit;
-  ls200_status status = ls200_preview_reader_push(reader, input,
+  aula_preview_access_unit unit;
+  aula_status status = aula_preview_reader_push(reader, input,
                                                   &request_bytes, &unit);
-  while (status == LS200_STATUS_OK) {
+  while (status == AULA_STATUS_OK) {
     if (!consume_reader_output(descriptor, &request_bytes, &unit, mux, output))
       return 0;
-    status = ls200_preview_reader_drain(reader, &request_bytes, &unit);
+    status = aula_preview_reader_drain(reader, &request_bytes, &unit);
   }
-  return status == LS200_STATUS_AGAIN;
+  return status == AULA_STATUS_AGAIN;
 }
 
-static int open_preview_source(ls200_fastcgi_server *server,
-                               ls200_preview_reader **out_reader,
+static int open_preview_source(aula_fastcgi_server *server,
+                               aula_preview_reader **out_reader,
                                int *out_descriptor) {
-  uint8_t initial_request[LS200_PREVIEW_REQUEST_BYTES];
-  ls200_preview_reader_config reader_config;
-  ls200_mutable_bytes request_bytes = {
+  uint8_t initial_request[AULA_PREVIEW_REQUEST_BYTES];
+  aula_preview_reader_config reader_config;
+  aula_mutable_bytes request_bytes = {
       .data = initial_request,
       .capacity = sizeof(initial_request),
       .length = 0U,
@@ -219,20 +219,20 @@ static int open_preview_source(ls200_fastcgi_server *server,
   if (inet_pton(AF_INET, server->gateway.config.preview_rtsp_ipv4,
                 reader_config.target_ipv4) != 1) return 0;
   reader_config.target_port = server->gateway.config.preview_rtsp_port;
-  reader_config.maximum_access_unit_bytes = LS200_PREVIEW_ACCESS_UNIT_BYTES;
-  if (ls200_preview_reader_create(&reader_config, out_reader) != LS200_STATUS_OK)
+  reader_config.maximum_access_unit_bytes = AULA_PREVIEW_ACCESS_UNIT_BYTES;
+  if (aula_preview_reader_create(&reader_config, out_reader) != AULA_STATUS_OK)
     return 0;
   *out_descriptor = connect_preview_socket(&server->gateway.config);
   if (*out_descriptor >= 0 &&
-      ls200_preview_reader_start(*out_reader, &request_bytes) ==
-          LS200_STATUS_OK &&
+      aula_preview_reader_start(*out_reader, &request_bytes) ==
+          AULA_STATUS_OK &&
       send_all(*out_descriptor,
-               (ls200_bytes){request_bytes.data, request_bytes.length})) {
+               (aula_bytes){request_bytes.data, request_bytes.length})) {
     return 1;
   }
   if (*out_descriptor >= 0) (void)close(*out_descriptor);
   *out_descriptor = -1;
-  ls200_preview_reader_destroy(*out_reader);
+  aula_preview_reader_destroy(*out_reader);
   *out_reader = NULL;
   return 0;
 }
@@ -241,7 +241,7 @@ static int wait_for_preview_input(int descriptor) {
   struct pollfd poll_descriptor = {descriptor, POLLIN, 0};
   int result;
   do {
-    result = poll(&poll_descriptor, 1U, LS200_PREVIEW_LEASE_POLL_MS);
+    result = poll(&poll_descriptor, 1U, AULA_PREVIEW_LEASE_POLL_MS);
   } while (result < 0 && errno == EINTR);
   if (result <= 0) return result;
   if ((poll_descriptor.revents & POLLIN) != 0) return 1;
@@ -249,9 +249,9 @@ static int wait_for_preview_input(int descriptor) {
 }
 
 static void pump_preview_connection(
-    FCGX_Request *request, ls200_fastcgi_server *server,
-    const ls200_gateway_preview_lease *lease, int descriptor,
-    ls200_preview_reader *reader, ls200_preview_flv_mux *mux,
+    FCGX_Request *request, aula_fastcgi_server *server,
+    const aula_gateway_preview_lease *lease, int descriptor,
+    aula_preview_reader *reader, aula_preview_flv_mux *mux,
     preview_output *output) {
   uint8_t input[8192];
   while (lease_is_valid(server, lease)) {
@@ -262,42 +262,42 @@ static void pump_preview_connection(
     received = recv(descriptor, input, sizeof(input), 0);
     if (received > 0) {
       if (!pump_reader(descriptor, reader, mux, output,
-                       (ls200_bytes){input, (size_t)received})) return;
+                       (aula_bytes){input, (size_t)received})) return;
       if (output->headers_written && FCGX_FFlush(request->out) != 0) return;
       continue;
     }
     if (received == 0) {
-      (void)ls200_preview_reader_eof(reader);
+      (void)aula_preview_reader_eof(reader);
       return;
     }
     if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) return;
   }
 }
 
-static void stream_preview(FCGX_Request *request, ls200_fastcgi_server *server,
-                           const ls200_gateway_preview_lease *lease) {
-  ls200_preview_reader *reader = NULL;
-  ls200_preview_flv_mux mux;
+static void stream_preview(FCGX_Request *request, aula_fastcgi_server *server,
+                           const aula_gateway_preview_lease *lease) {
+  aula_preview_reader *reader = NULL;
+  aula_preview_flv_mux mux;
   preview_output output = {request, 0};
   int descriptor = -1;
   if (open_preview_source(server, &reader, &descriptor)) {
-    ls200_preview_flv_mux_init(&mux);
+    aula_preview_flv_mux_init(&mux);
     pump_preview_connection(request, server, lease, descriptor, reader, &mux,
                             &output);
   }
   if (descriptor >= 0) (void)close(descriptor);
-  ls200_preview_reader_destroy(reader);
+  aula_preview_reader_destroy(reader);
   if (!output.headers_written) {
     write_preview_error(request, 503U, "PREVIEW_SOURCE_UNAVAILABLE",
                         "local preview source is unavailable");
   }
 }
 
-void ls200_fastcgi_handle_preview(FCGX_Request *request,
-                                  ls200_fastcgi_server *server,
-                                  const ls200_gateway_request *api_request) {
-  ls200_gateway_preview_lease lease;
-  ls200_gateway_response response;
+void aula_fastcgi_handle_preview(FCGX_Request *request,
+                                  aula_fastcgi_server *server,
+                                  const aula_gateway_request *api_request) {
+  aula_gateway_preview_lease lease;
+  aula_gateway_response response;
   int reserved = reserve_preview(server, api_request, &lease, &response);
   if (reserved == 0) {
     write_gateway_response(request, &response);

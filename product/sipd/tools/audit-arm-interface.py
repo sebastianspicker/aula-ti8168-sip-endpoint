@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[1]
-EVIDENCE_ROOT = PROJECT.parents[1] / "evidence/firmware-analysis/extracted/rootfs/401900477/rootfs"
+EVIDENCE_ROOT = PROJECT.parents[1] / "evidence"
 SOURCE_SUFFIXES = {".c", ".h"}
 
 
@@ -49,7 +49,7 @@ def new_output(path: Path) -> Path:
         die("output parent symlink alias is forbidden")
     try:
         output.relative_to(EVIDENCE_ROOT.resolve(strict=False))
-        die("refusing to write inside immutable recovered evidence")
+        die("refusing to write inside protected evidence tree")
     except ValueError:
         return output
 
@@ -69,7 +69,7 @@ def load_policy(path: Path) -> dict[str, object]:
         policy = json.loads(regular_file(path, "policy").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         die(f"invalid policy: {error}")
-    if not isinstance(policy, dict) or policy.get("format") != "ls200-sipd-linux-2.6.37-interface-policy-v1" or policy.get("kernel_ceiling") != "2.6.37":
+    if not isinstance(policy, dict) or policy.get("format") != "aula-sipd-linux-2.6.37-interface-policy-v1" or policy.get("kernel_ceiling") != "2.6.37":
         die("policy format or kernel ceiling is invalid")
     if not isinstance(policy.get("glibc_max"), str) or not re.fullmatch(r"\d+\.\d+", policy["glibc_max"]):
         die("policy GLIBC ceiling is invalid")
@@ -235,7 +235,7 @@ def main() -> int:
     source_inventory, source_violations, conditional_source_findings = source_findings(args.source_root, policy)
     status = "pass" if not unexpected and not newer_glibc and not direct_svc_sites and not source_violations else "fail"
     report = {
-        "format": "ls200-sipd-linux-2.6.37-interface-audit-v2",
+        "format": "aula-sipd-linux-2.6.37-interface-audit-v2",
         "binary_sha256": sha256(binary),
         "kernel_ceiling": "2.6.37",
         "policy_sha256": sha256(policy_path),

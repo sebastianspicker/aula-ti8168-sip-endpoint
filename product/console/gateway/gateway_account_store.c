@@ -5,23 +5,23 @@
 #include <stdio.h>
 #include <string.h>
 
-static int load_account_value(ls200_gateway_account *account, json_t *value);
+static int load_account_value(aula_gateway_account *account, json_t *value);
 
 static unsigned int account_values_admin_count(
-    const ls200_gateway_account accounts[LS200_GATEWAY_MAX_ACCOUNTS]) {
+    const aula_gateway_account accounts[AULA_GATEWAY_MAX_ACCOUNTS]) {
   unsigned int count = 0U;
   size_t index;
-  for (index = 0U; index < LS200_GATEWAY_MAX_ACCOUNTS; ++index)
-    if (accounts[index].configured && accounts[index].role == LS200_GATEWAY_ROLE_ADMIN)
+  for (index = 0U; index < AULA_GATEWAY_MAX_ACCOUNTS; ++index)
+    if (accounts[index].configured && accounts[index].role == AULA_GATEWAY_ROLE_ADMIN)
       ++count;
   return count;
 }
 
-static int load_account_values(ls200_gateway_account accounts[LS200_GATEWAY_MAX_ACCOUNTS], json_t *values) {
+static int load_account_values(aula_gateway_account accounts[AULA_GATEWAY_MAX_ACCOUNTS], json_t *values) {
   size_t index;
   if (!json_is_array(values) || json_array_size(values) == 0U ||
-      json_array_size(values) > LS200_GATEWAY_MAX_ACCOUNTS) return 0;
-  (void)memset(accounts, 0, sizeof(ls200_gateway_account) * LS200_GATEWAY_MAX_ACCOUNTS);
+      json_array_size(values) > AULA_GATEWAY_MAX_ACCOUNTS) return 0;
+  (void)memset(accounts, 0, sizeof(aula_gateway_account) * AULA_GATEWAY_MAX_ACCOUNTS);
   for (index = 0U; index < json_array_size(values); ++index) {
     size_t other;
     if (!load_account_value(&accounts[index], json_array_get(values, index))) return 0;
@@ -31,7 +31,7 @@ static int load_account_values(ls200_gateway_account accounts[LS200_GATEWAY_MAX_
   return account_values_admin_count(accounts) > 0U;
 }
 
-static int load_safe_reference(ls200_gateway_safe_reference *reference, json_t *value) {
+static int load_safe_reference(aula_gateway_safe_reference *reference, json_t *value) {
   static const char *const keys[] = {"default_layout", "id", "meeting_id", "name", "profile"};
   const char *id;
   const char *name;
@@ -57,7 +57,7 @@ static int load_safe_reference(ls200_gateway_safe_reference *reference, json_t *
   return 1;
 }
 
-static int load_safe_references(ls200_gateway_safe_reference *references, size_t capacity, json_t *values) {
+static int load_safe_references(aula_gateway_safe_reference *references, size_t capacity, json_t *values) {
   size_t index;
   if (references == NULL || !json_is_array(values) || json_array_size(values) > capacity)
     return 0;
@@ -71,9 +71,9 @@ static int load_safe_references(ls200_gateway_safe_reference *references, size_t
   return 1;
 }
 
-int gateway_apply_loaded_account_v1(ls200_gateway *gateway, json_t *root) {
+int gateway_apply_loaded_account_v1(aula_gateway *gateway, json_t *root) {
   static const char *const keys[] = {"bootstrap_disabled", "password_hash", "revision", "role", "salt", "username"};
-  ls200_gateway_account account = {0};
+  aula_gateway_account account = {0};
   json_t *role;
   const char *username;
   const char *salt;
@@ -90,12 +90,12 @@ int gateway_apply_loaded_account_v1(ls200_gateway *gateway, json_t *root) {
   stored_hash = json_string_value(json_object_get(root, "password_hash"));
   role = json_object_get(root, "role");
   if (!gateway_is_safe_username(username) || !json_is_integer(role) ||
-      json_integer_value(role) < LS200_GATEWAY_ROLE_VIEWER ||
-      json_integer_value(role) > LS200_GATEWAY_ROLE_ADMIN ||
-      !gateway_hex_decode(salt, account.salt, LS200_GATEWAY_SALT_BYTES) ||
+      json_integer_value(role) < AULA_GATEWAY_ROLE_VIEWER ||
+      json_integer_value(role) > AULA_GATEWAY_ROLE_ADMIN ||
+      !gateway_hex_decode(salt, account.salt, AULA_GATEWAY_SALT_BYTES) ||
       !gateway_hex_decode_32(stored_hash, account.password_hash)) goto cleanup;
   account.configured = 1;
-  account.role = (ls200_gateway_role)json_integer_value(role);
+  account.role = (aula_gateway_role)json_integer_value(role);
   (void)snprintf(account.username, sizeof(account.username), "%s", username);
   (void)memset(gateway->accounts, 0, sizeof(gateway->accounts));
   gateway->accounts[0] = account;
@@ -111,7 +111,7 @@ cleanup:
   return result;
 }
 
-static int load_account_value(ls200_gateway_account *account, json_t *value) {
+static int load_account_value(aula_gateway_account *account, json_t *value) {
   static const char *const keys[] = {"password_hash", "role", "salt", "username"};
   const char *username;
   const char *salt;
@@ -123,19 +123,19 @@ static int load_account_value(ls200_gateway_account *account, json_t *value) {
   stored_hash = json_string_value(json_object_get(value, "password_hash"));
   role = json_object_get(value, "role");
   if (!gateway_is_safe_username(username) || !json_is_integer(role) ||
-      json_integer_value(role) < LS200_GATEWAY_ROLE_VIEWER ||
-      json_integer_value(role) > LS200_GATEWAY_ROLE_ADMIN ||
-      !gateway_hex_decode(salt, account->salt, LS200_GATEWAY_SALT_BYTES) ||
+      json_integer_value(role) < AULA_GATEWAY_ROLE_VIEWER ||
+      json_integer_value(role) > AULA_GATEWAY_ROLE_ADMIN ||
+      !gateway_hex_decode(salt, account->salt, AULA_GATEWAY_SALT_BYTES) ||
       !gateway_hex_decode_32(stored_hash, account->password_hash)) return 0;
   account->configured = 1;
-  account->role = (ls200_gateway_role)json_integer_value(role);
+  account->role = (aula_gateway_role)json_integer_value(role);
   (void)snprintf(account->username, sizeof(account->username), "%s", username);
   return 1;
 }
 
-int gateway_apply_loaded_accounts_v2(ls200_gateway *gateway, json_t *root) {
+int gateway_apply_loaded_accounts_v2(aula_gateway *gateway, json_t *root) {
   static const char *const keys[] = {"account_revision", "accounts", "bootstrap_disabled", "revision"};
-  ls200_gateway_account accounts[LS200_GATEWAY_MAX_ACCOUNTS] = {{0}};
+  aula_gateway_account accounts[AULA_GATEWAY_MAX_ACCOUNTS] = {{0}};
   int result = 0;
   if (gateway == NULL || !gateway_json_object_exact(root, keys, 4U) ||
       !json_is_integer(json_object_get(root, "revision")) ||
@@ -158,12 +158,12 @@ cleanup:
   return result;
 }
 
-int gateway_apply_loaded_store_v3(ls200_gateway *gateway, json_t *root) {
+int gateway_apply_loaded_store_v3(aula_gateway *gateway, json_t *root) {
   static const char *const keys[] = {"account_revision", "accounts", "bootstrap_disabled", "directory",
       "directory_revision", "recents", "revision"};
-  ls200_gateway_account accounts[LS200_GATEWAY_MAX_ACCOUNTS] = {{0}};
-  ls200_gateway_safe_reference directory[LS200_GATEWAY_MAX_DIRECTORY_ENTRIES] = {{0}};
-  ls200_gateway_safe_reference recents[LS200_GATEWAY_MAX_RECENTS] = {{0}};
+  aula_gateway_account accounts[AULA_GATEWAY_MAX_ACCOUNTS] = {{0}};
+  aula_gateway_safe_reference directory[AULA_GATEWAY_MAX_DIRECTORY_ENTRIES] = {{0}};
+  aula_gateway_safe_reference recents[AULA_GATEWAY_MAX_RECENTS] = {{0}};
   json_t *account_revision;
   json_t *directory_revision;
   int result = 0;
@@ -178,9 +178,9 @@ int gateway_apply_loaded_store_v3(ls200_gateway *gateway, json_t *root) {
       !json_is_integer(directory_revision) || json_integer_value(directory_revision) < 1 ||
       (uint64_t)json_integer_value(directory_revision) > UINT_MAX ||
       !load_account_values(accounts, json_object_get(root, "accounts")) ||
-      !load_safe_references(directory, LS200_GATEWAY_MAX_DIRECTORY_ENTRIES,
+      !load_safe_references(directory, AULA_GATEWAY_MAX_DIRECTORY_ENTRIES,
                             json_object_get(root, "directory")) ||
-      !load_safe_references(recents, LS200_GATEWAY_MAX_RECENTS,
+      !load_safe_references(recents, AULA_GATEWAY_MAX_RECENTS,
                             json_object_get(root, "recents"))) goto cleanup;
   (void)memcpy(gateway->accounts, accounts, sizeof(accounts));
   (void)memcpy(gateway->directory, directory, sizeof(directory));

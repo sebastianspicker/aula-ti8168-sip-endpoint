@@ -21,7 +21,7 @@ static uint64_t load_u64(const uint8_t input[8]) {
   v2 += v1; v1 = rotate_left(v1, 17U); v1 ^= v2; v2 = rotate_left(v2, 32U); \
 } while (0)
 
-static uint64_t siphash24(const uint8_t key[16], ls200_bytes input,
+static uint64_t siphash24(const uint8_t key[16], aula_bytes input,
                           uint64_t domain) {
   uint64_t k0 = load_u64(key), k1 = load_u64(key + 8U);
   uint64_t v0 = UINT64_C(0x736f6d6570736575) ^ k0 ^ domain;
@@ -42,8 +42,8 @@ static uint64_t siphash24(const uint8_t key[16], ls200_bytes input,
   return v0 ^ v1 ^ v2 ^ v3;
 }
 
-void ls200_control_request_fingerprint(
-    const uint8_t key[16], ls200_bytes payload, uint64_t output[2]) {
+void aula_control_request_fingerprint(
+    const uint8_t key[16], aula_bytes payload, uint64_t output[2]) {
   output[0] = siphash24(key, payload, UINT64_C(0));
   output[1] = siphash24(key, payload, UINT64_C(0xa5a5a5a5a5a5a5a5));
 }

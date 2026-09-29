@@ -13,22 +13,17 @@ is defined in this repository, its address cannot be documented here.
 
 ## Known inherited firmware risk
 
-Testing on one owned LS-200 running firmware `2.11.26.80` confirmed that an
-authenticated vendor management endpoint can pass attacker-controlled text to
-a root shell. The tested scope does not establish which other firmware versions
-or AREC products are affected.
-
-Until a vendor fix is obtained and verified:
+The maintained product does not audit or repair inherited firmware. Keep
+device-specific observations and remediation evidence in the private corpus.
+For physical lab use:
 
 - isolate the vendor management plane from untrusted networks;
 - do not expose it to the public Internet;
 - restrict management access to authorized operators;
-- avoid the affected RTMP connectivity-test function; and
-- monitor for unexpected management requests and shell children of the vendor
-  web service.
+- monitor for unexpected management requests.
 
-The maintained nginx, FastCGI gateway, and `ls200-sipd` controls do not repair
-or replace the vulnerable vendor management application.
+The maintained nginx, FastCGI gateway, and `aula-sipd` controls do not repair
+or replace inherited firmware management software.
 
 ## Maintained product boundaries
 

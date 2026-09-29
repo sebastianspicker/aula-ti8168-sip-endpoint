@@ -26,7 +26,7 @@ export function Auth({ onAuthenticated }: { onAuthenticated: (role: Role) => voi
     } catch (cause) { setError(cause as ApiError) } finally { setBusy(false) }
   }
 
-  return <main className="auth-page"><section className="auth-card" aria-labelledby="auth-title"><div className="auth-mark"><ShieldCheck aria-hidden="true" size={28} /></div><h1 id="auth-title">LS200 Console</h1><p>{mode === 'login' ? 'Sign in to view live device state and permitted controls.' : 'Create the one-time administrator account.'}</p><ErrorNotice error={error} />
+  return <main className="auth-page"><section className="auth-card" aria-labelledby="auth-title"><div className="auth-mark"><ShieldCheck aria-hidden="true" size={28} /></div><h1 id="auth-title">Aula Console</h1><p>{mode === 'login' ? 'Sign in to view live device state and permitted controls.' : 'Create the one-time administrator account.'}</p><ErrorNotice error={error} />
     <form onSubmit={submit} className="form-stack">
       <label>Username<input autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} minLength={1} maxLength={32} pattern={mode === 'bootstrap' ? '[A-Za-z0-9_\\-]+' : undefined} required /></label>
       <label>Password<input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} minLength={mode === 'bootstrap' ? 12 : 1} maxLength={256} required /></label>

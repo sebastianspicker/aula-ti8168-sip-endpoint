@@ -1,14 +1,14 @@
 SPDXVersion: SPDX-2.3
 DataLicense: CC0-1.0
 SPDXID: SPDXRef-DOCUMENT
-DocumentName: ls200-sipd-UNVERIFIED-TEMPLATE
-DocumentNamespace: https://example.invalid/ls200-sipd/sbom/UNVERIFIED-TEMPLATE
-Creator: Tool: ls200-sipd-sbom-template
+DocumentName: aula-sipd-UNVERIFIED-TEMPLATE
+DocumentNamespace: https://example.invalid/aula-sipd/sbom/UNVERIFIED-TEMPLATE
+Creator: Tool: aula-sipd-sbom-template
 Created: 1970-01-01T00:00:00Z
 DocumentComment: TEMPLATE ONLY. Replace all NOASSERTION values from reviewed immutable release records. This document does not attest to a build, hash, license, source, or deployment.
 
-PackageName: ls200-sipd
-SPDXID: SPDXRef-Package-ls200-sipd
+PackageName: aula-sipd
+SPDXID: SPDXRef-Package-aula-sipd
 PackageVersion: NOASSERTION
 PackageDownloadLocation: NOASSERTION
 FilesAnalyzed: false
@@ -17,7 +17,7 @@ PackageLicenseDeclared: NOASSERTION
 PackageCopyrightText: NOASSERTION
 PackageComment: Project package. No release artifact has been verified in this template.
 
-Relationship: SPDXRef-DOCUMENT DESCRIBES SPDXRef-Package-ls200-sipd
+Relationship: SPDXRef-DOCUMENT DESCRIBES SPDXRef-Package-aula-sipd
 
 PackageName: pjproject
 SPDXID: SPDXRef-Package-sip-stack
@@ -29,7 +29,7 @@ PackageLicenseDeclared: GPL-2.0-or-later
 PackageCopyrightText: NOASSERTION
 PackageComment: Exact host-proof selection only. Distribution approval and ARM closure remain open.
 
-Relationship: SPDXRef-Package-ls200-sipd DEPENDS_ON SPDXRef-Package-sip-stack
+Relationship: SPDXRef-Package-aula-sipd DEPENDS_ON SPDXRef-Package-sip-stack
 
 PackageName: libsrtp
 SPDXID: SPDXRef-Package-libsrtp
@@ -41,7 +41,7 @@ PackageLicenseDeclared: BSD-3-Clause
 PackageCopyrightText: NOASSERTION
 PackageComment: Exact host-proof source lock only. ARM closure and release packaging remain open.
 
-Relationship: SPDXRef-Package-ls200-sipd DEPENDS_ON SPDXRef-Package-libsrtp
+Relationship: SPDXRef-Package-aula-sipd DEPENDS_ON SPDXRef-Package-libsrtp
 
 PackageName: target-sysroot
 SPDXID: SPDXRef-Package-target-sysroot
@@ -51,6 +51,6 @@ FilesAnalyzed: false
 PackageLicenseConcluded: NOASSERTION
 PackageLicenseDeclared: NOASSERTION
 PackageCopyrightText: NOASSERTION
-PackageComment: Unapproved reconstructed development sysroot. Do not use this placeholder as runtime evidence.
+PackageComment: Upstream-only development sysroot not yet supplied or approved. This placeholder provides no runtime or redistribution evidence.
 
-Relationship: SPDXRef-Package-target-sysroot BUILD_DEPENDENCY_OF SPDXRef-Package-ls200-sipd
+Relationship: SPDXRef-Package-target-sysroot BUILD_DEPENDENCY_OF SPDXRef-Package-aula-sipd

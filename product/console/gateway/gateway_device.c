@@ -60,13 +60,13 @@ int gateway_device_backend_reply(const gateway_transaction *transaction, char *b
   int mutation = (transaction->plan.flags & R_MUTATION) != 0;
   const char *operation = mutation ? "credentials.replace" : "credentials.status";
   if (strcmp(transaction->request->path, "/zoom/api/v1/device/status") == 0)
-    return ls200_device_read_status(backend, capacity);
+    return aula_device_read_status(backend, capacity);
   if (!device_correlation(transaction, correlation)) return 0;
   arguments = mutation ? json_loads(transaction->request->body, JSON_REJECT_DUPLICATES, &error) : json_object();
   if (arguments == NULL) return 0;
   request = json_pack("{s:i,s:s,s:s,s:O}", "revision", 2, "operation", operation,
       "correlation", correlation, "arguments", arguments);
-  reply = request == NULL ? NULL : ls200_device_exchange(request);
+  reply = request == NULL ? NULL : aula_device_exchange(request);
   json_decref(arguments);
   json_decref(request);
   code = device_reply_code(reply, operation, correlation);
@@ -83,7 +83,7 @@ int gateway_device_backend_reply(const gateway_transaction *transaction, char *b
   return code;
 }
 
-void gateway_finish_device_reply(int code, const char *backend, ls200_gateway_response *response) {
+void gateway_finish_device_reply(int code, const char *backend, aula_gateway_response *response) {
   switch (code) {
     case 1: gateway_write_success(response, 200U, backend); break;
     case 2: gateway_write_error(response, 409U, "REVISION_CONFLICT",

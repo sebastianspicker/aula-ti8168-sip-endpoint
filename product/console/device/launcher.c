@@ -29,9 +29,9 @@ static int listener_directory(gid_t group) {
   if (!runtime_directory_safe()) return -1;
   root = open("/run", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
   if (root < 0) return -1;
-  int created = mkdirat(root, "ls200-device", 0700) == 0;
+  int created = mkdirat(root, "aula-device", 0700) == 0;
   if (!created && errno != EEXIST) { close(root); return -1; }
-  directory = openat(root, "ls200-device", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+  directory = openat(root, "aula-device", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
   close(root);
   if (directory < 0) return -1;
   if (created && (fchown(directory, 0, group) != 0 || fchmod(directory, 0750) != 0)) goto failed;
@@ -76,13 +76,13 @@ static int activate_socket(int directory, int fd, gid_t group) {
       fchmodat(directory, "control.sock", 0660, 0) == 0 && listen(fd, 16) == 0;
 }
 
-int ls200_device_listener(gid_t gateway_group) {
+int aula_device_listener(gid_t gateway_group) {
   struct sockaddr_un address;
   int directory = listener_directory(gateway_group), fd = -1, okay = 0;
   if (directory < 0) return -1;
   memset(&address, 0, sizeof(address));
   address.sun_family = AF_UNIX;
-  strcpy(address.sun_path, LS200_DEVICE_SOCKET);
+  strcpy(address.sun_path, AULA_DEVICE_SOCKET);
   if (!lock_listener(directory) || !recover_listener(directory, gateway_group, &address)) goto done;
   fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (fd < 0) goto done;

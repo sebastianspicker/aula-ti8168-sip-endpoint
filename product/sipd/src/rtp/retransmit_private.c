@@ -7,7 +7,7 @@
 #define RETRANSMIT_AGE_NS UINT64_C(500000000)
 #define RETRANSMIT_BURST_BYTES 3200U
 #define RETRANSMIT_BYTES_PER_SECOND 32000U
-#define RETRANSMIT_WIRE_BYTES (LS200_SIPD_MAX_RTP_PACKET_BYTES + LS200_RTP_SRTP_RTP_OVERHEAD_BYTES)
+#define RETRANSMIT_WIRE_BYTES (AULA_SIPD_MAX_RTP_PACKET_BYTES + AULA_RTP_SRTP_RTP_OVERHEAD_BYTES)
 
 typedef struct retransmit_entry {
   uint8_t wire[RETRANSMIT_WIRE_BYTES];
@@ -21,7 +21,7 @@ typedef struct retransmit_entry {
   int resent;
 } retransmit_entry;
 
-struct ls200_rtp_retransmit_cache {
+struct aula_rtp_retransmit_cache {
   retransmit_entry entries[RETRANSMIT_SLOTS];
   size_t next;
   size_t cursor;
@@ -30,31 +30,31 @@ struct ls200_rtp_retransmit_cache {
   int budget_initialized;
 };
 
-void ls200_rtp_retransmit_reset(ls200_rtp_session *session) {
+void aula_rtp_retransmit_reset(aula_rtp_session *session) {
   if (session != NULL && session->retransmit != NULL)
     (void)memset(session->retransmit, 0, sizeof(*session->retransmit));
 }
 
-void ls200_rtp_retransmit_destroy(ls200_rtp_session *session) {
+void aula_rtp_retransmit_destroy(aula_rtp_session *session) {
   if (session == NULL) return;
-  ls200_rtp_retransmit_reset(session);
+  aula_rtp_retransmit_reset(session);
   free(session->retransmit);
   session->retransmit = NULL;
 }
 
-ls200_status ls200_rtp_retransmit_enable(ls200_rtp_session *session, int enabled) {
-  if (session == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+aula_status aula_rtp_retransmit_enable(aula_rtp_session *session, int enabled) {
+  if (session == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   if (!enabled) {
-    ls200_rtp_retransmit_destroy(session);
-    return LS200_STATUS_OK;
+    aula_rtp_retransmit_destroy(session);
+    return AULA_STATUS_OK;
   }
   if (session->retransmit == NULL)
     session->retransmit = calloc(1U, sizeof(*session->retransmit));
-  return session->retransmit != NULL ? LS200_STATUS_OK : LS200_STATUS_INTERNAL_ERROR;
+  return session->retransmit != NULL ? AULA_STATUS_OK : AULA_STATUS_INTERNAL_ERROR;
 }
 
-void ls200_rtp_retransmit_store(ls200_rtp_session *session,
-    const ls200_rtp_packet *packet, ls200_bytes wire, uint64_t now_ns) {
+void aula_rtp_retransmit_store(aula_rtp_session *session,
+    const aula_rtp_packet *packet, aula_bytes wire, uint64_t now_ns) {
   retransmit_entry *entry;
   if (session == NULL || session->retransmit == NULL || packet == NULL ||
       wire.data == NULL || wire.length == 0U || wire.length > RETRANSMIT_WIRE_BYTES ||
@@ -72,12 +72,12 @@ void ls200_rtp_retransmit_store(ls200_rtp_session *session,
   session->retransmit->next = (session->retransmit->next + 1U) % RETRANSMIT_SLOTS;
 }
 
-ls200_status ls200_rtp_retransmit_request(ls200_rtp_session *session,
+aula_status aula_rtp_retransmit_request(aula_rtp_session *session,
     uint32_t media_ssrc, uint16_t pid, uint16_t blp) {
   size_t i;
-  if (session == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+  if (session == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   if (session->retransmit == NULL || media_ssrc != session->identity.ssrc)
-    return LS200_STATUS_PERMISSION_DENIED;
+    return AULA_STATUS_PERMISSION_DENIED;
   for (i = 0U; i < RETRANSMIT_SLOTS; ++i) {
     retransmit_entry *entry = &session->retransmit->entries[i];
     uint16_t distance = (uint16_t)(entry->sequence - pid);
@@ -86,10 +86,10 @@ ls200_status ls200_rtp_retransmit_request(ls200_rtp_session *session,
           (blp & (uint16_t)(1U << (distance - 1U))) != 0U)))
       entry->pending = 1;
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static void replenish_budget(struct ls200_rtp_retransmit_cache *cache, uint64_t now_ns) {
+static void replenish_budget(struct aula_rtp_retransmit_cache *cache, uint64_t now_ns) {
   uint64_t elapsed;
   uint64_t refill;
   if (!cache->budget_initialized) {
@@ -108,41 +108,41 @@ static void replenish_budget(struct ls200_rtp_retransmit_cache *cache, uint64_t 
   cache->budget_ns = now_ns;
 }
 
-static int entry_is_current(const ls200_rtp_session *session,
+static int entry_is_current(const aula_rtp_session *session,
     const retransmit_entry *entry, uint64_t now_ns) {
   return entry->length != 0U && now_ns >= entry->sent_ns &&
       now_ns - entry->sent_ns <= RETRANSMIT_AGE_NS &&
       entry->target_epoch == session->remote_target_epoch &&
-      ls200_rtp_payload_is_sendable(session, entry->payload_type);
+      aula_rtp_payload_is_sendable(session, entry->payload_type);
 }
 
-ls200_status ls200_rtp_retransmit_drain(ls200_rtp_session *session,
-    uint64_t now_ns, ls200_rtp_retransmit_delta *out_delta) {
+aula_status aula_rtp_retransmit_drain(aula_rtp_session *session,
+    uint64_t now_ns, aula_rtp_retransmit_delta *out_delta) {
   size_t i;
-  struct ls200_rtp_retransmit_cache *cache;
-  if (session == NULL || out_delta == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+  struct aula_rtp_retransmit_cache *cache;
+  if (session == NULL || out_delta == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   (void)memset(out_delta, 0, sizeof(*out_delta));
   cache = session->retransmit;
-  if (cache == NULL) return LS200_STATUS_OK;
+  if (cache == NULL) return AULA_STATUS_OK;
   if (!session->remote_target_set || session->rtp_socket < 0)
-    return LS200_STATUS_PERMISSION_DENIED;
+    return AULA_STATUS_PERMISSION_DENIED;
   if (session->srtp_enabled != 0 &&
-      ls200_rtp_srtp_usage_check(&session->srtp_outbound_usage) != LS200_STATUS_OK)
-    return LS200_STATUS_LIMIT_EXCEEDED;
+      aula_rtp_srtp_usage_check(&session->srtp_outbound_usage) != AULA_STATUS_OK)
+    return AULA_STATUS_LIMIT_EXCEEDED;
   replenish_budget(cache, now_ns);
   for (i = 0U; i < RETRANSMIT_SLOTS && out_delta->packets < 2U; ++i) {
     retransmit_entry *entry = &cache->entries[cache->cursor];
-    ls200_status status;
+    aula_status status;
     cache->cursor = (cache->cursor + 1U) % RETRANSMIT_SLOTS;
     if (!entry_is_current(session, entry, now_ns)) {
       (void)memset(entry, 0, sizeof(*entry));
       continue;
     }
     if (!entry->pending || entry->resent || entry->length > cache->budget) continue;
-    status = ls200_rtp_send_to_address(session->rtp_socket,
+    status = aula_rtp_send_to_address(session->rtp_socket,
         session->remote_target.rtp_address, session->remote_target.rtp_address_length,
-        session->remote_target.rtp_port, (ls200_bytes){entry->wire, entry->length});
-    if (status != LS200_STATUS_OK) return status;
+        session->remote_target.rtp_port, (aula_bytes){entry->wire, entry->length});
+    if (status != AULA_STATUS_OK) return status;
     entry->pending = 0;
     entry->resent = 1;
     cache->budget -= (uint32_t)entry->length;
@@ -150,5 +150,5 @@ ls200_status ls200_rtp_retransmit_drain(ls200_rtp_session *session,
     out_delta->payload_bytes += entry->payload_bytes;
     out_delta->wire_bytes += (uint32_t)entry->length;
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }

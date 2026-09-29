@@ -5,15 +5,15 @@ umask 077
 
 SCRIPT_DIR=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 die() { printf '%s\n' "error: $*" >&2; exit 1; }
-ROOT=${LS200_ZOOM_ROOT:-/}
+ROOT=${AULA_ZOOM_ROOT:-/}
 case $ROOT in /) ROOT= ;; /*) ROOT=${ROOT%/} ;; *) printf '%s\n' 'error: root must be absolute' >&2; exit 1 ;; esac
-STATE=$ROOT/var/lib/cbox/ls200-zoom
+STATE=$ROOT/var/lib/cbox/aula-ti8168-sip-endpoint
 JOURNAL=$STATE/owned-files
 NGINX_SELECTOR=$ROOT/var/lib/cbox/etc/nginx/nginx.conf
 NGINX_COPY_HTTP=$STATE/nginx_zoom_http.conf
 NGINX_COPY_HTTPS=$STATE/nginx_zoom_https.conf
-NGINX_OWNED_HTTP_TARGET=/var/lib/cbox/ls200-zoom/nginx_zoom_http.conf
-NGINX_OWNED_HTTPS_TARGET=/var/lib/cbox/ls200-zoom/nginx_zoom_https.conf
+NGINX_OWNED_HTTP_TARGET=/var/lib/cbox/aula-ti8168-sip-endpoint/nginx_zoom_http.conf
+NGINX_OWNED_HTTPS_TARGET=/var/lib/cbox/aula-ti8168-sip-endpoint/nginx_zoom_https.conf
 NGINX_SELECTOR_BACKUP=$STATE/nginx-selector.original
 LOCK=$STATE/remove.lock
 BOOTSTRAP_TX=$STATE/bootstrap-transaction
@@ -48,7 +48,7 @@ release_path() {
     case $1 in
         ''|.|..|*[!A-Za-z0-9._-]*) return 1 ;;
     esac
-    printf '%s/opt/ls200-zoom/releases/%s\n' "$ROOT" "$1"
+    printf '%s/opt/aula-ti8168-sip-endpoint/releases/%s\n' "$ROOT" "$1"
 }
 
 require_regular_file() {
@@ -110,7 +110,7 @@ restore_nginx_selector() {
     verify_nginx_selector_for_restore
     set -- $(read_selector_backup)
     original_target=$1
-    temporary=$(dirname "$NGINX_SELECTOR")/.nginx.conf.ls200-zoom-remove.$$
+    temporary=$(dirname "$NGINX_SELECTOR")/.nginx.conf.aula-ti8168-sip-endpoint-remove.$$
     [ ! -e "$temporary" ] && [ ! -L "$temporary" ] || { printf '%s\n' "error: nginx selector removal temporary path already exists: $temporary" >&2; exit 1; }
     ln -s "$original_target" "$temporary" || { printf '%s\n' 'error: cannot prepare nginx selector restoration' >&2; exit 1; }
     mv "$temporary" "$NGINX_SELECTOR" || { rm -f "$temporary"; printf '%s\n' 'error: cannot restore nginx selector' >&2; exit 1; }
@@ -129,13 +129,13 @@ remove_nginx_copy() {
 while IFS=: read -r kind value; do
     [ -n "$kind" ] || continue
     case $kind:$value in
-        link:/etc/init.d/S99ls200-zoom)
+        link:/etc/init.d/S99aula)
             target=$ROOT$value
-            expected=/opt/ls200-zoom/current/etc/init.d/S99ls200-zoom ;;
-        link:/etc/nginx/conf.d/zz-ls200-zoom-legacy.conf)
+            expected=/opt/aula-ti8168-sip-endpoint/current/etc/init.d/S99aula ;;
+        link:/etc/nginx/conf.d/zz-aula-ti8168-sip-endpoint-legacy.conf)
             target=$ROOT$value
-            expected=/opt/ls200-zoom/current/etc/nginx/conf.d/zz-ls200-zoom-legacy.conf ;;
-        link:/opt/ls200-zoom/current)
+            expected=/opt/aula-ti8168-sip-endpoint/current/etc/nginx/conf.d/zz-aula-ti8168-sip-endpoint-legacy.conf ;;
+        link:/opt/aula-ti8168-sip-endpoint/current)
             target=$ROOT$value
             expected= ;;
         nginx-copy:http)
@@ -202,4 +202,4 @@ if [ "$NGINX_SELECTOR_RESTORED" = 1 ]; then
     rm -f "$NGINX_SELECTOR_BACKUP"
 fi
 rm -f "$JOURNAL" "$STATE/active-version"
-printf '%s\n' 'removed LS-200 Zoom owned files; persistent state directory retained'
+printf '%s\n' 'removed Aula Zoom owned files; persistent state directory retained'

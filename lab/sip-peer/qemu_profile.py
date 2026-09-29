@@ -10,7 +10,7 @@ from __future__ import annotations
 from private_sip_peer import MEDIA_PORT_MAX, MEDIA_PORT_MIN, SipRtpPeer
 
 QEMU_PEER_ADDRESS = "10.0.2.2"
-QEMU_LS200_ADDRESS = "10.0.2.15"
+QEMU_AULA_ADDRESS = "10.0.2.15"
 QEMU_NAT_SOURCE_ADDRESS = "127.0.0.1"
 QEMU_NAT_PORT_MIN, QEMU_NAT_PORT_MAX = 1024, 65535
 
@@ -27,8 +27,8 @@ class PrivateSipPeer(SipRtpPeer):
         super().__init__(port, bind_address=bind_address, advertised_address=advertised_address,
                          authorized_source_address=authorized_source_address,
                          media_port_min=MEDIA_PORT_MIN, media_port_max=MEDIA_PORT_MAX,
-                         ls200_media_port_min=QEMU_NAT_PORT_MIN,
-                         ls200_media_port_max=QEMU_NAT_PORT_MAX,
+                         aula_media_port_min=QEMU_NAT_PORT_MIN,
+                         aula_media_port_max=QEMU_NAT_PORT_MAX,
                          withhold_first_invite_final=withhold_first_invite_final,
                          withheld_final_timeout=withheld_final_timeout,
                          peer_initiated_hangup=peer_initiated_hangup,

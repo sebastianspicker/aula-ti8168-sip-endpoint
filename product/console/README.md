@@ -1,21 +1,20 @@
-# LS200 Console
+# Aula console
 
-LS200 Console provides Room, Library, Schedule, and Settings navigation using
-the existing Zoom console design system. Room retains Zoom joining, directory,
+The Aula console for the [TI8168 media
+board](../../docs/reference/ti8168-board.md) provides Room, Library, Schedule,
+and Settings navigation using the existing Zoom console design system. Room
+retains Zoom joining, directory,
 recents and call controls alongside the authenticated local preview. Meeting
 mute and meeting layout are labelled separately from device input and picture
 settings. An activity bar keeps meeting hangup available on other destinations.
 The previous Zoom interface remains available at `/zoom/#legacy`.
 
-This is an incomplete unified interface: Library, Schedule and OEM settings
-explicitly report unavailable functionality. They do not invent empty data or
-claim unsupported hardware. The optional C17 device companion implements
-read-only recording/streaming status and a persistent job journal with restart
-reconciliation. Settings → Accounts includes a write-only OEM credential form with revision checks
-and automatic bounded session renewal. Recorder commands and browser job workflows
-are not connected yet. See its
-[coverage and contract](device/README.md) before enabling it. The original OEM
-interface and default device entry point have not been changed.
+This is an incomplete unified interface: Library, Schedule and device settings
+explicitly report unavailable functionality. The optional C17 companion
+retains a protected status protocol, persistent job journal, and write-only
+credential store. Its default recording and streaming status is `unknown`;
+it does not contact firmware or renew device sessions. Recorder commands and
+browser job workflows are not connected. See the [companion contract](device/README.md).
 
 ## Components
 
@@ -24,7 +23,7 @@ interface and default device entry point have not been changed.
 | `web/` | React 19, TypeScript, and Vite browser application |
 | `gateway/` | Authentication, authorization, persistence, HTTP schemas, LSZ1 translation, and preview delivery |
 | `nginx/` | TLS, static UI, request limits, browser headers, and explicit FastCGI route allowlist |
-| `device/` | Bounded OEM status, persistent job journal, and capability inventory |
+| `device/` | Protected projected status, persistent job journal, and credential state |
 | `tests/` | Gateway, FastCGI mapping, preview, and full request-contract tests |
 
 The browser calls same-origin `/zoom/api/v1/*` routes. nginx forwards only
@@ -60,7 +59,7 @@ After `ui-install`, start the UI-only development server with:
 sh tooling/console/with-dependencies.sh vite --host 127.0.0.1
 ```
 
-This does not start nginx, FastCGI, or `ls200-sipd`. Run the root
+This does not start nginx, FastCGI, or `aula-sipd`. Run the root
 `make test-product` for the integrated source gate.
 
 The optional FastCGI executable requires a separately reviewed FastCGI 2.4.7
@@ -77,7 +76,7 @@ No console build target downloads third-party source.
 
 ## Runtime configuration
 
-[`gateway/config/ls200-console.example.conf`](gateway/config/ls200-console.example.conf)
+[`gateway/config/aula-console.example.conf`](gateway/config/aula-console.example.conf)
 is a schema example, not production configuration. The required policy defines
 the browser Origin policy, daemon control socket, account store, expected daemon
 UID, and optional fixed preview source. Set `allowed_origin` to `"device"` for
@@ -104,12 +103,12 @@ and idempotency entries are memory-only. Account, directory, and recent-call
 state uses the gateway's owner-only atomic store.
 
 The four main destinations remain visible for every role. Settings requires an
-administrator before loading protected data. Its groups are Device, Picture &
-sound, Outputs, Network, Storage, Accounts, and Maintenance. SIP policy and write-only SIP credentials live in
-Outputs, console accounts in Accounts, and diagnostics in
-Maintenance. The previous Zoom interface retains its administrator-only
-navigation. Diagnostics exports download the gateway's redacted JSON response
-as a local file.
+administrator before loading protected data. Its groups are Calling, Accounts,
+and Diagnostics. Calling exposes SIP policy and write-only SIP credentials;
+Accounts manages console accounts and shows read-only stored device-credential
+metadata with an unavailable device-connection notice. Diagnostics exports
+download the gateway's redacted JSON response as a local file. The previous
+Zoom interface retains its administrator-only navigation.
 
 State operations hold a gateway mutex; daemon exchanges hold a separate control
 mutex. Transactions copy bounded requests and principals, recheck authorization,

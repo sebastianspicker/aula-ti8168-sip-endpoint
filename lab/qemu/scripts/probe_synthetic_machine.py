@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the LS-200 machine qtest against generated sparse NAND fixtures only."""
+"""Run the synthetic TI8168 machine against generated sparse NAND fixtures."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import tempfile
 from probe_runtime import (
     machine_help_line,
     probe_dmm_bootstrap,
-    probe_recovered_sram,
+    probe_sram,
     probe_wfi_barrier,
     verify_base_registers,
 )
@@ -26,9 +26,9 @@ GPMC_NAND_DATA = GPMC + 0x84
 NAND_PAGE_SIZE = 0x800
 NAND_OOB_SIZE = 0x40
 NAND_PAGES_PER_BLOCK = 0x40
-MTD7_OFFSET = 0x1C240000
-MTD7_SIZE = 0x01400000
-MTD7_OOB_SIZE = 0x000A0000
+BANK0_OFFSET = 0
+BANK0_SIZE = 0x10000000
+BANK0_OOB_SIZE = 0x00800000
 BACKING_MAIN = bytes((0xF3, 0xA5))
 BACKING_OOB = bytes((0xB7,))
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
@@ -96,17 +96,17 @@ def erase_block(qtest: object, row: int) -> None:
 
 def machine_properties(main_path: Path, oob_path: Path) -> str:
     return (
-        "ti8168-ls200,nand-profile=synthetic-read-only,nand-cow=on,"
-        f"nand-mtd7-image={main_path},nand-mtd7-oob-image={oob_path}"
+        "ti8168-mediaboard,nand-profile=synthetic-read-only,nand-cow=on,"
+        f"nand-mtd0-image={main_path},nand-mtd0-oob-image={oob_path}"
     )
 
 
 def exercise_process(qemu: Path, machine: str, mutate: bool) -> None:
-    row = MTD7_OFFSET // NAND_PAGE_SIZE
+    row = BANK0_OFFSET // NAND_PAGE_SIZE
     adjacent_row = row + NAND_PAGES_PER_BLOCK
-    with qtest_only(qemu, machine, "ls200-synthetic-qtest-") as qtest:
+    with qtest_only(qemu, machine, "aula-synthetic-qtest-") as qtest:
         verify_base_registers(qtest)
-        probe_recovered_sram(qtest)
+        probe_sram(qtest)
         probe_wfi_barrier(qtest)
         probe_dmm_bootstrap(qtest)
         expect_byte(qtest, row, 0, BACKING_MAIN[0])
@@ -132,19 +132,19 @@ def main() -> int:
     qemu = Path(sys.argv[1]).resolve(strict=True)
     FIXTURE_PARENT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
-        prefix="ls200-synthetic-nand-", dir=FIXTURE_PARENT
+        prefix="aula-synthetic-nand-", dir=FIXTURE_PARENT
     ) as name:
         fixture_dir = Path(name)
-        main_path = fixture_dir / "mtd7.bin"
-        oob_path = fixture_dir / "mtd7.oob.bin"
+        main_path = fixture_dir / "bank0.bin"
+        oob_path = fixture_dir / "bank0.oob.bin"
         create_sparse_fixture(
             main_path,
-            MTD7_SIZE,
+            BANK0_SIZE,
             ((0, BACKING_MAIN), (NAND_PAGES_PER_BLOCK * NAND_PAGE_SIZE, b"\x5a")),
         )
         create_sparse_fixture(
             oob_path,
-            MTD7_OOB_SIZE,
+            BANK0_OOB_SIZE,
             ((0, BACKING_OOB), (NAND_PAGES_PER_BLOCK * NAND_OOB_SIZE, b"\x6b")),
         )
         machine = machine_properties(main_path, oob_path)

@@ -1,8 +1,10 @@
-# Physical LS-200 private-lab workflow
+# Physical target private-lab workflow
 
-This workflow operates a maintained payload on one owned LS-200 over an
-isolated link. It is not a public Zoom test, release approval, firmware update,
-or authorization to discover or access another device.
+The maintained public campaign CLI refuses all physical actions before loading
+a session or contacting a target. Physical campaigns require separately reviewed
+private identity tooling and action-specific authorization. The contract below
+describes an owned target device on an isolated link; it is not a public Zoom
+test, release approval, firmware update, or authorization to access another device.
 
 The workflow can install, start, smoke-test, soak, reboot, roll back, and remove
 project-owned state. It never writes MTD/UBI firmware partitions. It depends on
@@ -15,13 +17,13 @@ Keep all target-specific values outside version control. Before contact, the
 operator must have:
 
 - documented ownership and recovery authority for the unit;
-- a mode-`0600`, singly linked `ls200-live-session-v1` JSON file below `.work`
+- a mode-`0600`, singly linked `aula-ti8168-sip-endpoint-live-session-v1` JSON file below `.work`
   or ignored `evidence/private`;
 - the approved host interface, target/host addresses, expected MAC, and
   independently verified SSH host-key fingerprint;
 - reviewed version identifiers, port ranges, resource limits, and approved
   phase list;
-- an absolute hash-reviewed `ls200-live-build-inputs-v1` manifest; and
+- an absolute hash-reviewed `aula-ti8168-sip-endpoint-live-build-inputs-v1` manifest; and
 - an absolute reviewed ARM entropy helper for the QEMU gate.
 
 The session parser rejects unknown or duplicate keys, secret fields, public or
@@ -54,9 +56,10 @@ cache. Add the optional `toolchain.node` path and SHA-256 record when the host
 Node executable is outside the restricted system PATH; the example includes it.
 The UI build requires a ready cache and cannot install dependencies.
 `live-package` emits a restrictive digest receipt
-only after the independent payload verifier accepts the runtime. `live-gates`
-runs the repository gate and two-slot QEMU acceptance, then binds their receipt
-to the payload, build inputs, entropy helper, and maintained-source digest.
+only after the independent payload verifier accepts the runtime. `live-gates` requires the repository gate and two-slot QEMU product acceptance
+before binding a receipt to the payload, build inputs, entropy helper, and
+maintained-source digest. The old acceptance lane is absent from the synthetic
+QEMU model, so this gate currently fails closed and cannot issue a receipt.
 
 Any source or input change invalidates the receipt. Do not edit or replace an
 approved payload after packaging.
@@ -74,24 +77,12 @@ change.
 
 ## Ordered campaign
 
-Export only the absolute private session path:
-
-```sh
-export LIVE_SESSION=/absolute/private/session.json
-make live-preflight
-LIVE_CONFIRM=YES make live-install
-LIVE_CONFIRM=YES make live-smoke
-LIVE_CONFIRM=YES make live-soak-30
-LIVE_CONFIRM=YES make live-soak-60
-LIVE_CONFIRM=YES LIVE_REBOOT_CONFIRM=GRACEFUL make live-reboot
-LIVE_CONFIRM=YES LIVE_PURGE_CONFIRM=PURGE make live-remove
-```
-
-`live-preflight` revalidates the route, local address, neighbor identity, SSH
-fingerprint, device identity, firmware baseline, root-SSH substrate, vendor
-media readiness, free space, memory floor, package, and gate receipt. Every
-mutating phase repeats the relevant checks and requires the exact uppercase
-confirmation.
+The maintained `live-*` campaign actions cannot run until a separately
+reviewed private identity provider is supplied. A private campaign plan must
+order preflight, install, smoke, soak, reboot, and removal. Before contact or
+mutation it must revalidate route, neighbor and SSH identity, root-SSH
+substrate, media readiness, capacity, package, and gate receipts. The offline
+contracts in this tree are not physical acceptance evidence.
 
 Run only phases listed in the reviewed session. Do not skip from preflight to a
 later phase, reuse a session for a different target, or edit the journal to
@@ -108,14 +99,8 @@ that its boot identity changed. Soak phases require the private
 media dialog and enforce resource-growth bounds; service idle time is not a
 substitute.
 
-For an explicitly approved bounded deployment check, run the maintained media
-soak for 15 minutes after smoke:
-
-```sh
-LIVE_CONFIRM=YES make live-soak-15
-```
-
-This action keeps an active private media dialog for 15 minutes, samples once
+An explicitly approved private bounded soak keeps an active media dialog for
+15 minutes after smoke and samples once
 per minute, keeps the fixed 10-minute warmup and the same resource envelope,
 and uses the existing call-hangup and peer-process cleanup path. It requires
 `soak-15` in the session's approved phase list and does not satisfy either

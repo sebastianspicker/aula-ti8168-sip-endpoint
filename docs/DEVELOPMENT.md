@@ -45,9 +45,12 @@ third-party policy.
 | --- | --- |
 | `make verify` | Layout, quality, product, lab, and deployment gates over tracked source; passes from a clean clone |
 | `make check-layout` | Canonical roots, generated/private paths, and symlink policy |
+| `make check-source-boundary` | Reject private paths, non-source artifacts, and the known vendor manual in maintained files; included in `verify` |
+| `make check-public-release` | Check exact committed source approvals; fails with the current empty approval list |
+| `make release-source` | Export only approved committed bytes to `.work/dist/public/source.tar`; no publication |
 | `make quality` | Locked Lizard and exact-clone checks over the maintained-source manifest |
 | `make test-product` | SIP daemon verifier, gateway tests, preview tests, UI tests, and UI build |
-| `make test-lab` | Emulator verification, QEMU/live pytest suites, QEMU script checks, and deployment contracts |
+| `make test-lab` | Synthetic emulator tests, QEMU pytest and script checks, SIP peer tests, and deployment contracts |
 | `make test-deployment` | Payload, live-target, QEMU-target, and campaign contract suites |
 | `make verify-evidence` | Evidence-corpus quality and reproducibility tests |
 | `make verify-all` | `verify` plus `verify-native`, `verify-qemu-model`, and `verify-evidence` |
@@ -60,6 +63,10 @@ layout rules, dependency leases, and compiler dependency rebuilding.
 There is no repository-wide Markdown, C, Python, or TypeScript formatter target.
 Do not substitute an inferred formatter for a configured gate.
 
+Public-source checks are separate from private lab packaging. No existing
+payload, QEMU image, evidence bundle, or Git-history mirror is approved for
+public release. See [public release policy](PUBLIC_RELEASE.md).
+
 ### Evidence lane
 
 `make verify-evidence` covers the untracked `evidence/` research corpus: it
@@ -68,7 +75,7 @@ suites under `evidence/firmware-analysis/reverse_engineering/tools/tests`, the
 reproducibility checks for the declarative-dataflow, kernel-ABI, and
 deep-userland generators, and every test marked `corpus` in
 `tooling/quality`, `tooling/console`, `lab/emulator`, and `lab/qemu` with
-`LS200_REQUIRE_EVIDENCE=1` set. It exits 2 when
+`AULA_REQUIRE_EVIDENCE=1` set. It exits 2 when
 `evidence/firmware-analysis/reverse_engineering/tools/tests` is absent, so it
 fails clearly rather than silently skipping in a clean clone. `make verify`
 does not depend on it and does not require `evidence/` to be present;
@@ -84,8 +91,8 @@ hosts:
 
 ```sh
 export PATH="$PWD/.work/cache/cmake-format-venv/bin:$PATH"
-export LS200_FUZZ_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang
-export LS200_FUZZ_BUILD_DIR="$PWD/.work/build/sipd-fuzz"
+export AULA_FUZZ_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang
+export AULA_FUZZ_BUILD_DIR="$PWD/.work/build/sipd-fuzz"
 export DYLD_LIBRARY_PATH=/opt/homebrew/opt/llvm@22/lib:/opt/homebrew/opt/zstd/lib
 ```
 
@@ -94,7 +101,7 @@ The fuzz build directory needs a pre-seeded CMake cache before
 the Homebrew Clang toolchain by default:
 
 ```sh
-cmake -S product/sipd -B .work/build/sipd-fuzz -DLS200_SIPD_BUILD_TESTS=OFF -DLS200_SIPD_BUILD_FUZZ=ON \
+cmake -S product/sipd -B .work/build/sipd-fuzz -DAULA_SIPD_BUILD_TESTS=OFF -DAULA_SIPD_BUILD_FUZZ=ON \
   -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang -DCMAKE_AR=/usr/bin/ar -DCMAKE_RANLIB=/usr/bin/ranlib
 ```
 
@@ -110,7 +117,7 @@ For a focused host build from the root:
 
 ```sh
 cmake -S product/sipd -B .work/build/sipd \
-  -DLS200_SIPD_BUILD_TESTS=ON
+  -DAULA_SIPD_BUILD_TESTS=ON
 cmake --build .work/build/sipd
 ctest --test-dir .work/build/sipd --output-on-failure
 ```
@@ -120,7 +127,7 @@ integration tests, coverage, sanitizers, and a bounded fuzz smoke test:
 
 ```sh
 mkdir -p .work/build .work/cache .work/dist .work/reports
-LS200_SIPD_VERIFY_ENABLE=1 \
+AULA_SIPD_VERIFY_ENABLE=1 \
   sh product/sipd/tools/verify-repository.sh --run
 ```
 
@@ -188,65 +195,34 @@ workers, preview cancellation, and lease release. It requires native host
 FastCGI libraries; ARM archives cannot substitute. It does not establish nginx
 TLS termination or physical-device acceptance.
 
-## Logical emulator
+## Synthetic emulator
 
-From `lab/emulator`:
-
-```sh
-make verify
-make run
-```
-
-`make run` serves the logical control and vendor-compatible web surfaces on
-loopback and persists fixture state below the root `.work` directory. Run the
-control service alone with `make server`.
-
-Optional synthetic media requires Docker and FFmpeg:
-
-```sh
-make compose-check
-make media-up
-make media-check
-make media-down
-```
-
-`make arm-check` is a dry-run capability check. An actual ARM userspace probe
-requires a separately available `linux/arm/v7` image and the explicit
-`scripts/run-armv7-lab.sh --execute` path. Hardware investigation commands have
-additional authorization and private-evidence requirements; use the
-[emulator README](../lab/emulator/README.md).
+From the repository root, run `make -C lab/emulator verify-core`. The
+maintained package models only local recording and stream state; it has no
+control listener, firmware web API, or device access. Its CLI requires an
+explicit state file below `.work/`. See the [emulator README](../lab/emulator/README.md)
+for commands and the intentional old-state incompatibility.
 
 ## QEMU
 
 From the root:
 
-```sh
-make qemu-build
-make qemu-verify
-make qemu-run
-```
-
-`make qemu-build` fetches QEMU tag `v11.0.3` when needed, verifies the pinned
-source identity, applies the maintained machine worktree, and builds
-`qemu-system-arm` with Ninja below `.work`. `make qemu-verify` requires that
-source and binary; invoking `lab/qemu/scripts/verify.sh` directly without them
-can perform only the available subset.
-
-Booting requires the complete private recovered NAND main/OOB input set. See
-[`lab/qemu/README.md`](../lab/qemu/README.md) for slot selection, web mode,
-debug endpoints, and the current emulation boundary.
+The maintained QEMU lane verifies the synthetic TI8168 media-board model.
+Use the [QEMU README](../lab/qemu/README.md) with an existing pinned local
+source checkout and explicit reviewed guest image for model work. The old
+recovered NAND/web launcher, payload overlay target, and two-slot product
+acceptance target are unavailable. `make qemu-run`, `make package-qemu`, and
+`make qemu-acceptance` fail closed; this also prevents issuance of a live local
+gate receipt that requires QEMU product acceptance.
 
 ## Packaging and physical-device lanes
 
-`make package-ls200` requires `SIPD_BINARY`, `GATEWAY_BINARY`, `DEVICE_BINARY`, `NGINX_BINARY`,
+`make package-ti8168` requires `SIPD_BINARY`, `GATEWAY_BINARY`, `DEVICE_BINARY`, `NGINX_BINARY`,
 `ATOMIC_REPLACE_BINARY`, `MIME_TYPES`, and `FASTCGI_PARAMS`. It verifies and
-assembles those inputs below `.work/dist/ls200` and emits an adjacent
-`payload-manifest.sha256` receipt. `make package-qemu` passes that receipt
-to the overlay builder. Direct overlay callers must pass the independently
-retained manifest digest as the third argument; general installation requires
-`LS200_ZOOM_MANIFEST_SHA256`. Keep the receipt with the reviewed build records,
-separate from the candidate runtime tree. QEMU bootstrap carries it alongside
-the trusted verifier and validates installed releases against it.
+assembles those inputs below `.work/dist/aula-ti8168-sip-endpoint` and emits an adjacent
+`payload-manifest.sha256` receipt. Keep the receipt with the reviewed build records, separate from the candidate
+runtime tree. The former QEMU overlay route is not a maintained acceptance
+path for the synthetic machine model.
 
 The `live-build`, `live-package`, `live-gates`, `live-preflight`,
 `live-install`, `live-smoke`, soak, reboot, and removal targets are not ordinary
@@ -269,7 +245,7 @@ response latency during login hashing and delayed mutations, plus synthetic
 SIP/media work, retaining latency distributions, CPU, memory, and workload
 counters. Gateway CPU samples cover the measured status-request window, so
 they do not represent total login hashing cost. Run both revisions under
-comparable host load. These measurements do not predict physical LS-200 or
+comparable host load. These measurements do not predict physical target-device or
 network performance.
 
 Optimization measurements belong under `.work/reports/optimization`. Compare
@@ -291,10 +267,10 @@ make verify-all NATIVE_INPUTS=/absolute/path/native-inputs.json \
   QEMU_BASE_SOURCE=/absolute/path/pinned-qemu
 ```
 
-The native JSON object maps each `LS200_SIPD_<name>_INCLUDE_DIR` for `PJSIP`,
+The native JSON object maps each `AULA_SIPD_<name>_INCLUDE_DIR` for `PJSIP`,
 `FAAD2`, `SPEEXDSP`, and `SRTP` to an explicit native include directory. It maps
-`LS200_SIPD_<name>_LIBRARY` for `PJSIP_UA`, `PJMEDIA`, `FAAD2`, `SPEEXDSP`, and
-`SRTP` to an explicit library file. `LS200_SIPD_PJSIP_LIBRARIES` is a nonempty
+`AULA_SIPD_<name>_LIBRARY` for `PJSIP_UA`, `PJMEDIA`, `FAAD2`, `SPEEXDSP`, and
+`SRTP` to an explicit library file. `AULA_SIPD_PJSIP_LIBRARIES` is a nonempty
 array of absolute library paths in link order, including reviewed transitive
 libraries. Relative paths and linker discovery flags are rejected. Review these
 inputs against the dependency records before running this lane. ARM target

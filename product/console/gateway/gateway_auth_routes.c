@@ -14,18 +14,18 @@ static int login_schema_valid(json_t *root, const char *username, const char *pa
 }
 
 typedef struct login_hash_snapshot {
-  ls200_gateway_account account;
+  aula_gateway_account account;
   unsigned int revision;
 } login_hash_snapshot;
 
-static void snapshot_login_account(const ls200_gateway *gateway, const char *username,
+static void snapshot_login_account(const aula_gateway *gateway, const char *username,
                                    login_hash_snapshot *snapshot) {
-  static const uint8_t salt_dummy[LS200_GATEWAY_SALT_BYTES] = {
+  static const uint8_t salt_dummy[AULA_GATEWAY_SALT_BYTES] = {
       0x6c, 0x73, 0x32, 0x30, 0x30, 0x2d, 0x67, 0x61, 0x74, 0x65, 0x77, 0x61, 0x79, 0x2d, 0x76, 0x31};
-  static const uint8_t hash_dummy[LS200_GATEWAY_HASH_BYTES] = {
+  static const uint8_t hash_dummy[AULA_GATEWAY_HASH_BYTES] = {
       0x85, 0xfb, 0x07, 0xfe, 0x0d, 0x66, 0xb1, 0x66, 0xb1, 0xd0, 0x7a, 0x1b, 0xe9, 0xf5, 0xd4, 0xd1,
       0xe2, 0xef, 0xa7, 0xdb, 0xce, 0x5d, 0xf2, 0xbc, 0x73, 0xf1, 0x82, 0xa9, 0x61, 0x39, 0xa6, 0x56};
-  const ls200_gateway_account *account = ls200_gateway_find_account(gateway, username);
+  const aula_gateway_account *account = aula_gateway_find_account(gateway, username);
   (void)memset(snapshot, 0, sizeof(*snapshot));
   snapshot->revision = gateway->account_revision;
   if (account != NULL) {
@@ -36,9 +36,9 @@ static void snapshot_login_account(const ls200_gateway *gateway, const char *use
   }
 }
 
-static int login_account_unchanged(const ls200_gateway *gateway, const char *username,
+static int login_account_unchanged(const aula_gateway *gateway, const char *username,
                                    const login_hash_snapshot *snapshot) {
-  const ls200_gateway_account *account = ls200_gateway_find_account(gateway, username);
+  const aula_gateway_account *account = aula_gateway_find_account(gateway, username);
   return snapshot->account.configured && gateway->account_revision == snapshot->revision &&
       account != NULL && account->configured == snapshot->account.configured &&
       account->role == snapshot->account.role &&
@@ -48,9 +48,9 @@ static int login_account_unchanged(const ls200_gateway *gateway, const char *use
                            sizeof(account->password_hash));
 }
 
-static int reserve_login_hash(ls200_gateway *gateway, const char *username,
-                              const ls200_gateway_request *request, login_hash_snapshot *snapshot,
-                              ls200_gateway_response *response) {
+static int reserve_login_hash(aula_gateway *gateway, const char *username,
+                              const aula_gateway_request *request, login_hash_snapshot *snapshot,
+                              aula_gateway_response *response) {
   unsigned int retry = 0U;
   int reserved = 0;
   if (!gateway_state_lock(gateway)) {
@@ -70,15 +70,15 @@ static int reserve_login_hash(ls200_gateway *gateway, const char *username,
   return reserved;
 }
 
-int gateway_handle_login(ls200_gateway *gateway, const ls200_gateway_request *request,
-                         ls200_gateway_response *response) {
+int gateway_handle_login(aula_gateway *gateway, const aula_gateway_request *request,
+                         aula_gateway_response *response) {
   json_error_t error;
   json_t *root = NULL;
   const char *username, *password;
   char authenticated_username[33] = {0};
   char csrf[65] = {0};
   char data[128] = {0};
-  uint8_t candidate[LS200_GATEWAY_HASH_BYTES] = {0};
+  uint8_t candidate[AULA_GATEWAY_HASH_BYTES] = {0};
   login_hash_snapshot snapshot;
   int derived = 0;
   (void)memset(&snapshot, 0, sizeof(snapshot));
@@ -133,29 +133,29 @@ static int bootstrap_schema_valid(json_t *root, const char *username, const char
       password != NULL && code != NULL;
 }
 
-static int bootstrap_code_matches(const ls200_gateway *gateway, const char *code) {
+static int bootstrap_code_matches(const aula_gateway *gateway, const char *code) {
   return strlen(code) == strlen(gateway->config.bootstrap_code) &&
       gateway_secure_equal(code, gateway->config.bootstrap_code, strlen(gateway->config.bootstrap_code));
 }
 
-static int handle_bootstrap(ls200_gateway *gateway, const ls200_gateway_request *request,
-                            ls200_gateway_response *response) {
+static int handle_bootstrap(aula_gateway *gateway, const aula_gateway_request *request,
+                            aula_gateway_response *response) {
   json_error_t error;
   json_t *root = NULL;
   const char *username, *password, *code;
-  uint8_t salt[LS200_GATEWAY_SALT_BYTES] = {0};
+  uint8_t salt[AULA_GATEWAY_SALT_BYTES] = {0};
   unsigned retry = 0U;
-  ls200_gateway_account backup_accounts[LS200_GATEWAY_MAX_ACCOUNTS] = {{0}};
-  ls200_gateway_account backup_account = {0};
+  aula_gateway_account backup_accounts[AULA_GATEWAY_MAX_ACCOUNTS] = {{0}};
+  aula_gateway_account backup_account = {0};
   unsigned int backup_revision = 0U;
   int backup_disabled = 0;
-  ls200_gateway_store_result store_result;
+  aula_gateway_store_result store_result;
   int result = 1;
   if (!gateway_request_origin_is_allowed(gateway, request)) {
     gateway_write_error(response, 403U, "ORIGIN_REQUIRED", "exact Origin is required");
     goto cleanup;
   }
-  if (gateway->bootstrap_disabled || ls200_gateway_account_count(gateway) != 0U ||
+  if (gateway->bootstrap_disabled || aula_gateway_account_count(gateway) != 0U ||
       gateway->config.bootstrap_code == NULL) {
     gateway_write_error(response, 409U, "BOOTSTRAP_DISABLED", "bootstrap is disabled");
     goto cleanup;
@@ -181,7 +181,7 @@ static int handle_bootstrap(ls200_gateway *gateway, const ls200_gateway_request 
   backup_revision = gateway->account_revision;
   backup_disabled = gateway->bootstrap_disabled;
   if (!bootstrap_code_matches(gateway, code) || RAND_bytes(salt, sizeof(salt)) != 1 ||
-      !ls200_gateway_set_account(gateway, username, password, LS200_GATEWAY_ROLE_ADMIN, salt)) {
+      !aula_gateway_set_account(gateway, username, password, AULA_GATEWAY_ROLE_ADMIN, salt)) {
     (void)memcpy(gateway->accounts, backup_accounts, sizeof(backup_accounts));
     gateway->account = backup_account;
     gateway->account_revision = backup_revision;
@@ -190,8 +190,8 @@ static int handle_bootstrap(ls200_gateway *gateway, const ls200_gateway_request 
     goto cleanup;
   }
   gateway->bootstrap_disabled = 1;
-  store_result = ls200_gateway_store_account(gateway);
-  if (store_result == LS200_GATEWAY_STORE_NOT_COMMITTED) {
+  store_result = aula_gateway_store_account(gateway);
+  if (store_result == AULA_GATEWAY_STORE_NOT_COMMITTED) {
     (void)memcpy(gateway->accounts, backup_accounts, sizeof(backup_accounts));
     gateway->account = backup_account;
     gateway->account_revision = backup_revision;
@@ -200,7 +200,7 @@ static int handle_bootstrap(ls200_gateway *gateway, const ls200_gateway_request 
     goto cleanup;
   }
   gateway_disable_bootstrap_code(gateway);
-  if (store_result == LS200_GATEWAY_STORE_DURABILITY_UNCERTAIN) {
+  if (store_result == AULA_GATEWAY_STORE_DURABILITY_UNCERTAIN) {
     gateway_write_error(response, 503U, "PERSISTENCE_UNCERTAIN",
                         "account was committed but restart durability was not confirmed");
     goto cleanup;
@@ -214,8 +214,8 @@ cleanup:
   return result;
 }
 
-int gateway_dispatch_auth(ls200_gateway *gateway, const ls200_gateway_request *request,
-                          ls200_gateway_response *response) {
+int gateway_dispatch_auth(aula_gateway *gateway, const aula_gateway_request *request,
+                          aula_gateway_response *response) {
   if (strcmp(request->path, "/zoom/api/v1/auth/bootstrap") == 0) {
     if (strcmp(request->method, "POST") != 0)
       gateway_write_error(response, 405U, "METHOD_NOT_ALLOWED", "POST is required");

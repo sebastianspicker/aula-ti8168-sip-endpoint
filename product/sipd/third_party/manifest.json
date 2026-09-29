@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "project": "ls200-sipd",
+  "project": "aula-sipd",
   "policy": {
     "network_downloads_during_build": false,
     "vendored_dependencies": false,
@@ -92,14 +92,14 @@
     },
     {
       "name": "target-sysroot",
-      "role": "reconstructed development sysroot only",
+      "role": "upstream-only development sysroot; input review pending",
       "selection": "unapproved",
       "required_evidence": [
-        "source and runtime artifact hashes",
+        "upstream source, build recipe, and runtime artifact hashes",
         "loader and GLIBC version report",
         "header provenance",
         "generation commands",
-        "read-only evidence-root containment check"
+        "evidence input/output exclusion check"
       ]
     },
     {

@@ -134,7 +134,7 @@ int gateway_schema_diagnostics_request(const char *body) {
 int gateway_schema_oem_credentials(const char *body) {
   json_error_t error;
   json_t *arguments = gateway_parse_json(body, &error);
-  int valid = ls200_device_credentials_schema(arguments);
+  int valid = aula_device_credentials_schema(arguments);
   json_decref(arguments);
   return valid;
 }

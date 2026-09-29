@@ -33,19 +33,19 @@ repository's C17 warning policy.
    returned by `start`, `push`, or `drain` completely, with a caller-owned
    monotonic deadline. Never log requests because PLAY contains a session ID.
 4. Feed bounded socket reads to `push`, then call `drain` with no input until it
-   returns `LS200_STATUS_AGAIN`. A returned access unit remains valid only until
+   returns `AULA_STATUS_AGAIN`. A returned access unit remains valid only until
    the next reader call.
 5. Wait for the first returned IDR before sending an HTTP 200 response. Failure,
    timeout, unsupported packetization, or EOF before that point can therefore
    remain a truthful bounded JSON 503 response.
 6. After the HTTP headers, initialize one FLV mux and pass each access unit to
-   `ls200_preview_flv_mux_write`. Its callback must synchronously consume the
+   `aula_preview_flv_mux_write`. Its callback must synchronously consume the
    complete byte span. Any callback or mux error is terminal: close the HTTP and
    RTSP connections and release the preview slot.
 7. Revalidate the session lease and stream deadline between bounded reads. The
    media core intentionally retains neither session pointers nor credentials.
 
-There is no RTSP TEARDOWN API. `ls200_preview_reader_eof` marks local state
+There is no RTSP TEARDOWN API. `aula_preview_reader_eof` marks local state
 closed; normal cancellation, expiry, parser failure, or peer EOF is completed
 by closing the independent TCP socket. A reconnect always creates a fresh
 reader, which prevents parser, SSRC, parameter-set, and timestamp state from
@@ -69,8 +69,8 @@ crossing connections.
   modes fail closed.
 - SPS/PPS are emitted as AVCDecoderConfigurationRecord data. Other NAL payload
   bytes are unchanged. B slices and data-partition/extension slices return
-  `LS200_STATUS_UNSUPPORTED` with
-  `LS200_PREVIEW_FLV_ERROR_UNSUPPORTED_TIMING`; no zero-CTS claim is made.
+  `AULA_STATUS_UNSUPPORTED` with
+  `AULA_PREVIEW_FLV_ERROR_UNSUPPORTED_TIMING`; no zero-CTS claim is made.
 
 Run `product/console/tests/preview/run.sh` for the socket-free protocol, recovery,
 byte-preservation, timing, and golden-FLV tests.

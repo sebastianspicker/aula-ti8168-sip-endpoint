@@ -1,5 +1,5 @@
-#ifndef LS200_CONSOLE_GATEWAY_INTERNAL_H
-#define LS200_CONSOLE_GATEWAY_INTERNAL_H
+#ifndef AULA_CONSOLE_GATEWAY_INTERNAL_H
+#define AULA_CONSOLE_GATEWAY_INTERNAL_H
 
 /* Internal interface shared by the gateway's translation units.  Every
  * declaration here crosses a module boundary; anything that stays inside a
@@ -8,7 +8,7 @@
 
 #include "gateway.h"
 
-#include "ls200_sipd/control_protocol.h"
+#include "aula_sipd/control_protocol.h"
 
 #include <fcntl.h>
 #include <jansson.h>
@@ -20,38 +20,38 @@
 #define NAME_MAX 255
 #endif
 #ifdef O_NOFOLLOW
-#define LS200_O_NOFOLLOW O_NOFOLLOW
+#define AULA_O_NOFOLLOW O_NOFOLLOW
 #else
-#define LS200_O_NOFOLLOW 0
+#define AULA_O_NOFOLLOW 0
 #endif
 
 /* The gateway enforces a stricter payload cap than the daemon's wire limit;
  * the frame layout, magic, version and opcodes come from the shared header. */
 #define GATEWAY_LSZ1_MAX_PAYLOAD 2048U
-_Static_assert(GATEWAY_LSZ1_MAX_PAYLOAD <= LS200_CONTROL_MAX_PAYLOAD_BYTES,
+_Static_assert(GATEWAY_LSZ1_MAX_PAYLOAD <= AULA_CONTROL_MAX_PAYLOAD_BYTES,
               "gateway payload cap must not exceed the daemon's control wire limit");
 
 /* ---- gateway_core.c: crypto, encoding, JSON, and filesystem primitives ---- */
 
-int gateway_state_lock(ls200_gateway *gateway);
-void gateway_state_unlock(ls200_gateway *gateway);
+int gateway_state_lock(aula_gateway *gateway);
+void gateway_state_unlock(aula_gateway *gateway);
 void gateway_install_secure_json_allocator(void);
 void gateway_secure_json_free(void *memory);
 int gateway_is_safe_username(const char *value);
 int gateway_is_safe_idempotency_key(const char *value);
 int gateway_secure_equal(const void *left, const void *right, size_t length);
 int gateway_hex_encode(const uint8_t *input, size_t length, char *output, size_t capacity);
-int gateway_hex_decode_32(const char *input, uint8_t output[LS200_GATEWAY_HASH_BYTES]);
+int gateway_hex_decode_32(const char *input, uint8_t output[AULA_GATEWAY_HASH_BYTES]);
 int gateway_hex_decode(const char *input, uint8_t *output, size_t output_length);
-int gateway_sha256(const uint8_t *input, size_t input_length, uint8_t output[LS200_GATEWAY_HASH_BYTES]);
-int gateway_password_hash(const char *password, const uint8_t salt[LS200_GATEWAY_SALT_BYTES],
-                          uint8_t output[LS200_GATEWAY_HASH_BYTES]);
-int gateway_password_hash_candidate(const char *password, const uint8_t salt[LS200_GATEWAY_SALT_BYTES],
-                                    uint8_t output[LS200_GATEWAY_HASH_BYTES]);
-void gateway_write_error(ls200_gateway_response *response, unsigned int status,
+int gateway_sha256(const uint8_t *input, size_t input_length, uint8_t output[AULA_GATEWAY_HASH_BYTES]);
+int gateway_password_hash(const char *password, const uint8_t salt[AULA_GATEWAY_SALT_BYTES],
+                          uint8_t output[AULA_GATEWAY_HASH_BYTES]);
+int gateway_password_hash_candidate(const char *password, const uint8_t salt[AULA_GATEWAY_SALT_BYTES],
+                                    uint8_t output[AULA_GATEWAY_HASH_BYTES]);
+void gateway_write_error(aula_gateway_response *response, unsigned int status,
                          const char *code, const char *message);
-void gateway_write_rate_limited(ls200_gateway_response *response, unsigned int retry_after);
-void gateway_write_success(ls200_gateway_response *response, unsigned int status, const char *data);
+void gateway_write_rate_limited(aula_gateway_response *response, unsigned int retry_after);
+void gateway_write_success(aula_gateway_response *response, unsigned int status, const char *data);
 int gateway_json_object_exact(json_t *object, const char *const *keys, size_t key_count);
 json_t *gateway_parse_json(const char *body, json_error_t *error);
 int gateway_safe_absolute_path(const char *path);
@@ -62,10 +62,10 @@ int gateway_sync_parent_directory(int descriptor);
 
 /* ---- gateway_account.c: account identity, auth budget, and policy ---- */
 
-int gateway_auth_budget_take(ls200_gateway *gateway, const char *account_key,
-                             const ls200_gateway_request *request, unsigned int *retry_after);
-void gateway_disable_bootstrap_code(ls200_gateway *gateway);
-void gateway_sync_legacy_account(ls200_gateway *gateway);
+int gateway_auth_budget_take(aula_gateway *gateway, const char *account_key,
+                             const aula_gateway_request *request, unsigned int *retry_after);
+void gateway_disable_bootstrap_code(aula_gateway *gateway);
+void gateway_sync_legacy_account(aula_gateway *gateway);
 int gateway_safe_reference_id(const char *value);
 int gateway_safe_reference_name(const char *value);
 int gateway_safe_reference_meeting_id(const char *value);
@@ -74,29 +74,29 @@ int gateway_safe_reference_layout(const char *value);
 
 /* ---- gateway_account_store.c: persisted-account JSON deserialization ---- */
 
-int gateway_apply_loaded_account_v1(ls200_gateway *gateway, json_t *root);
-int gateway_apply_loaded_accounts_v2(ls200_gateway *gateway, json_t *root);
-int gateway_apply_loaded_store_v3(ls200_gateway *gateway, json_t *root);
+int gateway_apply_loaded_account_v1(aula_gateway *gateway, json_t *root);
+int gateway_apply_loaded_accounts_v2(aula_gateway *gateway, json_t *root);
+int gateway_apply_loaded_store_v3(aula_gateway *gateway, json_t *root);
 
 /* ---- gateway_session.c: session lifecycle and request authentication ---- */
 
-ls200_gateway_session *gateway_new_session(ls200_gateway *gateway, const char *username,
-                                           ls200_gateway_role role, uint64_t now,
+aula_gateway_session *gateway_new_session(aula_gateway *gateway, const char *username,
+                                           aula_gateway_role role, uint64_t now,
                                            char cookie[256], char csrf[65]);
-int gateway_request_origin_is_allowed(const ls200_gateway *gateway,
-                                      const ls200_gateway_request *request);
-int gateway_request_token_hash(const ls200_gateway_request *request,
-                               uint8_t token_hash[LS200_GATEWAY_HASH_BYTES]);
-ls200_gateway_session *gateway_find_session_by_token(
-    ls200_gateway *gateway, const uint8_t token_hash[LS200_GATEWAY_HASH_BYTES],
+int gateway_request_origin_is_allowed(const aula_gateway *gateway,
+                                      const aula_gateway_request *request);
+int gateway_request_token_hash(const aula_gateway_request *request,
+                               uint8_t token_hash[AULA_GATEWAY_HASH_BYTES]);
+aula_gateway_session *gateway_find_session_by_token(
+    aula_gateway *gateway, const uint8_t token_hash[AULA_GATEWAY_HASH_BYTES],
     uint64_t now, int *used_grace);
-int gateway_session_csrf_is_valid(const ls200_gateway_session *session, const char *csrf_token);
-ls200_gateway_session *gateway_authenticate(ls200_gateway *gateway,
-                                            const ls200_gateway_request *request,
-                                            ls200_gateway_response *response,
+int gateway_session_csrf_is_valid(const aula_gateway_session *session, const char *csrf_token);
+aula_gateway_session *gateway_authenticate(aula_gateway *gateway,
+                                            const aula_gateway_request *request,
+                                            aula_gateway_response *response,
                                             int csrf_required);
-int gateway_require_role(ls200_gateway_session *session, ls200_gateway_role required,
-                         ls200_gateway_response *response);
+int gateway_require_role(aula_gateway_session *session, aula_gateway_role required,
+                         aula_gateway_response *response);
 
 /* ---- gateway_schema.c: generic JSON request-body schema helpers ---- */
 
@@ -106,19 +106,19 @@ int gateway_schema_enum(const char *body, const char *key, const char *const *va
 
 /* ---- gateway_idempotency.c: per-session mutation idempotency records ---- */
 
-ls200_gateway_idempotency *gateway_find_idempotency(ls200_gateway *gateway,
-                                                     const ls200_gateway_session *session,
+aula_gateway_idempotency *gateway_find_idempotency(aula_gateway *gateway,
+                                                     const aula_gateway_session *session,
                                                      const char *key, const char *route);
-int gateway_idempotency_request_hash(const ls200_gateway_request *request,
-                                     uint8_t output[LS200_GATEWAY_HASH_BYTES]);
-void gateway_save_idempotency(ls200_gateway *gateway, const ls200_gateway_session *session,
+int gateway_idempotency_request_hash(const aula_gateway_request *request,
+                                     uint8_t output[AULA_GATEWAY_HASH_BYTES]);
+void gateway_save_idempotency(aula_gateway *gateway, const aula_gateway_session *session,
                               const char *key, const char *route,
-                              const uint8_t request_hash[LS200_GATEWAY_HASH_BYTES],
-                              const ls200_gateway_response *response);
+                              const uint8_t request_hash[AULA_GATEWAY_HASH_BYTES],
+                              const aula_gateway_response *response);
 
 /* ---- gateway_preview_metadata.c: local preview capability projection ---- */
 
-json_t *gateway_preview_status_data(const ls200_gateway *gateway);
+json_t *gateway_preview_status_data(const aula_gateway *gateway);
 
 /* ---- gateway_settings.c / gateway_aec.c / gateway_status.c / gateway_metrics.c:
  * backend status and metrics envelope validation ---- */
@@ -153,7 +153,7 @@ typedef struct {
   const char *code;
   const char *message;
   uint8_t opcode;
-  ls200_gateway_role role;
+  aula_gateway_role role;
   unsigned flags;
   unsigned status;
   schema_fn schema;
@@ -162,11 +162,11 @@ typedef struct {
 typedef struct {
   const char *payload;
   uint8_t opcode;
-  ls200_gateway_role role;
+  aula_gateway_role role;
   unsigned flags;
   int has_request_hash;
   uint32_t control_request_id;
-  uint8_t request_hash[LS200_GATEWAY_HASH_BYTES];
+  uint8_t request_hash[AULA_GATEWAY_HASH_BYTES];
 } route_plan;
 
 /* ---- gateway_route_schema.c: HTTP request-body schema validators ---- */
@@ -185,75 +185,75 @@ int gateway_schema_oem_credentials(const char *body);
 int gateway_serialize_json(json_t *value, char *output, size_t capacity);
 int gateway_json_value_is_safe(json_t *value);
 int gateway_opaque_export_id(const char *path);
-int gateway_shape_status_route(const ls200_gateway *gateway, const char *path,
+int gateway_shape_status_route(const aula_gateway *gateway, const char *path,
                                const char *input, char *output, size_t capacity);
 
 /* ---- gateway_route_events.c: call-state event validation and history ---- */
 
 int gateway_event_snapshot_backend_valid(json_t *root);
-int gateway_record_events(ls200_gateway *gateway, const char *body);
-int gateway_write_events(const ls200_gateway *gateway, ls200_gateway_response *response);
+int gateway_record_events(aula_gateway *gateway, const char *body);
+int gateway_write_events(const aula_gateway *gateway, aula_gateway_response *response);
 
 /* ---- gateway_route_directory.c: safe directory and recent-call collections ---- */
 
-int gateway_handle_directory_mutation(ls200_gateway *gateway, const ls200_gateway_request *request,
-                                      ls200_gateway_response *response);
-int gateway_write_directory(const ls200_gateway *gateway, ls200_gateway_response *response);
-int gateway_write_recents(const ls200_gateway *gateway, ls200_gateway_response *response);
-int gateway_record_recent(ls200_gateway *gateway, const char *body);
+int gateway_handle_directory_mutation(aula_gateway *gateway, const aula_gateway_request *request,
+                                      aula_gateway_response *response);
+int gateway_write_directory(const aula_gateway *gateway, aula_gateway_response *response);
+int gateway_write_recents(const aula_gateway *gateway, aula_gateway_response *response);
+int gateway_record_recent(aula_gateway *gateway, const char *body);
 
 /* ---- gateway_route_users.c: HTTP-driven account mutation ---- */
 
-int gateway_write_users(ls200_gateway *gateway, ls200_gateway_response *response);
-int gateway_handle_user_mutation(ls200_gateway *gateway, ls200_gateway_session *session,
-                                 const ls200_gateway_request *request,
-                                 ls200_gateway_response *response, char revoked_username[33]);
+int gateway_write_users(aula_gateway *gateway, aula_gateway_response *response);
+int gateway_handle_user_mutation(aula_gateway *gateway, aula_gateway_session *session,
+                                 const aula_gateway_request *request,
+                                 aula_gateway_response *response, char revoked_username[33]);
 
 /* ---- gateway_auth_routes.c: login and bootstrap ---- */
 
-int gateway_dispatch_auth(ls200_gateway *gateway, const ls200_gateway_request *request,
-                          ls200_gateway_response *response);
-int gateway_handle_login(ls200_gateway *gateway, const ls200_gateway_request *request,
-                         ls200_gateway_response *response);
+int gateway_dispatch_auth(aula_gateway *gateway, const aula_gateway_request *request,
+                          aula_gateway_response *response);
+int gateway_handle_login(aula_gateway *gateway, const aula_gateway_request *request,
+                         aula_gateway_response *response);
 
 /* ---- gateway.c: the route table and per-request dispatch plan ---- */
 
-int gateway_dispatch_route(const ls200_gateway_request *request, ls200_gateway_response *response,
+int gateway_dispatch_route(const aula_gateway_request *request, aula_gateway_response *response,
                            route_plan *plan);
-int gateway_preflight(ls200_gateway *gateway, ls200_gateway_session *session,
-                      const ls200_gateway_request *request, route_plan *plan,
-                      ls200_gateway_response *response);
-void gateway_save_mutation(ls200_gateway *gateway, const ls200_gateway_session *session,
-                           const ls200_gateway_request *request, const route_plan *plan,
-                           const ls200_gateway_response *response);
+int gateway_preflight(aula_gateway *gateway, aula_gateway_session *session,
+                      const aula_gateway_request *request, route_plan *plan,
+                      aula_gateway_response *response);
+void gateway_save_mutation(aula_gateway *gateway, const aula_gateway_session *session,
+                           const aula_gateway_request *request, const route_plan *plan,
+                           const aula_gateway_response *response);
 
 /* ---- gateway_route_response.c: route outcome shaping ---- */
 
-int gateway_local_response(ls200_gateway *gateway, ls200_gateway_session *session,
-                           const ls200_gateway_request *request, const route_plan *plan,
-                           ls200_gateway_response *response);
-int gateway_backend_control_reply(ls200_gateway_control_fn control, void *context,
+int gateway_local_response(aula_gateway *gateway, aula_gateway_session *session,
+                           const aula_gateway_request *request, const route_plan *plan,
+                           aula_gateway_response *response);
+int gateway_backend_control_reply(aula_gateway_control_fn control, void *context,
                                   const route_plan *plan, char backend[1024]);
-int gateway_finish_backend_response(ls200_gateway *gateway, const ls200_gateway_session *identity,
-                                    ls200_gateway_session *live_session,
-                                    const ls200_gateway_request *request, const route_plan *plan,
+int gateway_finish_backend_response(aula_gateway *gateway, const aula_gateway_session *identity,
+                                    aula_gateway_session *live_session,
+                                    const aula_gateway_request *request, const route_plan *plan,
                                     int control_result, const char *backend,
-                                    ls200_gateway_response *response);
+                                    aula_gateway_response *response);
 
 /* ---- gateway_route_request.c: request validation and payload preparation ---- */
 
-int gateway_valid_request(const ls200_gateway *gateway, const ls200_gateway_request *request,
-                          const ls200_gateway_response *response);
-const ls200_gateway_request *gateway_request_with_cleansed_body(
-    const ls200_gateway_request *request, ls200_gateway_request *private_request,
-    char request_copy[1024], ls200_gateway_response *response);
-int gateway_set_redacted_payload(route_plan *plan, const ls200_gateway_request *request,
-                                 char sensitive[1024], ls200_gateway_response *response);
+int gateway_valid_request(const aula_gateway *gateway, const aula_gateway_request *request,
+                          const aula_gateway_response *response);
+const aula_gateway_request *gateway_request_with_cleansed_body(
+    const aula_gateway_request *request, aula_gateway_request *private_request,
+    char request_copy[1024], aula_gateway_response *response);
+int gateway_set_redacted_payload(route_plan *plan, const aula_gateway_request *request,
+                                 char sensitive[1024], aula_gateway_response *response);
 
 /* ---- gateway_transaction.c: the request transaction shared with gateway_device.c ---- */
 
 typedef struct gateway_request_storage {
-  ls200_gateway_request request;
+  aula_gateway_request request;
   char method[9];
   char path[256];
   char origin[128];
@@ -271,9 +271,9 @@ typedef struct gateway_transaction {
   uint64_t started_at_milliseconds;
   uint64_t requested_at_seconds;
   gateway_request_storage storage;
-  ls200_gateway_request private_request;
-  const ls200_gateway_request *request;
-  ls200_gateway_session principal;
+  aula_gateway_request private_request;
+  const aula_gateway_request *request;
+  aula_gateway_session principal;
   route_plan plan;
   char request_copy[1024];
   char sensitive[1024];
@@ -282,9 +282,9 @@ typedef struct gateway_transaction {
 /* ---- gateway_device.c: unprivileged device credential passthrough ---- */
 
 int gateway_device_backend_reply(const gateway_transaction *transaction, char *backend, size_t capacity);
-void gateway_finish_device_reply(int code, const char *backend, ls200_gateway_response *response);
+void gateway_finish_device_reply(int code, const char *backend, aula_gateway_response *response);
 
-/* ---- gateway_control.c: LSZ1 wire transport to ls200-sipd ---- */
+/* ---- gateway_control.c: LSZ1 wire transport to aula-sipd ---- */
 
 int gateway_monotonic_milliseconds(uint64_t *milliseconds);
 

@@ -1,15 +1,15 @@
-#ifndef LS200_CONSOLE_PREVIEW_READER_INTERNAL_H
-#define LS200_CONSOLE_PREVIEW_READER_INTERNAL_H
+#ifndef AULA_CONSOLE_PREVIEW_READER_INTERNAL_H
+#define AULA_CONSOLE_PREVIEW_READER_INTERNAL_H
 
 #include "preview_reader.h"
-#include "ls200_sipd/h264.h"
+#include "aula_sipd/h264.h"
 
-struct ls200_preview_reader {
-  ls200_preview_reader_config config;
-  ls200_preview_reader_state state;
-  ls200_rtsp_stream_parser *parser;
-  ls200_h264_depacketizer *depacketizer;
-  ls200_h264_parameter_sets parameter_sets;
+struct aula_preview_reader {
+  aula_preview_reader_config config;
+  aula_preview_reader_state state;
+  aula_rtsp_stream_parser *parser;
+  aula_h264_depacketizer *depacketizer;
+  aula_h264_parameter_sets parameter_sets;
   uint8_t *assembly;
   size_t assembly_length;
   char aggregate_uri[64];
@@ -33,20 +33,20 @@ struct ls200_preview_reader {
   int discontinuity_pending;
 };
 
-int ls200_preview_output_is_valid(const ls200_mutable_bytes *output);
-void ls200_preview_clear_outputs(ls200_mutable_bytes *request,
-                                 ls200_preview_access_unit *unit);
-void ls200_preview_secure_zero(void *value, size_t length);
+int aula_preview_output_is_valid(const aula_mutable_bytes *output);
+void aula_preview_clear_outputs(aula_mutable_bytes *request,
+                                 aula_preview_access_unit *unit);
+void aula_preview_secure_zero(void *value, size_t length);
 
-ls200_status ls200_preview_render_request(
-    ls200_preview_reader *reader, const char *method, const char *uri,
-    const char *extra_headers, ls200_preview_reader_state next_state,
-    ls200_mutable_bytes *output);
-ls200_status ls200_preview_consume_response(
-    ls200_preview_reader *reader, const ls200_rtsp_message *message,
-    ls200_mutable_bytes *out_request);
-ls200_status ls200_preview_consume_rtp(
-    ls200_preview_reader *reader, ls200_bytes bytes,
-    ls200_preview_access_unit *out_unit);
+aula_status aula_preview_render_request(
+    aula_preview_reader *reader, const char *method, const char *uri,
+    const char *extra_headers, aula_preview_reader_state next_state,
+    aula_mutable_bytes *output);
+aula_status aula_preview_consume_response(
+    aula_preview_reader *reader, const aula_rtsp_message *message,
+    aula_mutable_bytes *out_request);
+aula_status aula_preview_consume_rtp(
+    aula_preview_reader *reader, aula_bytes bytes,
+    aula_preview_access_unit *out_unit);
 
 #endif

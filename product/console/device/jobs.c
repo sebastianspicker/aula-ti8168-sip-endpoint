@@ -76,13 +76,13 @@ static int journal_valid(json_t *document) {
   if (!json_is_object(document) || json_object_size(document) != 2 ||
       !json_is_integer(json_object_get(document, "version")) ||
       json_integer_value(json_object_get(document, "version")) != 1 ||
-      !json_is_array(jobs) || json_array_size(jobs) > LS200_DEVICE_JOB_LIMIT) return 0;
+      !json_is_array(jobs) || json_array_size(jobs) > AULA_DEVICE_JOB_LIMIT) return 0;
   json_array_foreach(jobs, index, job)
     if (!job_valid(job, index) || duplicate_intent(jobs, index, job)) return 0;
   return 1;
 }
 
-static int journal_write(ls200_device_jobs *store) {
+static int journal_write(aula_device_jobs *store) {
   char *encoded = json_dumps(store->document, JSON_COMPACT | JSON_SORT_KEYS);
   size_t offset = 0, length = encoded == NULL ? 0 : strlen(encoded);
   int fd, valid = 0;
@@ -109,7 +109,7 @@ done:
   return valid;
 }
 
-static int discard_pending(ls200_device_jobs *store) {
+static int discard_pending(aula_device_jobs *store) {
   int fd = openat(store->directory, "jobs.pending", O_RDONLY | O_NOFOLLOW |
       O_NONBLOCK | O_CLOEXEC);
   int valid;
@@ -120,7 +120,7 @@ static int discard_pending(ls200_device_jobs *store) {
       fsync(store->directory) == 0;
 }
 
-static int load_journal(ls200_device_jobs *store) {
+static int load_journal(aula_device_jobs *store) {
   json_error_t error;
   int fd = openat(store->directory, "jobs.json", O_RDONLY | O_NOFOLLOW |
       O_NONBLOCK | O_CLOEXEC);
@@ -134,7 +134,7 @@ static int load_journal(ls200_device_jobs *store) {
   return journal_valid(store->document);
 }
 
-static int recover_journal(ls200_device_jobs *store) {
+static int recover_journal(aula_device_jobs *store) {
   json_t *job, *jobs = json_object_get(store->document, "jobs");
   size_t index;
   int changed = 0;
@@ -146,10 +146,10 @@ static int recover_journal(ls200_device_jobs *store) {
   return !changed || journal_write(store);
 }
 
-int ls200_device_jobs_open(ls200_device_jobs *store, int directory) {
+int aula_device_jobs_open(aula_device_jobs *store, int directory) {
   struct stat info;
   if (store == NULL) return 0;
-  *store = (ls200_device_jobs){-1, -1, 0, NULL};
+  *store = (aula_device_jobs){-1, -1, 0, NULL};
   if (fstat(directory, &info) != 0 || !S_ISDIR(info.st_mode) ||
       info.st_uid != geteuid() || (info.st_mode & 0077) != 0) return 0;
   store->directory = fcntl(directory, F_DUPFD_CLOEXEC, 0);
@@ -162,16 +162,16 @@ int ls200_device_jobs_open(ls200_device_jobs *store, int directory) {
   if (!discard_pending(store) || !load_journal(store) || !recover_journal(store)) goto failed;
   return 1;
 failed:
-  ls200_device_jobs_close(store);
+  aula_device_jobs_close(store);
   return 0;
 }
 
-void ls200_device_jobs_close(ls200_device_jobs *store) {
+void aula_device_jobs_close(aula_device_jobs *store) {
   if (store == NULL) return;
   json_decref(store->document);
   if (store->lock >= 0) close(store->lock);
   if (store->directory >= 0) close(store->directory);
-  *store = (ls200_device_jobs){-1, -1, 0, NULL};
+  *store = (aula_device_jobs){-1, -1, 0, NULL};
 }
 
 static json_t *project_job(json_t *job) {
@@ -188,34 +188,34 @@ static int existing_intent(json_t *jobs, const char *principal, const char *key,
     if (strcmp(job_text(job, "principal"), principal) != 0 ||
         strcmp(job_text(job, "key"), key) != 0) continue;
     if (strcmp(job_text(job, "operation"), operation) != 0 ||
-        strcmp(job_text(job, "fingerprint"), fingerprint) != 0) return LS200_JOB_CONFLICT;
+        strcmp(job_text(job, "fingerprint"), fingerprint) != 0) return AULA_JOB_CONFLICT;
     *output = project_job(job);
-    return *output == NULL ? LS200_JOB_ERROR : LS200_JOB_DUPLICATE;
+    return *output == NULL ? AULA_JOB_ERROR : AULA_JOB_DUPLICATE;
   }
-  return LS200_JOB_CREATED;
+  return AULA_JOB_CREATED;
 }
 
-int ls200_device_jobs_accept(ls200_device_jobs *store, const char *principal,
+int aula_device_jobs_accept(aula_device_jobs *store, const char *principal,
     const char *key, const char *operation, const char *fingerprint, json_t **output) {
   json_t *jobs, *job;
   char id[24];
   int result;
-  if (output == NULL) return LS200_JOB_ERROR;
+  if (output == NULL) return AULA_JOB_ERROR;
   *output = NULL;
   if (store == NULL || !store->healthy || !job_token(principal, 64) ||
       !job_token(key, 64) || !job_token(operation, 48) ||
-      !fingerprint_valid(fingerprint)) return LS200_JOB_ERROR;
+      !fingerprint_valid(fingerprint)) return AULA_JOB_ERROR;
   jobs = json_object_get(store->document, "jobs");
   result = existing_intent(jobs, principal, key, operation, fingerprint, output);
-  if (result != LS200_JOB_CREATED) return result;
-  if (json_array_size(jobs) >= LS200_DEVICE_JOB_LIMIT) return LS200_JOB_FULL;
+  if (result != AULA_JOB_CREATED) return result;
+  if (json_array_size(jobs) >= AULA_DEVICE_JOB_LIMIT) return AULA_JOB_FULL;
   snprintf(id, sizeof(id), "job-%08u", (unsigned)json_array_size(jobs) + 1);
   job = json_pack("{s:s,s:s,s:s,s:s,s:s,s:s}", "id", id, "principal", principal,
       "key", key, "operation", operation, "fingerprint", fingerprint, "state", "queued");
-  if (job == NULL || json_array_append_new(jobs, job) != 0) return LS200_JOB_ERROR;
-  if (!journal_write(store)) return LS200_JOB_ERROR;
+  if (job == NULL || json_array_append_new(jobs, job) != 0) return AULA_JOB_ERROR;
+  if (!journal_write(store)) return AULA_JOB_ERROR;
   *output = project_job(json_array_get(jobs, json_array_size(jobs) - 1));
-  return *output == NULL ? LS200_JOB_ERROR : LS200_JOB_CREATED;
+  return *output == NULL ? AULA_JOB_ERROR : AULA_JOB_CREATED;
 }
 
 static int transition_valid(const char *before, const char *after) {
@@ -229,7 +229,7 @@ static int transition_valid(const char *before, const char *after) {
   return 0;
 }
 
-int ls200_device_jobs_transition(ls200_device_jobs *store, const char *id,
+int aula_device_jobs_transition(aula_device_jobs *store, const char *id,
     const char *state) {
   json_t *job;
   size_t index;
@@ -243,7 +243,7 @@ int ls200_device_jobs_transition(ls200_device_jobs *store, const char *id,
   return 0;
 }
 
-json_t *ls200_device_jobs_list(const ls200_device_jobs *store) {
+json_t *aula_device_jobs_list(const aula_device_jobs *store) {
   json_t *result, *job;
   size_t index;
   if (store == NULL || !store->healthy) return NULL;

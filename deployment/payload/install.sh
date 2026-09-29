@@ -1,16 +1,16 @@
 #!/bin/sh
-# Install a maintained LS-200 Zoom release without changing recovered images.
+# Install a maintained Aula Zoom release without changing recovered images.
 set -eu
 umask 077
 
 SCRIPT_DIR=$(CDPATH='' cd "$(dirname "$0")" && pwd)
-PAYLOAD_DIR=${LS200_ZOOM_PAYLOAD_DIR:-"$SCRIPT_DIR"}
-ROOT=${LS200_ZOOM_ROOT:-/}
-VERSION=${LS200_ZOOM_VERSION:-0.1.0}
-MANIFEST_SHA256=${LS200_ZOOM_MANIFEST_SHA256:-}
+PAYLOAD_DIR=${AULA_ZOOM_PAYLOAD_DIR:-"$SCRIPT_DIR"}
+ROOT=${AULA_ZOOM_ROOT:-/}
+VERSION=${AULA_ZOOM_VERSION:-0.1.0}
+MANIFEST_SHA256=${AULA_ZOOM_MANIFEST_SHA256:-}
 TRUSTED_VERIFIER=$SCRIPT_DIR/verify-payload.sh
 if [ ! -e "$TRUSTED_VERIFIER" ] && [ ! -L "$TRUSTED_VERIFIER" ]; then
-    TRUSTED_VERIFIER=$SCRIPT_DIR/../targets/ls200/verify-payload.sh
+    TRUSTED_VERIFIER=$SCRIPT_DIR/../targets/ti8168/verify-payload.sh
 fi
 
 die() {
@@ -21,15 +21,15 @@ die() {
 case $ROOT in
     /) ;;
     /*) ROOT=${ROOT%/} ;;
-    *) die 'LS200_ZOOM_ROOT must be an absolute path' ;;
+    *) die 'AULA_ZOOM_ROOT must be an absolute path' ;;
 esac
 case $VERSION in
-    ''|.|..|*[!A-Za-z0-9._-]*) die 'LS200_ZOOM_VERSION contains unsupported characters' ;;
+    ''|.|..|*[!A-Za-z0-9._-]*) die 'AULA_ZOOM_VERSION contains unsupported characters' ;;
 esac
 case $MANIFEST_SHA256 in
-    ''|*[!0-9a-f]*) die 'LS200_ZOOM_MANIFEST_SHA256 must be lowercase SHA-256' ;;
+    ''|*[!0-9a-f]*) die 'AULA_ZOOM_MANIFEST_SHA256 must be lowercase SHA-256' ;;
 esac
-[ "${#MANIFEST_SHA256}" -eq 64 ] || die 'LS200_ZOOM_MANIFEST_SHA256 must be SHA-256'
+[ "${#MANIFEST_SHA256}" -eq 64 ] || die 'AULA_ZOOM_MANIFEST_SHA256 must be SHA-256'
 
 root_path() {
     if [ "$ROOT" = / ]; then
@@ -39,8 +39,17 @@ root_path() {
     fi
 }
 
-PREFIX=$(root_path /opt/ls200-zoom)
-STATE=$(root_path /var/lib/cbox/ls200-zoom)
+# BEGIN LEGACY NAME BOUNDARY: retain these paths during project renames.
+for legacy_path in /opt/ls200-zoom /var/lib/cbox/ls200-zoom /run/ls200-zoom-state /var/run/ls200-zoom-operation.lock; do
+    legacy_candidate=$(root_path "$legacy_path")
+    if [ -e "$legacy_candidate" ] || [ -L "$legacy_candidate" ]; then
+        die 'legacy installation is present; follow docs/operator/upgrade-to-aula.md before installing'
+    fi
+done
+# END LEGACY NAME BOUNDARY
+
+PREFIX=$(root_path /opt/aula-ti8168-sip-endpoint)
+STATE=$(root_path /var/lib/cbox/aula-ti8168-sip-endpoint)
 RELEASES=$PREFIX/releases
 RELEASE=$RELEASES/$VERSION
 CURRENT=$PREFIX/current
@@ -49,11 +58,11 @@ NGINX_SELECTOR=$(root_path /var/lib/cbox/etc/nginx/nginx.conf)
 NGINX_SELECTOR_DIR=$(dirname "$NGINX_SELECTOR")
 NGINX_CANONICAL_HTTP=$(root_path /usr/share/nginx/nginx_http.conf)
 NGINX_CANONICAL_HTTPS=$(root_path /usr/share/nginx/nginx_https.conf)
-NGINX_INCLUDE='include /etc/nginx/conf.d/zz-ls200-zoom-legacy.conf;'
+NGINX_INCLUDE='include /etc/nginx/conf.d/zz-aula-ti8168-sip-endpoint-legacy.conf;'
 NGINX_COPY_HTTP=$STATE/nginx_zoom_http.conf
 NGINX_COPY_HTTPS=$STATE/nginx_zoom_https.conf
-NGINX_OWNED_HTTP_TARGET=/var/lib/cbox/ls200-zoom/nginx_zoom_http.conf
-NGINX_OWNED_HTTPS_TARGET=/var/lib/cbox/ls200-zoom/nginx_zoom_https.conf
+NGINX_OWNED_HTTP_TARGET=/var/lib/cbox/aula-ti8168-sip-endpoint/nginx_zoom_http.conf
+NGINX_OWNED_HTTPS_TARGET=/var/lib/cbox/aula-ti8168-sip-endpoint/nginx_zoom_https.conf
 NGINX_SELECTOR_BACKUP=$STATE/nginx-selector.original
 NGINX_COPIES_CREATED=''
 NGINX_SELECTOR_REPOINTED=0
@@ -64,7 +73,7 @@ LOCK=$STATE/install.lock
 durability_barrier() { sync || die 'filesystem durability barrier failed'; }
 BOOTSTRAP_HELPER=$SCRIPT_DIR/bootstrap-transaction.sh
 if [ ! -e "$BOOTSTRAP_HELPER" ] && [ ! -L "$BOOTSTRAP_HELPER" ]; then
-    BOOTSTRAP_HELPER=$SCRIPT_DIR/../targets/ls200/bootstrap-transaction.sh
+    BOOTSTRAP_HELPER=$SCRIPT_DIR/../targets/ti8168/bootstrap-transaction.sh
 fi
 [ -f "$BOOTSTRAP_HELPER" ] && [ ! -L "$BOOTSTRAP_HELPER" ] && [ -O "$BOOTSTRAP_HELPER" ] ||
     die 'bootstrap transaction helper is absent or unsafe'
@@ -75,14 +84,14 @@ BOOTSTRAP_RELEASES=$RELEASES
 BOOTSTRAP_JOURNAL=
 BOOTSTRAP_ROOT_UID=$(id -u)
 BOOTSTRAP_ROOT_GID=$(id -g)
-BOOTSTRAP_GATEWAY_OWNER=ls200-gateway
+BOOTSTRAP_GATEWAY_OWNER=aula-gateway
 bootstrap_release_identity() {
     sh "$TRUSTED_VERIFIER" --payload "$BOOTSTRAP_RELEASES/$1" --manifest-sha256 "$2" >/dev/null ||
         die 'bootstrap transaction release identity changed'
 }
 bootstrap_user_id() { id -u "$1"; }
 bootstrap_record() { :; }
-# shellcheck source=../targets/ls200/bootstrap-transaction.sh
+# shellcheck source=../targets/ti8168/bootstrap-transaction.sh
 . "$BOOTSTRAP_HELPER"
 
 [ -d "$PAYLOAD_DIR/runtime" ] || die "runtime payload is absent: $PAYLOAD_DIR/runtime"
@@ -95,7 +104,7 @@ mkdir -p "$RELEASES" "$STATE"
 chmod 0755 "$PREFIX" "$RELEASES"
 chmod 0700 "$STATE"
 [ ! -L "$STATE" ] || die "state directory must not be a symlink: $STATE"
-[ ! -e "$LOCK" ] || die "another LS-200 Zoom install is active: $LOCK"
+[ ! -e "$LOCK" ] || die "another Aula Zoom install is active: $LOCK"
 mkdir "$LOCK"
 trap 'rmdir "$LOCK"' EXIT HUP INT TERM
 reconcile_bootstrap_transaction
@@ -111,7 +120,7 @@ cp -Rp "$PAYLOAD_DIR/runtime/." "$STAGING/"
 find "$STAGING" -type f -exec chmod a-w {} \;
 find "$STAGING" -type d -exec chmod a-w {} \;
 chmod u+w "$STAGING" "$STAGING/etc" "$STAGING/etc/init.d" "$STAGING/etc/nginx" "$STAGING/etc/nginx/conf.d"
-chmod 0555 "$STAGING/etc/init.d/S99ls200-zoom" "$STAGING/bin/ls200-zoom-service"
+chmod 0555 "$STAGING/etc/init.d/S99aula" "$STAGING/bin/aula-service"
 sh "$TRUSTED_VERIFIER" --payload "$STAGING" \
     --manifest-sha256 "$MANIFEST_SHA256" >/dev/null ||
     die "trusted staging payload verification failed"
@@ -208,7 +217,7 @@ write_group_membership() {
     user=$1
     group=$2
     database=$(root_path /etc/group)
-    temporary=$(root_path "/etc/.group.ls200-zoom.$$")
+    temporary=$(root_path "/etc/.group.aula-ti8168-sip-endpoint.$$")
     [ -f "$database" ] && [ ! -L "$database" ] ||
         die "group database is not a regular file: $database"
     [ ! -e "$temporary" ] && [ ! -L "$temporary" ] ||
@@ -268,33 +277,33 @@ require_configured_uid() {
 # The root-prefix mode is a staging aid. Actual account provisioning is done
 # only inside the guest root, where BusyBox account tools update its databases.
 if [ "$ROOT" = / ]; then
-    ensure_group ls200-web
-    ensure_group ls200-gateway
-    ensure_group ls200-sip
-    ensure_group ls200-media-video
-    ensure_group ls200-media-audio
-    ensure_group ls200-control
-    ensure_group ls200-web-gateway
-    ensure_group ls200-web-tls
-    ensure_user ls200-web ls200-web
-    ensure_user ls200-gateway ls200-gateway
-    ensure_user ls200-sip ls200-sip
-    web_gid=$(group_gid ls200-web) || die 'cannot resolve web service group'
-    gateway_gid=$(group_gid ls200-gateway) || die 'cannot resolve gateway service group'
-    sip_gid=$(group_gid ls200-sip) || die 'cannot resolve SIP service group'
+    ensure_group aula-web
+    ensure_group aula-gateway
+    ensure_group aula-sip
+    ensure_group aula-media-video
+    ensure_group aula-media-audio
+    ensure_group aula-control
+    ensure_group aula-web-gateway
+    ensure_group aula-web-tls
+    ensure_user aula-web aula-web
+    ensure_user aula-gateway aula-gateway
+    ensure_user aula-sip aula-sip
+    web_gid=$(group_gid aula-web) || die 'cannot resolve web service group'
+    gateway_gid=$(group_gid aula-gateway) || die 'cannot resolve gateway service group'
+    sip_gid=$(group_gid aula-sip) || die 'cannot resolve SIP service group'
     [ "$web_gid" != "$gateway_gid" ] && [ "$web_gid" != "$sip_gid" ] &&
         [ "$gateway_gid" != "$sip_gid" ] ||
         die 'service users must have distinct primary groups'
-    ensure_membership ls200-sip ls200-media-video
-    ensure_membership ls200-sip ls200-media-audio
-    ensure_membership ls200-sip ls200-control
-    ensure_membership ls200-gateway ls200-control
-    ensure_membership ls200-gateway ls200-web-gateway
-    ensure_membership ls200-web ls200-web-gateway
-    ensure_membership ls200-web ls200-web-tls
+    ensure_membership aula-sip aula-media-video
+    ensure_membership aula-sip aula-media-audio
+    ensure_membership aula-sip aula-control
+    ensure_membership aula-gateway aula-control
+    ensure_membership aula-gateway aula-web-gateway
+    ensure_membership aula-web aula-web-gateway
+    ensure_membership aula-web aula-web-tls
 
-    sip_uid=$(id -u ls200-sip) || die 'cannot resolve SIP service UID'
-    gateway_uid=$(id -u ls200-gateway) || die 'cannot resolve gateway service UID'
+    sip_uid=$(id -u aula-sip) || die 'cannot resolve SIP service UID'
+    gateway_uid=$(id -u aula-gateway) || die 'cannot resolve gateway service UID'
     chmod 0755 "$STATE"
     for service_dir in gateway nginx device; do
         directory=$STATE/$service_dir
@@ -304,32 +313,32 @@ if [ "$ROOT" = / ]; then
     done
     chown root:root "$STATE/device"
     chmod 0700 "$STATE/device"
-    chown ls200-gateway:ls200-web-gateway "$STATE/gateway"
+    chown aula-gateway:aula-web-gateway "$STATE/gateway"
     chmod 0700 "$STATE/gateway"
-    chown ls200-web:ls200-web-gateway "$STATE/nginx"
+    chown aula-web:aula-web-gateway "$STATE/nginx"
     chmod 0700 "$STATE/nginx"
     if [ ! -e "$STATE/tls" ]; then mkdir "$STATE/tls"; fi
     [ -d "$STATE/tls" ] && [ ! -L "$STATE/tls" ] ||
         die "unsafe TLS state directory: $STATE/tls"
-    chown root:ls200-web-tls "$STATE/tls"
+    chown root:aula-web-tls "$STATE/tls"
     chmod 0750 "$STATE/tls"
 
-    if [ ! -e "$STATE/ls200-sipd.conf" ] && [ ! -L "$STATE/ls200-sipd.conf" ]; then
+    if [ ! -e "$STATE/aula-sipd.conf" ] && [ ! -L "$STATE/aula-sipd.conf" ]; then
         sed -e 's/^enable_local_control = false$/enable_local_control = true/' \
-            -e 's#^settings_file = /var/lib/ls200-sipd/settings.json$#settings_file = /run/ls200-zoom-state/sip/settings.json#' \
+            -e 's#^settings_file = /var/lib/aula-sipd/settings.json$#settings_file = /run/aula-state/sip/settings.json#' \
             -e "s/^gateway_uid = [0-9][0-9]*$/gateway_uid = $gateway_uid/" \
-            "$RELEASE/etc/ls200-zoom/ls200-sipd.conf.example" > "$STATE/.ls200-sipd.conf.$$"
-        chmod 0600 "$STATE/.ls200-sipd.conf.$$"
-        chown ls200-sip "$STATE/.ls200-sipd.conf.$$"
-        mv "$STATE/.ls200-sipd.conf.$$" "$STATE/ls200-sipd.conf"
-        grep -Fxq 'settings_file = /run/ls200-zoom-state/sip/settings.json' \
-            "$STATE/ls200-sipd.conf" ||
+            "$RELEASE/etc/aula-ti8168-sip-endpoint/aula-sipd.conf.example" > "$STATE/.aula-sipd.conf.$$"
+        chmod 0600 "$STATE/.aula-sipd.conf.$$"
+        chown aula-sip "$STATE/.aula-sipd.conf.$$"
+        mv "$STATE/.aula-sipd.conf.$$" "$STATE/aula-sipd.conf"
+        grep -Fxq 'settings_file = /run/aula-state/sip/settings.json' \
+            "$STATE/aula-sipd.conf" ||
             die 'runtime settings path anchor was not replaced'
     else
-        [ -f "$STATE/ls200-sipd.conf" ] && [ ! -L "$STATE/ls200-sipd.conf" ] ||
-            die "state configuration is not a regular file: $STATE/ls200-sipd.conf"
+        [ -f "$STATE/aula-sipd.conf" ] && [ ! -L "$STATE/aula-sipd.conf" ] ||
+            die "state configuration is not a regular file: $STATE/aula-sipd.conf"
     fi
-    require_configured_uid "$STATE/ls200-sipd.conf" gateway_uid "$gateway_uid"
+    require_configured_uid "$STATE/aula-sipd.conf" gateway_uid "$gateway_uid"
     if [ ! -e "$STATE/gateway.conf" ] && [ ! -L "$STATE/gateway.conf" ] &&
        [ ! -e "$STATE/bootstrap-token" ] && [ ! -L "$STATE/bootstrap-token" ]; then
         bootstrap_code=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
@@ -343,9 +352,9 @@ if [ "$ROOT" = / ]; then
     fi
     require_configured_uid "$STATE/gateway.conf" expected_sipd_uid "$sip_uid"
 else
-    seed_state_file "$RELEASE/etc/ls200-zoom/ls200-sipd.conf.example" \
-        "$STATE/ls200-sipd.conf"
-    seed_state_file "$RELEASE/etc/ls200-zoom/gateway.conf.example" \
+    seed_state_file "$RELEASE/etc/aula-ti8168-sip-endpoint/aula-sipd.conf.example" \
+        "$STATE/aula-sipd.conf"
+    seed_state_file "$RELEASE/etc/aula-ti8168-sip-endpoint/gateway.conf.example" \
         "$STATE/gateway.conf"
 fi
 
@@ -555,7 +564,7 @@ repoint_nginx_selector() {
         write_selector_backup "$original_target" "$original_mode"
     fi
     target=$(nginx_owned_target "$original_mode")
-    temporary=$NGINX_SELECTOR_DIR/.nginx.conf.ls200-zoom.$$
+    temporary=$NGINX_SELECTOR_DIR/.nginx.conf.aula-ti8168-sip-endpoint.$$
     [ -d "$NGINX_SELECTOR_DIR" ] && [ ! -L "$NGINX_SELECTOR_DIR" ] ||
         die "nginx selector directory is unsafe: $NGINX_SELECTOR_DIR"
     [ ! -e "$temporary" ] && [ ! -L "$temporary" ] ||
@@ -570,7 +579,7 @@ repoint_nginx_selector() {
 }
 
 validate_live_nginx_copies() {
-    validation_include="include $RELEASE/etc/nginx/conf.d/zz-ls200-zoom-legacy.conf;"
+    validation_include="include $RELEASE/etc/nginx/conf.d/zz-aula-ti8168-sip-endpoint-legacy.conf;"
     result=0
     [ "$ROOT" = / ] || return 0
     if [ -x /usr/sbin/nginx ] && [ ! -L /usr/sbin/nginx ]; then
@@ -622,7 +631,7 @@ rollback_nginx_after_failed_validation() {
         original_mode=$2
         [ "$(selector_owned_mode)" = "$original_mode" ] ||
             die 'nginx selector changed before failed-validation rollback'
-        temporary=$NGINX_SELECTOR_DIR/.nginx.conf.ls200-zoom-rollback.$$
+        temporary=$NGINX_SELECTOR_DIR/.nginx.conf.aula-ti8168-sip-endpoint-rollback.$$
         [ ! -e "$temporary" ] && [ ! -L "$temporary" ] ||
             die "nginx selector rollback temporary path already exists: $temporary"
         ln -s "$original_target" "$temporary" || die 'cannot prepare nginx selector rollback'
@@ -672,10 +681,10 @@ if ! validate_live_nginx_copies; then
     rollback_nginx_after_failed_validation
     die 'nginx validation failed after preparing persistent copies'
 fi
-install_link /etc/init.d/S99ls200-zoom \
-    /opt/ls200-zoom/current/etc/init.d/S99ls200-zoom
-install_link /etc/nginx/conf.d/zz-ls200-zoom-legacy.conf \
-    /opt/ls200-zoom/current/etc/nginx/conf.d/zz-ls200-zoom-legacy.conf
+install_link /etc/init.d/S99aula \
+    /opt/aula-ti8168-sip-endpoint/current/etc/init.d/S99aula
+install_link /etc/nginx/conf.d/zz-aula-ti8168-sip-endpoint-legacy.conf \
+    /opt/aula-ti8168-sip-endpoint/current/etc/nginx/conf.d/zz-aula-ti8168-sip-endpoint-legacy.conf
 record_owned "release:$VERSION"
 record_owned "release-sha256:$VERSION:$MANIFEST_SHA256"
 
@@ -686,10 +695,10 @@ sh "$TRUSTED_VERIFIER" --payload "$RELEASE" \
     die "release changed before activation"
 ln -s "releases/$VERSION" "$PREFIX/.current-$VERSION-$$"
 atomic_replace "$PREFIX/.current-$VERSION-$$" "$CURRENT" \
-    "$RELEASE/bin/ls200-atomic-replace"
+    "$RELEASE/bin/aula-atomic-replace"
 sh "$TRUSTED_VERIFIER" --payload "$RELEASE" \
     --manifest-sha256 "$MANIFEST_SHA256" >/dev/null ||
     die "active release changed during activation"
-record_owned 'link:/opt/ls200-zoom/current'
+record_owned 'link:/opt/aula-ti8168-sip-endpoint/current'
 printf '%s\n' "$VERSION" > "$STATE/active-version"
-printf '%s\n' "installed LS-200 Zoom release $VERSION"
+printf '%s\n' "installed Aula Zoom release $VERSION"

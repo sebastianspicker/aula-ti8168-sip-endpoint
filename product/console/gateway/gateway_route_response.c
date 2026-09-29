@@ -7,17 +7,17 @@
 #include <stdio.h>
 #include <string.h>
 
-static void finish_logout(ls200_gateway *gateway, ls200_gateway_session *session,
-                          const ls200_gateway_request *request, const route_plan *plan,
-                          ls200_gateway_response *response) {
+static void finish_logout(aula_gateway *gateway, aula_gateway_session *session,
+                          const aula_gateway_request *request, const route_plan *plan,
+                          aula_gateway_response *response) {
   gateway_write_success(response, 200U, "{\"logged_out\":true}");
   gateway_save_mutation(gateway, session, request, plan, response);
   OPENSSL_cleanse(session, sizeof(*session));
   (void)snprintf(response->set_cookie, sizeof(response->set_cookie),
-                 "ls200_session=; Path=/zoom/; Secure; HttpOnly; SameSite=Strict; Max-Age=0");
+                 "aula_session=; Path=/zoom/; Secure; HttpOnly; SameSite=Strict; Max-Age=0");
 }
 
-static int write_session_response(const ls200_gateway_session *session, ls200_gateway_response *response) {
+static int write_session_response(const aula_gateway_session *session, aula_gateway_response *response) {
   char data[160] = {0};
   char csrf[65] = {0};
   int result = 0;
@@ -31,7 +31,7 @@ static int write_session_response(const ls200_gateway_session *session, ls200_ga
   return result;
 }
 
-static void write_preview_metadata(ls200_gateway *gateway, ls200_gateway_response *response) {
+static void write_preview_metadata(aula_gateway *gateway, aula_gateway_response *response) {
   json_t *data = gateway_preview_status_data(gateway);
   char encoded[512];
   if (data != NULL && gateway_serialize_json(data, encoded, sizeof(encoded)))
@@ -41,8 +41,8 @@ static void write_preview_metadata(ls200_gateway *gateway, ls200_gateway_respons
   if (data != NULL) json_decref(data);
 }
 
-static void write_suppressed_get(ls200_gateway *gateway, ls200_gateway_session *session,
-                                 const ls200_gateway_request *request, ls200_gateway_response *response) {
+static void write_suppressed_get(aula_gateway *gateway, aula_gateway_session *session,
+                                 const aula_gateway_request *request, aula_gateway_response *response) {
   if (strcmp(request->path, "/zoom/api/v1/auth/session") == 0) {
     if (!write_session_response(session, response))
       gateway_write_error(response, 500U, "INTERNAL", "session state is invalid");
@@ -62,21 +62,21 @@ static void write_suppressed_get(ls200_gateway *gateway, ls200_gateway_session *
   }
 }
 
-static int local_user_response(ls200_gateway *gateway, ls200_gateway_session *session,
-                               const ls200_gateway_request *request, const route_plan *plan,
-                               ls200_gateway_response *response) {
+static int local_user_response(aula_gateway *gateway, aula_gateway_session *session,
+                               const aula_gateway_request *request, const route_plan *plan,
+                               aula_gateway_response *response) {
   char revoked_username[33];
   int result = gateway_handle_user_mutation(gateway, session, request, response, revoked_username);
   if (result == 2) {
     gateway_save_mutation(gateway, session, request, plan, response);
-    if (revoked_username[0] != '\0') ls200_gateway_revoke_account_sessions(gateway, revoked_username);
+    if (revoked_username[0] != '\0') aula_gateway_revoke_account_sessions(gateway, revoked_username);
   }
   return 1;
 }
 
-int gateway_local_response(ls200_gateway *gateway, ls200_gateway_session *session,
-                           const ls200_gateway_request *request, const route_plan *plan,
-                           ls200_gateway_response *response) {
+int gateway_local_response(aula_gateway *gateway, aula_gateway_session *session,
+                           const aula_gateway_request *request, const route_plan *plan,
+                           aula_gateway_response *response) {
   if ((plan->flags & R_LOGOUT) != 0U) {
     finish_logout(gateway, session, request, plan, response);
     return 1;
@@ -93,7 +93,7 @@ int gateway_local_response(ls200_gateway *gateway, ls200_gateway_session *sessio
   return 1;
 }
 
-int gateway_backend_control_reply(ls200_gateway_control_fn control, void *context,
+int gateway_backend_control_reply(aula_gateway_control_fn control, void *context,
                                   const route_plan *plan, char backend[1024]) {
   return control == NULL ? 0 : control(context, plan->opcode, plan->control_request_id,
                                        plan->payload, backend, 1024U);
@@ -136,17 +136,17 @@ static int backend_persistence_uncertain(const char *backend) {
   return valid;
 }
 
-static int backend_event_response(ls200_gateway *gateway, const route_plan *plan, const char *normalized,
-                                  ls200_gateway_response *response) {
-  if (plan->opcode != LS200_CONTROL_OPCODE_SUBSCRIBE) return 0;
+static int backend_event_response(aula_gateway *gateway, const route_plan *plan, const char *normalized,
+                                  aula_gateway_response *response) {
+  if (plan->opcode != AULA_CONTROL_OPCODE_SUBSCRIBE) return 0;
   if (!gateway_record_events(gateway, normalized) || !gateway_write_events(gateway, response))
     gateway_write_error(response, 500U, "INTERNAL", "event history could not be encoded");
   return 1;
 }
 
-static int backend_recent_call(ls200_gateway *gateway, const ls200_gateway_session *session,
-                               const ls200_gateway_request *request, const route_plan *plan,
-                               ls200_gateway_response *response) {
+static int backend_recent_call(aula_gateway *gateway, const aula_gateway_session *session,
+                               const aula_gateway_request *request, const route_plan *plan,
+                               aula_gateway_response *response) {
   int store_result;
   if (strcmp(request->path, "/zoom/api/v1/calls") != 0 || strcmp(request->method, "POST") != 0) return 1;
   store_result = gateway_record_recent(gateway, request->body);
@@ -162,14 +162,14 @@ static int backend_recent_call(ls200_gateway *gateway, const ls200_gateway_sessi
   return 0;
 }
 
-static int backend_status_shape(const ls200_gateway *gateway, const route_plan *plan,
-                                const ls200_gateway_request *request, char normalized[1024]) {
+static int backend_status_shape(const aula_gateway *gateway, const route_plan *plan,
+                                const aula_gateway_request *request, char normalized[1024]) {
   const char *path = (plan->flags & R_EXPORT) != 0U ? "/zoom/api/v1/diagnostics" : request->path;
-  return plan->opcode != LS200_CONTROL_OPCODE_STATUS ||
+  return plan->opcode != AULA_CONTROL_OPCODE_STATUS ||
       gateway_shape_status_route(gateway, path, normalized, normalized, 1024U);
 }
 
-static int bind_diagnostics_export(ls200_gateway_session *session, const ls200_gateway_request *request,
+static int bind_diagnostics_export(aula_gateway_session *session, const aula_gateway_request *request,
                                    char normalized[1024]) {
   json_error_t error;
   json_t *data;
@@ -184,7 +184,7 @@ static int bind_diagnostics_export(ls200_gateway_session *session, const ls200_g
     }
     OPENSSL_cleanse(random, sizeof(random));
   }
-  session->diagnostics_export_expires_at = request->now + LS200_GATEWAY_SESSION_IDLE_SECONDS;
+  session->diagnostics_export_expires_at = request->now + AULA_GATEWAY_SESSION_IDLE_SECONDS;
   data = json_loads(normalized, JSON_REJECT_DUPLICATES, &error);
   if (data == NULL || json_object_set_new(data, "export_id", json_string(session->diagnostics_export_id)) != 0 ||
       !gateway_serialize_json(data, normalized, 1024U)) {
@@ -195,9 +195,9 @@ static int bind_diagnostics_export(ls200_gateway_session *session, const ls200_g
   return 1;
 }
 
-static int write_diagnostics_export(ls200_gateway_session *session, const ls200_gateway_request *request,
+static int write_diagnostics_export(aula_gateway_session *session, const aula_gateway_request *request,
                                     const route_plan *plan, const char *normalized,
-                                    ls200_gateway_response *response) {
+                                    aula_gateway_response *response) {
   const char *id;
   size_t id_length, expected_length;
   json_error_t error;
@@ -228,28 +228,28 @@ cleanup:
   return result;
 }
 
-static void finish_backend_error(ls200_gateway *gateway, const ls200_gateway_session *identity,
-                                 const ls200_gateway_request *request, const route_plan *plan,
-                                 const char *backend, ls200_gateway_response *response) {
-  if (plan->opcode == LS200_CONTROL_OPCODE_REPLACE_CREDENTIAL && backend_persistence_uncertain(backend)) {
+static void finish_backend_error(aula_gateway *gateway, const aula_gateway_session *identity,
+                                 const aula_gateway_request *request, const route_plan *plan,
+                                 const char *backend, aula_gateway_response *response) {
+  if (plan->opcode == AULA_CONTROL_OPCODE_REPLACE_CREDENTIAL && backend_persistence_uncertain(backend)) {
     gateway_write_error(response, 503U, "PERSISTENCE_UNCERTAIN",
                         "credential changed but restart durability was not confirmed");
     gateway_save_mutation(gateway, identity, request, plan, response);
-  } else if (plan->opcode == LS200_CONTROL_OPCODE_SETTINGS && backend_persistence_uncertain(backend)) {
+  } else if (plan->opcode == AULA_CONTROL_OPCODE_SETTINGS && backend_persistence_uncertain(backend)) {
     gateway_write_error(response, 503U, "PERSISTENCE_UNCERTAIN",
                         "settings changed but restart durability was not confirmed");
     gateway_save_mutation(gateway, identity, request, plan, response);
-  } else if (plan->opcode == LS200_CONTROL_OPCODE_SETTINGS && settings_revision_conflict(backend)) {
+  } else if (plan->opcode == AULA_CONTROL_OPCODE_SETTINGS && settings_revision_conflict(backend)) {
     gateway_write_error(response, 409U, "REVISION_CONFLICT", "settings revision is stale");
   } else {
     gateway_write_error(response, 502U, "BACKEND_PROTOCOL", "control daemon rejected the request");
   }
 }
 
-int gateway_finish_backend_response(ls200_gateway *gateway, const ls200_gateway_session *identity,
-                                    ls200_gateway_session *live_session, const ls200_gateway_request *request,
+int gateway_finish_backend_response(aula_gateway *gateway, const aula_gateway_session *identity,
+                                    aula_gateway_session *live_session, const aula_gateway_request *request,
                                     const route_plan *plan, int control_result, const char *backend,
-                                    ls200_gateway_response *response) {
+                                    aula_gateway_response *response) {
   char normalized[1024] = {0};
   if (control_result == 0) {
     gateway_write_error(response, 503U, "BACKEND_UNAVAILABLE", "control daemon unavailable");
@@ -258,7 +258,7 @@ int gateway_finish_backend_response(ls200_gateway *gateway, const ls200_gateway_
   } else if ((plan->flags & R_REDACT) != 0U) {
     gateway_write_success(response, 200U, "{\"credentials_updated\":true}");
     gateway_save_mutation(gateway, identity, request, plan, response);
-  } else if (!ls200_gateway_backend_response_normalize(plan->opcode, backend, normalized, sizeof(normalized))) {
+  } else if (!aula_gateway_backend_response_normalize(plan->opcode, backend, normalized, sizeof(normalized))) {
     gateway_write_error(response, 502U, "BACKEND_PROTOCOL", "control daemon returned invalid JSON");
   } else if (backend_event_response(gateway, plan, normalized, response)) {
     /* handled */

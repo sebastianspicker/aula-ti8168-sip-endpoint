@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict parser for the operator-owned physical LS-200 session file."""
+"""Strict offline parser for an owned TI8168 media-board session file."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ from typing import Any
 import receipts
 
 
-SCHEMA = "ls200-live-session-v1"
+SCHEMA = "aula-ti8168-sip-endpoint-live-session-v1"
 TARGET_INTERFACE = "en5"
-TARGET_ROLE = "owned-physical-ls200-private-lab"
-TARGET_IDENTITY = "GM LS-200"
+TARGET_ROLE = "owned-physical-aula-private-lab"
+TARGET_IDENTITY = "private-identity-provider-unavailable"
 ALLOWED_ACTIONS = frozenset(
     {"preflight", "install", "smoke", "soak-15", "soak-30", "soak-60", "reboot", "remove"}
 )
@@ -245,7 +245,7 @@ def _validate_target(value: Any) -> tuple[str, str, str, int, str]:
     if target["interface"] != TARGET_INTERFACE:
         raise SessionError("target must remain bound to the approved private-lab interface")
     if target["identity"] != TARGET_IDENTITY:
-        raise SessionError("target identity must be GM LS-200")
+        raise SessionError("physical identity provider unavailable in maintained source")
     host_ip = _validate_host_address(target["host_ipv4"], target_ip)
     if not isinstance(target["expected_mac"], str) or not MAC.fullmatch(target["expected_mac"]):
         raise SessionError("target.expected_mac must be an exact six-octet MAC")

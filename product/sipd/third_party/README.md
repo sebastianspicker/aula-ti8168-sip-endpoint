@@ -11,7 +11,7 @@ results, and complete dynamic and static dependency closure. Builds must
 consume already-verified inputs and must not download source, packages, or
 toolchains implicitly.
 
-The extracted LS-200 rootfs remains immutable evidence. Reconstructed sysroots,
+The extracted target rootfs remains immutable evidence. Reconstructed sysroots,
 pkg-config metadata, build output, source archives, and reports belong outside
 that evidence tree.
 
@@ -24,9 +24,9 @@ decision remains a gate. The official commit archive was retrieved on
 `2d70c0b0cb49c7ca071a46179e9a0a9af28371a2585ac085da9e59e2dab3589b`.
 The default CMake
 configuration does not find, download, vendor, or link PJSIP. An authorized
-reviewer must provide both `LS200_SIPD_PJSIP_INCLUDE_DIR` and
-`LS200_SIPD_PJSIP_LIBRARIES` explicitly when enabling it, plus exact
-`LS200_SIPD_PJSIP_UA_LIBRARY` and minimal `LS200_SIPD_PJMEDIA_LIBRARY`
+reviewer must provide both `AULA_SIPD_PJSIP_INCLUDE_DIR` and
+`AULA_SIPD_PJSIP_LIBRARIES` explicitly when enabling it, plus exact
+`AULA_SIPD_PJSIP_UA_LIBRARY` and minimal `AULA_SIPD_PJMEDIA_LIBRARY`
 archives for invite/session-timer support.
 The 2026-08-27 host closure uses only low-level PJSIP and passes 13/13 CTests,
 including UDP, authenticated TLS hostname acceptance/rejection, and SHA-256

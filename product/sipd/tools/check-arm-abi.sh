@@ -10,7 +10,7 @@ usage() {
 binary=
 reference=
 sysroot=
-# libresolv is the reviewed firmware system resolver used for DHCP DNS setup.
+# The declared target ABI includes the glibc system resolver for DNS setup.
 allowed_needed='libc.so.6 libm.so.6 libpthread.so.0 librt.so.1 libdl.so.2 libresolv.so.2 libgcc_s.so.1 ld-linux.so.3'
 glibc_max=2.12
 while [ "$#" -gt 0 ]; do
@@ -35,7 +35,7 @@ printf '%s\n' "$header" | grep -Eq 'Flags:.*Version5 EABI' || { echo "check-arm-
 attributes=$($readelf_bin -A "$binary" | grep -E 'Tag_CPU_arch:|Tag_ABI_VFP_args:' | sed 's/^[[:space:]]*//' | sort -u)
 reference_attributes=$($readelf_bin -A "$reference" | grep -E 'Tag_CPU_arch:|Tag_ABI_VFP_args:' | sed 's/^[[:space:]]*//' | sort -u)
 [ "$attributes" = "$reference_attributes" ] || {
-    echo "check-arm-abi: CPU or float-ABI attributes differ from recovered reference" >&2; exit 1;
+    echo "check-arm-abi: CPU or float-ABI attributes differ from the supplied ABI reference" >&2; exit 1;
 }
 
 program_headers=$($readelf_bin -l "$binary")
@@ -69,8 +69,8 @@ if [ -n "$versions" ]; then
 fi
 # Dynamic imports are normal. Resolve each non-weak import against the declared
 # DT_NEEDED libraries in the supplied development sysroot without running ARM.
-providers=$(mktemp "${TMPDIR:-/tmp}/ls200-sipd-abi-providers.XXXXXX")
-imports=$(mktemp "${TMPDIR:-/tmp}/ls200-sipd-abi-imports.XXXXXX")
+providers=$(mktemp "${TMPDIR:-/tmp}/aula-sipd-abi-providers.XXXXXX")
+imports=$(mktemp "${TMPDIR:-/tmp}/aula-sipd-abi-imports.XXXXXX")
 trap 'rm -f "$providers" "$imports"' EXIT HUP INT TERM
 if [ -n "$needed_libraries" ]; then
     printf '%s\n' "$needed_libraries" | while IFS= read -r needed; do

@@ -1,30 +1,30 @@
 #define _POSIX_C_SOURCE 200809L
 #include "config_private.h"
 #include "config_route.h"
-#include "ls200_sipd/backend.h"
-#include "ls200_sipd/sip.h"
+#include "aula_sipd/backend.h"
+#include "aula_sipd/sip.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-const char *ls200_config_crc_address(const ls200_config *config) {
+const char *aula_config_crc_address(const aula_config *config) {
   return config == NULL ? NULL : config->crc_address;
 }
 
-const ls200_config_view *ls200_config_get_view(const ls200_config *config) { return (config == NULL) ? NULL : &config->view; }
+const aula_config_view *aula_config_get_view(const aula_config *config) { return (config == NULL) ? NULL : &config->view; }
 
-ls200_status ls200_config_get_log_config(const ls200_config *config,
-                                         ls200_log_config *out_config) {
-  if (config == NULL || out_config == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+aula_status aula_config_get_log_config(const aula_config *config,
+                                         aula_log_config *out_config) {
+  if (config == NULL || out_config == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   out_config->sink = config->view.log_sink;
   out_config->minimum_level = config->view.log_level;
   out_config->maximum_events_per_interval = config->view.limits.log_events_per_interval;
   out_config->interval_seconds = config->view.log_summary_interval_seconds;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static void ls200_config_copy_operational_view(const ls200_config_view *view,
-                                         ls200_config_operational_view *out_view) {
+static void aula_config_copy_operational_view(const aula_config_view *view,
+                                         aula_config_operational_view *out_view) {
   out_view->pid_file = view->pid_file;
   out_view->media_backend = view->media_backend;
   out_view->video_source = view->video_source;
@@ -55,79 +55,79 @@ static void ls200_config_copy_operational_view(const ls200_config_view *view,
   out_view->aec_delay_calibrated = view->aec_delay_calibrated;
 }
 
-static ls200_status ls200_config_sip_profile(const char *value,
-                                             ls200_zoom_profile *out_profile) {
-  if (value == NULL || out_profile == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+static aula_status aula_config_sip_profile(const char *value,
+                                             aula_zoom_profile *out_profile) {
+  if (value == NULL || out_profile == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   if (strcmp(value, "zoom_direct") == 0) {
-    *out_profile = LS200_ZOOM_PROFILE_DIRECT_CRC;
+    *out_profile = AULA_ZOOM_PROFILE_DIRECT_CRC;
   } else if (strcmp(value, "zoom_proxy") == 0) {
-    *out_profile = LS200_ZOOM_PROFILE_PROXY_REGISTRATION;
+    *out_profile = AULA_ZOOM_PROFILE_PROXY_REGISTRATION;
   } else if (strcmp(value, "private_lab") == 0) {
-    *out_profile = LS200_ZOOM_PROFILE_PRIVATE_LAB;
+    *out_profile = AULA_ZOOM_PROFILE_PRIVATE_LAB;
   } else {
-    return LS200_STATUS_CONFIGURATION_ERROR;
+    return AULA_STATUS_CONFIGURATION_ERROR;
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static const char *ls200_config_media_security_name(
-    ls200_media_security_policy policy) {
+static const char *aula_config_media_security_name(
+    aula_media_security_policy policy) {
   if (policy == PREFER_SRTP) return "prefer_srtp";
   if (policy == REQUIRE_SRTP) return "required";
   return "plain_compat";
 }
 
-ls200_status ls200_config_get_operational_view(const ls200_config *config,
-                                                ls200_config_operational_view *out_view) {
-  if (config == NULL || out_view == NULL) return LS200_STATUS_INVALID_ARGUMENT;
-  ls200_config_copy_operational_view(&config->view, out_view);
-  return LS200_STATUS_OK;
+aula_status aula_config_get_operational_view(const aula_config *config,
+                                                aula_config_operational_view *out_view) {
+  if (config == NULL || out_view == NULL) return AULA_STATUS_INVALID_ARGUMENT;
+  aula_config_copy_operational_view(&config->view, out_view);
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_config_create_call_snapshot(const ls200_config *config, ls200_call_config **out_snapshot) {
-  ls200_call_config *snapshot;
-  if (config == NULL || out_snapshot == NULL || *out_snapshot != NULL) return LS200_STATUS_INVALID_ARGUMENT;
-  snapshot = (ls200_call_config *)calloc(1U, sizeof(*snapshot));
-  if (snapshot == NULL) return LS200_STATUS_INTERNAL_ERROR;
+aula_status aula_config_create_call_snapshot(const aula_config *config, aula_call_config **out_snapshot) {
+  aula_call_config *snapshot;
+  if (config == NULL || out_snapshot == NULL || *out_snapshot != NULL) return AULA_STATUS_INVALID_ARGUMENT;
+  snapshot = (aula_call_config *)calloc(1U, sizeof(*snapshot));
+  if (snapshot == NULL) return AULA_STATUS_INTERNAL_ERROR;
   snapshot->config = *config;
   snapshot->config.fixture_video_fd = -1;
   snapshot->config.fixture_audio_fd = -1;
   if (config->use_inherited_fixture_fds != 0) {
-    ls200_status status = ls200_config_duplicate_fixture_descriptor(
+    aula_status status = aula_config_duplicate_fixture_descriptor(
         config->fixture_video_fd, &snapshot->config.fixture_video_fd);
-    if (status == LS200_STATUS_OK) {
-      status = ls200_config_duplicate_fixture_descriptor(config->fixture_audio_fd,
+    if (status == AULA_STATUS_OK) {
+      status = aula_config_duplicate_fixture_descriptor(config->fixture_audio_fd,
                                              &snapshot->config.fixture_audio_fd);
     }
-    if (status != LS200_STATUS_OK) {
-      ls200_config_close_fixture_fds(&snapshot->config);
+    if (status != AULA_STATUS_OK) {
+      aula_config_close_fixture_fds(&snapshot->config);
       (void)memset(snapshot, 0, sizeof(*snapshot));
       free(snapshot);
       return status;
     }
   }
-  ls200_config_bind_view(&snapshot->config);
+  aula_config_bind_view(&snapshot->config);
   *out_snapshot = snapshot;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-const ls200_config_view *ls200_call_config_get_view(const ls200_call_config *snapshot) { return (snapshot == NULL) ? NULL : &snapshot->config.view; }
+const aula_config_view *aula_call_config_get_view(const aula_call_config *snapshot) { return (snapshot == NULL) ? NULL : &snapshot->config.view; }
 
-ls200_status ls200_call_config_get_operational_view(
-    const ls200_call_config *snapshot, ls200_config_operational_view *out_view) {
-  if (snapshot == NULL || out_view == NULL) return LS200_STATUS_INVALID_ARGUMENT;
-  ls200_config_copy_operational_view(&snapshot->config.view, out_view);
-  return LS200_STATUS_OK;
+aula_status aula_call_config_get_operational_view(
+    const aula_call_config *snapshot, aula_config_operational_view *out_view) {
+  if (snapshot == NULL || out_view == NULL) return AULA_STATUS_INVALID_ARGUMENT;
+  aula_config_copy_operational_view(&snapshot->config.view, out_view);
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_call_config_get_runtime_options(
-    const ls200_call_config *snapshot, ls200_backend_config *out_backend,
-    ls200_sip_endpoint_config *out_sip,
-    ls200_media_address_options *out_media_addresses) {
-  const ls200_config_view *view;
+aula_status aula_call_config_get_runtime_options(
+    const aula_call_config *snapshot, aula_backend_config *out_backend,
+    aula_sip_endpoint_config *out_sip,
+    aula_media_address_options *out_media_addresses) {
+  const aula_config_view *view;
   if (snapshot == NULL || out_backend == NULL || out_sip == NULL ||
       out_media_addresses == NULL) {
-    return LS200_STATUS_INVALID_ARGUMENT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   }
   view = &snapshot->config.view;
   (void)memset(out_backend, 0, sizeof(*out_backend));
@@ -147,9 +147,9 @@ ls200_status ls200_call_config_get_runtime_options(
   out_backend->rtsp_reconnect_limit = view->rtsp_reconnect_limit;
   (void)memset(out_sip, 0, sizeof(*out_sip));
   out_sip->outbound_uri = view->sip_uri;
-  if (ls200_config_sip_profile(view->sip_profile, &out_sip->profile) !=
-      LS200_STATUS_OK)
-    return LS200_STATUS_CONFIGURATION_ERROR;
+  if (aula_config_sip_profile(view->sip_profile, &out_sip->profile) !=
+      AULA_STATUS_OK)
+    return AULA_STATUS_CONFIGURATION_ERROR;
   out_sip->auth_username = view->auth_username[0] == '\0' ? NULL :
                                                             view->auth_username;
   out_sip->auth_secret_file = view->auth_secret_file[0] == '\0' ? NULL :
@@ -164,44 +164,44 @@ ls200_status ls200_call_config_get_runtime_options(
   out_sip->limits.maximum_transaction_count = 16U;
   out_sip->limits.maximum_dialog_count = 2U;
   out_sip->limits.maximum_digest_challenges_per_dialog = 2U;
-  out_sip->allow_tcp_fallback = view->transport == LS200_TRANSPORT_UDP;
+  out_sip->allow_tcp_fallback = view->transport == AULA_TRANSPORT_UDP;
   out_sip->enable_tls = view->enable_tls;
   out_sip->preferred_transport = view->transport;
   out_media_addresses->bind_address = view->media_bind_address;
   out_media_addresses->advertised_address = view->media_advertised_address;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-void ls200_config_destroy(ls200_config *config) {
+void aula_config_destroy(aula_config *config) {
   if (config != NULL) {
-    ls200_config_close_fixture_fds(config);
+    aula_config_close_fixture_fds(config);
     (void)memset(config, 0, sizeof(*config));
     free(config);
   }
 }
-void ls200_call_config_destroy(ls200_call_config *snapshot) {
+void aula_call_config_destroy(aula_call_config *snapshot) {
   if (snapshot != NULL) {
-    ls200_config_close_fixture_fds(&snapshot->config);
+    aula_config_close_fixture_fds(&snapshot->config);
     (void)memset(snapshot, 0, sizeof(*snapshot));
     free(snapshot);
   }
 }
 
-ls200_status ls200_config_format_redacted(const ls200_config *config, ls200_mutable_bytes *output) {
+aula_status aula_config_format_redacted(const aula_config *config, aula_mutable_bytes *output) {
   int written;
-  if (config == NULL || output == NULL || output->data == NULL || output->capacity == 0U) return LS200_STATUS_INVALID_ARGUMENT;
+  if (config == NULL || output == NULL || output->data == NULL || output->capacity == 0U) return AULA_STATUS_INVALID_ARGUMENT;
   written = snprintf((char *)output->data, output->capacity,
                      "foreground=%s transport=%s backend=%s security=%s local_control=%s public_network=%s tls=%s aec=%s aec_delay_frames=%u aec_calibrated=%s rx_rendering=false",
                      config->view.foreground ? "true" : "false",
-                     config->view.transport == LS200_TRANSPORT_UDP ? "udp" : (config->view.transport == LS200_TRANSPORT_TCP ? "tcp" : "tls"),
+                     config->view.transport == AULA_TRANSPORT_UDP ? "udp" : (config->view.transport == AULA_TRANSPORT_TCP ? "tcp" : "tls"),
                      config->media_backend,
-                     ls200_config_media_security_name(config->view.media_security_policy),
+                     aula_config_media_security_name(config->view.media_security_policy),
                      config->view.enable_local_control ? "enabled" : "disabled",
                      config->view.enable_public_network ? "enabled" : "disabled", config->view.enable_tls ? "enabled" : "disabled",
                      config->view.aec_enabled ? "enabled" : "disabled",
                      (unsigned int)config->view.aec_reference_delay_frames,
                      config->view.aec_delay_calibrated ? "true" : "false");
-  if (written < 0 || (size_t)written >= output->capacity) { output->length = 0U; return LS200_STATUS_LIMIT_EXCEEDED; }
+  if (written < 0 || (size_t)written >= output->capacity) { output->length = 0U; return AULA_STATUS_LIMIT_EXCEEDED; }
   output->length = (size_t)written;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }

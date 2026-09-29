@@ -7,7 +7,7 @@ static int pjsip_resolved_address_is_usable(const struct addrinfo *address) {
 }
 
 static int pjsip_resolved_address_matches_peer(
-    const struct addrinfo *address, const ls200_sip_transport_info *peer) {
+    const struct addrinfo *address, const aula_sip_transport_info *peer) {
   if (peer == NULL) return 0;
   if (address->ai_family == AF_INET && peer->remote_address_length == 4U) {
     struct sockaddr_in socket_address;
@@ -25,7 +25,7 @@ static int pjsip_resolved_address_matches_peer(
 }
 
 static struct addrinfo *pjsip_select_resolved_address(
-    struct addrinfo *addresses, const ls200_sip_transport_info *preferred_peer) {
+    struct addrinfo *addresses, const aula_sip_transport_info *preferred_peer) {
   struct addrinfo *cursor;
   struct addrinfo *first = NULL;
   struct addrinfo *ipv4 = NULL;

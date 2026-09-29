@@ -20,13 +20,13 @@ repository_root=$(CDPATH='' cd -- "$project_dir/../.." && pwd -P)
 path_guard=$repository_root/tooling/workspace/protected_output.py
 canonical_sysroot=$(python3 "$path_guard" --input "$repository_root" "$sysroot") || exit 2
 canonical_binary=$(python3 "$path_guard" --input "$repository_root" "$binary") || exit 2
-[ "${LS200_QEMU_ARM_ENABLE:-}" = 1 ] || { echo "run-qemu-arm: set LS200_QEMU_ARM_ENABLE=1 after authorization" >&2; exit 2; }
-engine=${LS200_QEMU_ARM_ENGINE:-docker}
+[ "${AULA_QEMU_ARM_ENABLE:-}" = 1 ] || { echo "run-qemu-arm: set AULA_QEMU_ARM_ENABLE=1 after authorization" >&2; exit 2; }
+engine=${AULA_QEMU_ARM_ENGINE:-docker}
 case "$engine" in docker|podman) ;; *) echo "run-qemu-arm: engine must be docker or podman" >&2; exit 2;; esac
 command -v "$engine" >/dev/null 2>&1 || { echo "run-qemu-arm: required container engine is unavailable" >&2; exit 2; }
-image=${LS200_QEMU_ARM_IMAGE:-}
+image=${AULA_QEMU_ARM_IMAGE:-}
 printf '%s\n' "$image" | grep -Eq '.+@sha256:[0-9a-f]{64}$' || {
-    echo "run-qemu-arm: set LS200_QEMU_ARM_IMAGE to a reviewed image digest" >&2; exit 2;
+    echo "run-qemu-arm: set AULA_QEMU_ARM_IMAGE to a reviewed image digest" >&2; exit 2;
 }
 # The image must provide qemu-arm.  This script intentionally does not fall
 # back to a host qemu binary, host network namespace, or writable sysroot.
@@ -34,5 +34,5 @@ exec "$engine" run --pull never --rm --network none --read-only --tmpfs /tmp:rw,
     --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 \
     --env PATH=/usr/bin:/bin \
     --volume "$canonical_sysroot:/sysroot:ro" \
-    --volume "$canonical_binary:/candidate/ls200-sipd:ro" \
-    "$image" qemu-arm -L /sysroot /candidate/ls200-sipd "$@"
+    --volume "$canonical_binary:/candidate/aula-sipd:ro" \
+    "$image" qemu-arm -L /sysroot /candidate/aula-sipd "$@"

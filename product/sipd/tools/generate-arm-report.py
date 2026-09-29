@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[1]
-EVIDENCE_ROOT = PROJECT.parents[1] / "evidence/firmware-analysis/extracted/rootfs/401900477/rootfs"
+EVIDENCE_ROOT = PROJECT.parents[1] / "evidence"
 
 
 def main() -> int:
@@ -22,7 +22,7 @@ def main() -> int:
         raise SystemExit("generate-arm-report: output must be new")
     try:
         output.relative_to(EVIDENCE_ROOT.resolve(strict=False))
-        raise SystemExit("generate-arm-report: refusing immutable recovered evidence")
+        raise SystemExit("generate-arm-report: refusing protected evidence tree")
     except ValueError:
         pass
     if not args.abi_report.is_file() or args.abi_report.is_symlink():
@@ -34,7 +34,7 @@ def main() -> int:
         raise SystemExit(f"generate-arm-report: invalid ABI text: {error}")
     documents = {
         "abi": {
-            "format": "ls200-sipd-check-arm-abi-text-v1",
+            "format": "aula-sipd-check-arm-abi-text-v1",
             "status": "pass" if abi_text.strip() == "check-arm-abi: OK" else "fail",
         },
         "abi_sha256": hashlib.sha256(abi_raw).hexdigest(),
@@ -48,7 +48,7 @@ def main() -> int:
         raise SystemExit(f"generate-arm-report: invalid interface JSON: {error}")
     documents["interface_sha256"] = hashlib.sha256(raw).hexdigest()
     status = "pass" if documents["interface"].get("status") == "pass" and documents["abi"]["status"] == "pass" else "incomplete-or-fail"
-    report = {"format": "ls200-sipd-arm-report-v1", "status": status, "gates": documents, "unproven": ["qemu-arm confined execution", "fixture private-lab call", "hardware media behavior"]}
+    report = {"format": "aula-sipd-arm-report-v1", "status": status, "gates": documents, "unproven": ["qemu-arm confined execution", "fixture private-lab call", "hardware media behavior"]}
     output.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
     return 0 if status == "pass" else 1
 

@@ -45,16 +45,16 @@ int gateway_event_snapshot_backend_valid(json_t *root) {
   revision = json_object_get(root, "revision");
   events = json_object_get(root, "events");
   if (!json_is_integer(revision) || json_integer_value(revision) < 1 || !json_is_array(events) ||
-      json_array_size(events) > LS200_GATEWAY_MAX_EVENTS) return 0;
+      json_array_size(events) > AULA_GATEWAY_MAX_EVENTS) return 0;
   for (index = 0U; index < json_array_size(events); ++index)
     if (!event_object_valid(json_array_get(events, index))) return 0;
   return 1;
 }
 
-static int event_already_recorded(const ls200_gateway *gateway, const char *id,
+static int event_already_recorded(const aula_gateway *gateway, const char *id,
                                   const char *type, const char *message) {
   size_t slot;
-  for (slot = 0U; slot < LS200_GATEWAY_MAX_EVENTS; ++slot) {
+  for (slot = 0U; slot < AULA_GATEWAY_MAX_EVENTS; ++slot) {
     if (!gateway->events[slot].used || strcmp(gateway->events[slot].id, id) != 0) continue;
     return strcmp(gateway->events[slot].type, type) == 0 &&
         strcmp(gateway->events[slot].message, message) == 0 ? 1 : -1;
@@ -62,7 +62,7 @@ static int event_already_recorded(const ls200_gateway *gateway, const char *id,
   return 0;
 }
 
-int gateway_record_events(ls200_gateway *gateway, const char *body) {
+int gateway_record_events(aula_gateway *gateway, const char *body) {
   json_error_t error;
   json_t *root = json_loads(body, JSON_REJECT_DUPLICATES, &error);
   json_t *events;
@@ -92,13 +92,13 @@ int gateway_record_events(ls200_gateway *gateway, const char *body) {
   return 1;
 }
 
-int gateway_write_events(const ls200_gateway *gateway, ls200_gateway_response *response) {
+int gateway_write_events(const aula_gateway *gateway, aula_gateway_response *response) {
   json_t *events = json_array();
   json_t *data;
-  char serialized[LS200_GATEWAY_COLLECTION_RESPONSE_BYTES];
+  char serialized[AULA_GATEWAY_COLLECTION_RESPONSE_BYTES];
   size_t i;
   if (events == NULL) return 0;
-  for (i = 0U; i < LS200_GATEWAY_MAX_EVENTS; ++i) {
+  for (i = 0U; i < AULA_GATEWAY_MAX_EVENTS; ++i) {
     json_t *item;
     int appended;
     if (!gateway->events[i].used) continue;

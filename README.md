@@ -1,16 +1,21 @@
-# LS-200 Zoom
+# Aula — TI8168 SIP endpoint
 
-LS-200 Zoom is a research and development workspace for understanding the AREC
-LS-200, running recovered firmware in QEMU, and building a reversible SIP and
-web-console extension for an owned device. It is intended for maintainers,
+Aula is a SIP endpoint and web console for TI8168 media boards. The
+workspace also includes private firmware research, bounded QEMU models, and
+appliance-specific integration experiments. It is intended for maintainers,
 laboratory operators, and engineers working on the native endpoint.
+
+The **TI DM8168 EVM**, **Z3-DM8168-RPS**, and **iWave DM8168 Qseven SOM**
+provide board and module comparisons for this exploration. These examples do
+not establish a particular manufacturer, PCB identity, or supported deployment
+target for the TI8168 media board. See
+[TI8168 media board and comparison platforms](docs/reference/ti8168-board.md).
 
 The repository is not a released appliance image or a supported Zoom client.
 The maintained services have host, cross-build, and QEMU test paths, but public
 Zoom interoperability, trusted production TLS, sustained hardware media, and
-full recovery have not been established as release claims. The recovered QEMU
-machine also lacks the device's M3, DSP, capture, display, and complete media
-behavior.
+full recovery have not been established as release claims. The synthetic QEMU model does not establish device boot, processor behavior,
+or media support.
 
 ## What is here
 
@@ -18,8 +23,8 @@ behavior.
 | --- | --- | --- |
 | [`product/sipd/`](product/sipd/README.md) | Native SIP, SDP, RTP/RTCP, media, and local-control daemon | C/CMake service; independently buildable |
 | [`product/console/`](product/console/README.md) | HTTPS console, FastCGI policy gateway, and React UI | C gateway plus TypeScript/Vite application |
-| [`lab/emulator/`](lab/emulator/README.md) | Logical control, web, state, media-fixture, and investigation environment | Python 3.11 package with independent CLIs |
-| [`lab/qemu/`](lab/qemu/README.md) | Recovered Linux and NAND model for the TI8168-based unit | Pinned QEMU build and run lane |
+| [`lab/emulator/`](lab/emulator/README.md) | Synthetic local recording/stream state, events, and persistence | Python 3.11 package; no device or network interface |
+| [`lab/qemu/`](lab/qemu/README.md) | Synthetic TI8168 media-board model | Pinned QEMU build and verification lane |
 | [`lab/sip-peer/`](lab/sip-peer/README.md) | Deterministic SIP/RTP peer for the QEMU and physical private-lab counterpart | Python package shared by both callers |
 | [`deployment/`](deployment/README.md) | Manifest-verified payload assembly, QEMU staging, and physical-target lifecycle | Python and shell packaging/installation tools |
 | [`dependencies/`](dependencies/README.md) | Third-party pins, advisories, and digest-gated preparation | Policy and offline input verification |
@@ -62,32 +67,18 @@ make verify
 See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the narrower component
 gates, the evidence and native/QEMU-model lanes, and prerequisites.
 
-Build and start the recovered QEMU development machine with:
-
-```sh
-make qemu-build
-make qemu-verify
-make qemu-run
-```
-
-The build fetches the pinned QEMU source when it is absent. `make qemu-run`
-requires the private recovered NAND set. To start the recovered loopback web
-path instead of the default shell, use:
-
-```sh
-LS200_BOOT_MODE=web make qemu-run
-```
-
-The recovered web interface can start, but recovered API and media services may
-remain unavailable because the modeled machine does not provide all original
-processors and hardware.
+The maintained QEMU lane builds and verifies a synthetic TI8168 media-board
+model. It accepts only caller-supplied reviewed ELF or raw images; the previous
+recovered NAND/web launcher and two-slot product acceptance workflow are not
+part of this lane. `make qemu-run`, `make qemu-acceptance`, and `make package-qemu`
+fail closed until a reviewed guest workflow exists. See the [QEMU README](lab/qemu/README.md).
 
 ## Configuration and generated state
 
 Safe templates are committed at:
 
-- [`product/sipd/config/ls200-sipd.example.conf`](product/sipd/config/ls200-sipd.example.conf)
-- [`product/console/gateway/config/ls200-console.example.conf`](product/console/gateway/config/ls200-console.example.conf)
+- [`product/sipd/config/aula-sipd.example.conf`](product/sipd/config/aula-sipd.example.conf)
+- [`product/console/gateway/config/aula-console.example.conf`](product/console/gateway/config/aula-console.example.conf)
 - [`docs/operator/live-build-inputs.example.json`](docs/operator/live-build-inputs.example.json)
 
 Templates are not production configuration. The SIP template is inert and
@@ -98,8 +89,17 @@ not belong in version control.
 
 All generated build, cache, distribution, report, and live-session state belongs
 under ignored [`.work/`](docs/ARCHITECTURE.md#repository-and-data-boundaries).
-Complete device-derived or authenticated evidence belongs under ignored
-`evidence/private/`; only its policy README is versioned.
+The entire `evidence/` corpus is ignored, including decompiled source and vendor
+documents. Complete device-derived or authenticated evidence belongs under
+`evidence/private/`.
+
+## Public release boundary
+
+Public release is blocked by default. `make release-source` exports only
+committed files with exact SHA-256, provenance, and license review records;
+the approval list is currently empty. Ordinary Git archives exclude all files.
+Private payloads, recovered firmware, vendor UI, and this repository's Git
+history must not be published. See [public release policy](docs/PUBLIC_RELEASE.md).
 
 ## Documentation
 
@@ -107,10 +107,11 @@ Complete device-derived or authenticated evidence belongs under ignored
 - [Architecture](docs/ARCHITECTURE.md)
 - [Security and disclosure boundary](docs/SECURITY.md)
 - [Physical private-lab workflow](docs/operator/physical-private-lab.md)
+- [Upgrade to Aula](docs/operator/upgrade-to-aula.md)
 - [Product purpose](docs/product/PRODUCT.md) and [console design system](docs/product/DESIGN.md)
 - [QEMU model fidelity](lab/qemu/FIDELITY.md)
 - [Logical-emulator fidelity](lab/emulator/FIDELITY.md)
 - Firmware-analysis results: `evidence/firmware-analysis/report.md` (in the private corpus)
 
-There is no license file in this worktree and no public release or support
-policy is asserted here.
+There is no license file in this worktree, and no public release or supported
+product is currently offered.

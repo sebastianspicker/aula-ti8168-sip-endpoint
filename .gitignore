@@ -14,9 +14,9 @@
 .venv/
 **/.venv/
 
-# Canonical private evidence boundary. Keep only its policy document public.
-/evidence/private/*
-!/evidence/private/README.md
+# The complete research corpus is private, including decompiled source and docs.
+/evidence/
+/.agents/
 
 # Central generated state
 /.work/

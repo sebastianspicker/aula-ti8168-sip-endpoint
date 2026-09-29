@@ -4,7 +4,7 @@ import { CallsScreen } from './CallsScreen'
 import { DirectoryScreen } from './DirectoryScreen'
 import { RoomPreview } from '../components/RoomPreview'
 import { DeviceActivities } from '../components/DeviceActivities'
-import { Button, Notice } from '../components/ui'
+import { Button } from '../components/ui'
 import type { Role } from '../types'
 import type { ConnectionState } from '../hooks/useLivePolling'
 
@@ -16,11 +16,6 @@ export function RoomScreen({ role, onConnection }: { role: Role; onConnection: (
     <div className="room-layout"><div>
       <RoomPreview />
       <p className="honesty-note">Local preview is independent of the meeting. It does not verify what remote participants receive.</p>
-      <details className="room-picture"><summary>Picture &amp; sound</summary>
-        <Notice tone="info">Source, local layout, input sound, and camera controls are not yet available in this console.</Notice>
-        <p>Meeting mute affects outbound meeting audio. Device input mute and local picture layout are separate settings.</p>
-        <details><summary>Advanced</summary><p>Camera presets, audio routing, crop, overlays, backgrounds, and themes are not yet available here.</p></details>
-      </details>
     </div><div className="room-activities">
       <CallsScreen role={role} onConnection={onConnection} embedded />
       <DeviceActivities />

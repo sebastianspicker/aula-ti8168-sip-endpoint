@@ -6,8 +6,8 @@ SCRIPT_DIR=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 PROTO_DIR=$(CDPATH='' cd "$SCRIPT_DIR/.." && pwd)
 REPO_DIR=$(CDPATH='' cd "$PROTO_DIR/../.." && pwd)
 WORK_DIR=${QEMU_WORK_DIR:-"$REPO_DIR/.work/build/qemu"}
-SOURCE_DIR=${QEMU_SOURCE:-"$WORK_DIR/qemu-ls200-v11.0.3"}
-BUILD_DIR=${QEMU_BUILD_DIR:-"$WORK_DIR/build-ls200-v11.0.3"}
+SOURCE_DIR=${QEMU_SOURCE:-"$WORK_DIR/qemu-aula-v11.0.3"}
+BUILD_DIR=${QEMU_BUILD_DIR:-"$WORK_DIR/build-aula-v11.0.3"}
 
 # shellcheck source=lib/common.sh
 . "$SCRIPT_DIR/lib/common.sh"
@@ -45,7 +45,7 @@ for patch_file in $PATCH_STACK; do
 done
 [ -n "$FINAL_PATCH" ] || die "QEMU patch stack is empty"
 git -C "$SOURCE_DIR" apply --reverse --check "$FINAL_PATCH" || \
-    die "complete modular LS-200 patch stack is not applied to $SOURCE_DIR"
+    die "complete modular Aula patch stack is not applied to $SOURCE_DIR"
 verify_prepared_source
 ensure_ninja
 

@@ -30,25 +30,25 @@ static void protocol_secure_zero(void *memory, size_t length) {
   }
 }
 
-static const char *call_state_name(ls200_call_state state) {
+static const char *call_state_name(aula_call_state state) {
   static const char *const names[] = {
     "idle", "resolving", "inviting", "early", "establishing_media",
     "established", "terminating", "backing_off", "failed", "terminated",
     "stopped", "terminal_failure"};
-  return state >= LS200_CALL_IDLE && state <= LS200_CALL_TERMINAL_FAILURE
+  return state >= AULA_CALL_IDLE && state <= AULA_CALL_TERMINAL_FAILURE
       ? names[state] : "invalid";
 }
 
-static const char *media_state_name(ls200_media_session_state state) {
+static const char *media_state_name(aula_media_session_state state) {
   static const char *const names[] = {
     "new", "reserved", "preparing", "prepared", "committed", "stopped"};
-  return state >= LS200_MEDIA_SESSION_NEW && state <= LS200_MEDIA_SESSION_STOPPED
+  return state >= AULA_MEDIA_SESSION_NEW && state <= AULA_MEDIA_SESSION_STOPPED
       ? names[state] : "invalid";
 }
 
-static const char *direction_name(ls200_sdp_direction direction) {
+static const char *direction_name(aula_sdp_direction direction) {
   static const char *const names[] = {"sendrecv", "sendonly", "recvonly", "inactive"};
-  return direction >= LS200_SDP_SENDRECV && direction <= LS200_SDP_INACTIVE
+  return direction >= AULA_SDP_SENDRECV && direction <= AULA_SDP_INACTIVE
       ? names[direction] : "invalid";
 }
 
@@ -58,37 +58,37 @@ static const char *json_bool(int value) {
   return value != 0 ? "true" : "false";
 }
 
-static const char *status_profile(const ls200_endpoint_status *status) {
+static const char *status_profile(const aula_endpoint_status *status) {
   return profile_is_safe(status->active_h264_profile_level_id)
       ? status->active_h264_profile_level_id : "none";
 }
 
-static const char *status_media_state(const ls200_endpoint_status *status) {
+static const char *status_media_state(const aula_endpoint_status *status) {
   return status->media_session_present
       ? media_state_name(status->media_session_state) : "none";
 }
 
-static const char *status_sip_profile(const ls200_endpoint_status *status) {
+static const char *status_sip_profile(const aula_endpoint_status *status) {
   static const char *const names[] = {"zoom_direct", "zoom_proxy", "private_lab"};
-  return status->sip_profile <= LS200_ZOOM_PROFILE_PRIVATE_LAB
+  return status->sip_profile <= AULA_ZOOM_PROFILE_PRIVATE_LAB
       ? names[status->sip_profile] : "invalid";
 }
 
-static const char *status_sip_transport(const ls200_endpoint_status *status) {
+static const char *status_sip_transport(const aula_endpoint_status *status) {
   static const char *const names[] = {"udp", "tcp", "tls"};
-  return status->sip_transport <= LS200_TRANSPORT_TLS
+  return status->sip_transport <= AULA_TRANSPORT_TLS
       ? names[status->sip_transport] : "invalid";
 }
 
-static const char *status_registration(const ls200_endpoint_status *status) {
+static const char *status_registration(const aula_endpoint_status *status) {
   static const char *const names[] = {"disabled", "registering", "registered", "failed"};
-  return status->registration.state <= LS200_SIP_REGISTRATION_FAILED
+  return status->registration.state <= AULA_SIP_REGISTRATION_FAILED
       ? names[status->registration.state] : "failed";
 }
 
-static const char *status_aec_state(const ls200_endpoint_status *status) {
+static const char *status_aec_state(const aula_endpoint_status *status) {
   static const char *const names[] = {"inactive", "available", "uncalibrated", "calibrated"};
-  return status->aec.delay_state <= LS200_AEC_DELAY_CALIBRATED
+  return status->aec.delay_state <= AULA_AEC_DELAY_CALIBRATED
       ? names[status->aec.delay_state] : "inactive";
 }
 
@@ -103,7 +103,7 @@ static int profile_is_safe(const char profile[7]) {
   return 1;
 }
 
-int ls200_control_peer_is_authorized(const ls200_control_server *server,
+int aula_control_peer_is_authorized(const aula_control_server *server,
                                       int descriptor) {
   uint32_t uid;
 #if defined(__APPLE__)
@@ -142,7 +142,7 @@ static int append_json(char *response, size_t capacity, size_t *length,
 }
 #pragma clang diagnostic pop
 
-static int format_status(const ls200_endpoint_status *status,
+static int format_status(const aula_endpoint_status *status,
                          char *response, size_t capacity, size_t *out_length) {
   size_t length = 0U;
   int ok = append_json(response, capacity, &length,
@@ -193,23 +193,23 @@ static int format_status(const ls200_endpoint_status *status,
   return ok;
 }
 
-static ls200_control_client *control_client_for_descriptor(
-    ls200_control_server *server, int descriptor) {
+static aula_control_client *control_client_for_descriptor(
+    aula_control_server *server, int descriptor) {
   size_t index;
   if (server == NULL) return NULL;
-  for (index = 0U; index < LS200_CONTROL_CLIENT_LIMIT; ++index) {
+  for (index = 0U; index < AULA_CONTROL_CLIENT_LIMIT; ++index) {
     if (server->clients[index].descriptor == descriptor) return &server->clients[index];
   }
   return NULL;
 }
 
-static void send_frame(ls200_control_server *server, int descriptor,
-                       ls200_control_opcode opcode,
+static void send_frame(aula_control_server *server, int descriptor,
+                       aula_control_opcode opcode,
                        uint16_t flags, uint32_t request_id,
                        const uint8_t *payload, size_t payload_length) {
-  ls200_control_client *client = control_client_for_descriptor(server, descriptor);
-  ls200_control_frame frame;
-  ls200_mutable_bytes encoded;
+  aula_control_client *client = control_client_for_descriptor(server, descriptor);
+  aula_control_frame frame;
+  aula_mutable_bytes encoded;
   if (client == NULL || client->response_length != 0U) return;
   encoded.data = client->response;
   encoded.capacity = sizeof(client->response);
@@ -220,47 +220,47 @@ static void send_frame(ls200_control_server *server, int descriptor,
   frame.request_id = request_id;
   frame.payload.data = payload;
   frame.payload.length = payload_length;
-  if (ls200_control_frame_encode(&frame, &encoded) == LS200_STATUS_OK)
+  if (aula_control_frame_encode(&frame, &encoded) == AULA_STATUS_OK)
     client->response_length = encoded.length;
 }
 
-static void send_error(ls200_control_server *server, int descriptor,
-                       ls200_control_opcode opcode,
+static void send_error(aula_control_server *server, int descriptor,
+                       aula_control_opcode opcode,
                        uint32_t request_id, const char *code) {
   char payload[160];
   int length = snprintf(payload, sizeof(payload),
       "{\"ok\":false,\"error\":{\"code\":\"%s\"}}", code);
   if (length > 0 && (size_t)length < sizeof(payload))
     send_frame(server, descriptor, opcode,
-               LS200_CONTROL_FRAME_RESPONSE | LS200_CONTROL_FRAME_ERROR,
+               AULA_CONTROL_FRAME_RESPONSE | AULA_CONTROL_FRAME_ERROR,
                request_id, (const uint8_t *)payload, (size_t)length);
 }
 
-static int opcode_is_idempotent_command(ls200_control_opcode opcode) {
-  return opcode >= LS200_CONTROL_OPCODE_ORIGINATE &&
-      opcode <= LS200_CONTROL_OPCODE_SETTINGS;
+static int opcode_is_idempotent_command(aula_control_opcode opcode) {
+  return opcode >= AULA_CONTROL_OPCODE_ORIGINATE &&
+      opcode <= AULA_CONTROL_OPCODE_SETTINGS;
 }
 
-static int request_is_settings_read(const ls200_control_frame *request) {
-  return request->opcode == LS200_CONTROL_OPCODE_SETTINGS &&
-      ls200_control_payload_is_empty_object(request->payload);
+static int request_is_settings_read(const aula_control_frame *request) {
+  return request->opcode == AULA_CONTROL_OPCODE_SETTINGS &&
+      aula_control_payload_is_empty_object(request->payload);
 }
 
-static int request_is_cacheable_command(const ls200_control_frame *request) {
+static int request_is_cacheable_command(const aula_control_frame *request) {
   return opcode_is_idempotent_command(request->opcode) &&
       !request_is_settings_read(request);
 }
 
-static ls200_control_completed_request *find_completed(
-    ls200_control_server *server, const ls200_control_frame *request,
+static aula_control_completed_request *find_completed(
+    aula_control_server *server, const aula_control_frame *request,
     int *conflict) {
   size_t index;
   uint64_t fingerprint[2];
   *conflict = 0;
-  ls200_control_request_fingerprint(server->completed_cache_key,
+  aula_control_request_fingerprint(server->completed_cache_key,
                                     request->payload, fingerprint);
-  for (index = 0U; index < LS200_CONTROL_COMPLETED_CACHE_ENTRIES; ++index) {
-    ls200_control_completed_request *entry = &server->completed[index];
+  for (index = 0U; index < AULA_CONTROL_COMPLETED_CACHE_ENTRIES; ++index) {
+    aula_control_completed_request *entry = &server->completed[index];
     if (!entry->used || entry->request_id != request->request_id) continue;
     if (entry->opcode == request->opcode &&
         entry->request_length == request->payload.length &&
@@ -272,15 +272,15 @@ static ls200_control_completed_request *find_completed(
   return NULL;
 }
 
-static int cache_completed(ls200_control_server *server,
-                           const ls200_control_frame *request,
+static int cache_completed(aula_control_server *server,
+                           const aula_control_frame *request,
                            uint16_t response_flags, const uint8_t *payload,
                            size_t payload_length) {
-  ls200_control_completed_request *entry;
-  if (request->payload.length > LS200_SIPD_MAX_CONTROL_MESSAGE_BYTES ||
-      payload_length > LS200_SIPD_MAX_CONTROL_MESSAGE_BYTES) return 0;
+  aula_control_completed_request *entry;
+  if (request->payload.length > AULA_SIPD_MAX_CONTROL_MESSAGE_BYTES ||
+      payload_length > AULA_SIPD_MAX_CONTROL_MESSAGE_BYTES) return 0;
   entry = &server->completed[
-      server->next_completed++ % LS200_CONTROL_COMPLETED_CACHE_ENTRIES];
+      server->next_completed++ % AULA_CONTROL_COMPLETED_CACHE_ENTRIES];
   (void)memset(entry, 0, sizeof(*entry));
   entry->used = 1;
   entry->opcode = request->opcode;
@@ -288,7 +288,7 @@ static int cache_completed(ls200_control_server *server,
   entry->request_length = request->payload.length;
   entry->response_length = payload_length;
   entry->response_flags = response_flags;
-  ls200_control_request_fingerprint(server->completed_cache_key,
+  aula_control_request_fingerprint(server->completed_cache_key,
                                     request->payload,
                                     entry->request_fingerprint);
   if (payload_length != 0U)
@@ -296,9 +296,9 @@ static int cache_completed(ls200_control_server *server,
   return 1;
 }
 
-static int replay_completed(ls200_control_server *server, int descriptor,
-                            const ls200_control_frame *request) {
-  ls200_control_completed_request *entry;
+static int replay_completed(aula_control_server *server, int descriptor,
+                            const aula_control_frame *request) {
+  aula_control_completed_request *entry;
   int conflict;
   if (!request_is_cacheable_command(request)) return 0;
   entry = find_completed(server, request, &conflict);
@@ -314,8 +314,8 @@ static int replay_completed(ls200_control_server *server, int descriptor,
   return 1;
 }
 
-static void complete_command(ls200_control_server *server, int descriptor,
-                             const ls200_control_frame *request,
+static void complete_command(aula_control_server *server, int descriptor,
+                             const aula_control_frame *request,
                              uint16_t response_flags, const uint8_t *payload,
                              size_t payload_length) {
   if (!request_is_cacheable_command(request)) {
@@ -333,24 +333,24 @@ static void complete_command(ls200_control_server *server, int descriptor,
              request->request_id, payload, payload_length);
 }
 
-static const char *command_error_code(ls200_status status) {
-  if (status == LS200_STATUS_CONFLICT) return "REVISION_CONFLICT";
-  if (status == LS200_STATUS_PERSISTENCE_UNCERTAIN)
+static const char *command_error_code(aula_status status) {
+  if (status == AULA_STATUS_CONFLICT) return "REVISION_CONFLICT";
+  if (status == AULA_STATUS_PERSISTENCE_UNCERTAIN)
     return "PERSISTENCE_UNCERTAIN";
-  if (status == LS200_STATUS_PERMISSION_DENIED) return "PERMISSION_DENIED";
-  if (status == LS200_STATUS_UNSUPPORTED) return "UNSUPPORTED";
+  if (status == AULA_STATUS_PERMISSION_DENIED) return "PERMISSION_DENIED";
+  if (status == AULA_STATUS_UNSUPPORTED) return "UNSUPPORTED";
   return "COMMAND_FAILED";
 }
 
-static int request_is_empty_status(const ls200_control_frame *request) {
+static int request_is_empty_status(const aula_control_frame *request) {
   return request->payload.length == 0U ||
       (request->payload.length == 2U && request->payload.data != NULL &&
        memcmp(request->payload.data, "{}", 2U) == 0);
 }
 
-static void dispatch_status_request(ls200_control_server *server, int descriptor,
-                                    const ls200_control_frame *request,
-                                    ls200_mutable_bytes *response) {
+static void dispatch_status_request(aula_control_server *server, int descriptor,
+                                    const aula_control_frame *request,
+                                    aula_mutable_bytes *response) {
   if (!request_is_empty_status(request)) {
     send_error(server, descriptor, request->opcode, request->request_id, "INVALID_REQUEST");
     return;
@@ -360,58 +360,58 @@ static void dispatch_status_request(ls200_control_server *server, int descriptor
     send_error(server, descriptor, request->opcode, request->request_id, "INTERNAL");
     return;
   }
-  send_frame(server, descriptor, request->opcode, LS200_CONTROL_FRAME_RESPONSE,
+  send_frame(server, descriptor, request->opcode, AULA_CONTROL_FRAME_RESPONSE,
              request->request_id, response->data, response->length);
 }
 
-static ls200_status dispatch_command_request(ls200_control_server *server,
-                                             const ls200_control_frame *request,
-                                             ls200_mutable_bytes *response) {
-  if (request->opcode != LS200_CONTROL_OPCODE_HANGUP) {
+static aula_status dispatch_command_request(aula_control_server *server,
+                                             const aula_control_frame *request,
+                                             aula_mutable_bytes *response) {
+  if (request->opcode != AULA_CONTROL_OPCODE_HANGUP) {
     return server->config.request_callback == NULL
-        ? LS200_STATUS_UNSUPPORTED
+        ? AULA_STATUS_UNSUPPORTED
         : server->config.request_callback(server->config.command_context, request,
                                           response);
   }
-  if (!ls200_control_payload_is_empty_object(request->payload)) {
-    return LS200_STATUS_INVALID_DATA;
+  if (!aula_control_payload_is_empty_object(request->payload)) {
+    return AULA_STATUS_INVALID_DATA;
   }
   if (server->config.request_callback != NULL) {
     return server->config.request_callback(server->config.command_context, request,
                                            response);
   }
   return server->config.command_callback == NULL
-      ? LS200_STATUS_STATE_ERROR
+      ? AULA_STATUS_STATE_ERROR
       : server->config.command_callback(server->config.command_context,
-                                        LS200_CONTROL_HANGUP);
+                                        AULA_CONTROL_HANGUP);
 }
 
-static void dispatch_request(ls200_control_server *server, int descriptor,
-                             const ls200_control_frame *request) {
-  uint8_t payload[LS200_CONTROL_MAX_PAYLOAD_BYTES];
-  ls200_mutable_bytes response = {payload, sizeof(payload), 0U};
-  ls200_status status;
+static void dispatch_request(aula_control_server *server, int descriptor,
+                             const aula_control_frame *request) {
+  uint8_t payload[AULA_CONTROL_MAX_PAYLOAD_BYTES];
+  aula_mutable_bytes response = {payload, sizeof(payload), 0U};
+  aula_status status;
   if (request->flags != 0U) {
     send_error(server, descriptor, request->opcode, request->request_id, "INVALID_FLAGS");
     return;
   }
   if (replay_completed(server, descriptor, request)) return;
-  if (request->opcode == LS200_CONTROL_OPCODE_STATUS) {
+  if (request->opcode == AULA_CONTROL_OPCODE_STATUS) {
     dispatch_status_request(server, descriptor, request, &response);
     return;
   }
-  if (request->opcode == LS200_CONTROL_OPCODE_HANGUP &&
-      !ls200_control_payload_is_empty_object(request->payload)) {
+  if (request->opcode == AULA_CONTROL_OPCODE_HANGUP &&
+      !aula_control_payload_is_empty_object(request->payload)) {
     send_error(server, descriptor, request->opcode, request->request_id, "INVALID_REQUEST");
     return;
   }
   status = dispatch_command_request(server, request, &response);
-  if (status != LS200_STATUS_OK) {
-    if (status == LS200_STATUS_PERSISTENCE_UNCERTAIN) {
+  if (status != AULA_STATUS_OK) {
+    if (status == AULA_STATUS_PERSISTENCE_UNCERTAIN) {
       static const uint8_t uncertain[] =
           "{\"ok\":false,\"error\":{\"code\":\"PERSISTENCE_UNCERTAIN\"}}";
       complete_command(server, descriptor, request,
-                       LS200_CONTROL_FRAME_RESPONSE | LS200_CONTROL_FRAME_ERROR,
+                       AULA_CONTROL_FRAME_RESPONSE | AULA_CONTROL_FRAME_ERROR,
                        uncertain, sizeof(uncertain) - 1U);
       return;
     }
@@ -425,90 +425,90 @@ static void dispatch_request(ls200_control_server *server, int descriptor,
   }
   if (response.length == 0U) {
     static const uint8_t ok[] = "{\"ok\":true}";
-    complete_command(server, descriptor, request, LS200_CONTROL_FRAME_RESPONSE,
+    complete_command(server, descriptor, request, AULA_CONTROL_FRAME_RESPONSE,
                      ok, sizeof(ok) - 1U);
   } else {
-    complete_command(server, descriptor, request, LS200_CONTROL_FRAME_RESPONSE,
+    complete_command(server, descriptor, request, AULA_CONTROL_FRAME_RESPONSE,
                      response.data,
                      response.length);
   }
 }
 
-static ls200_status control_receive_request_bytes(
-    const ls200_control_server *server, ls200_control_client *client) {
+static aula_status control_receive_request_bytes(
+    const aula_control_server *server, aula_control_client *client) {
   struct iovec iov;
   struct msghdr message;
   ssize_t received;
-  if (client->request_length >= LS200_CONTROL_HEADER_BYTES +
+  if (client->request_length >= AULA_CONTROL_HEADER_BYTES +
                                    server->config.maximum_request_bytes) {
-    return LS200_STATUS_LIMIT_EXCEEDED;
+    return AULA_STATUS_LIMIT_EXCEEDED;
   }
   (void)memset(&message, 0, sizeof(message));
   iov.iov_base = client->request + client->request_length;
-  iov.iov_len = LS200_CONTROL_HEADER_BYTES + server->config.maximum_request_bytes -
+  iov.iov_len = AULA_CONTROL_HEADER_BYTES + server->config.maximum_request_bytes -
                 client->request_length;
   message.msg_iov = &iov;
   message.msg_iovlen = 1U;
   received = recvmsg(client->descriptor, &message, 0);
   if (received < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) {
-    return LS200_STATUS_AGAIN;
+    return AULA_STATUS_AGAIN;
   }
-  if (received == 0) return LS200_STATUS_END;
-  if (received < 0) return LS200_STATUS_IO_ERROR;
-  if ((message.msg_flags & MSG_TRUNC) != 0) return LS200_STATUS_LIMIT_EXCEEDED;
+  if (received == 0) return AULA_STATUS_END;
+  if (received < 0) return AULA_STATUS_IO_ERROR;
+  if ((message.msg_flags & MSG_TRUNC) != 0) return AULA_STATUS_LIMIT_EXCEEDED;
   client->request_length += (size_t)received;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status control_incomplete_frame(void) {
+static aula_status control_incomplete_frame(void) {
 #if defined(__APPLE__)
-  return LS200_STATUS_AGAIN; /* Host-only stream compatibility. */
+  return AULA_STATUS_AGAIN; /* Host-only stream compatibility. */
 #else
-  return LS200_STATUS_INVALID_DATA; /* LSZ1 occupies one seqpacket message. */
+  return AULA_STATUS_INVALID_DATA; /* LSZ1 occupies one seqpacket message. */
 #endif
 }
 
-static ls200_status control_complete_request(
-    const ls200_control_server *server, const ls200_control_client *client,
-    ls200_bytes *out_input) {
+static aula_status control_complete_request(
+    const aula_control_server *server, const aula_control_client *client,
+    aula_bytes *out_input) {
   uint32_t payload_length;
   size_t expected_length;
-  if (client->request_length < LS200_CONTROL_HEADER_BYTES)
+  if (client->request_length < AULA_CONTROL_HEADER_BYTES)
     return control_incomplete_frame();
   (void)memcpy(&payload_length, client->request + 12U, sizeof(payload_length));
   payload_length = ntohl(payload_length);
   if (payload_length > server->config.maximum_request_bytes) {
-    return LS200_STATUS_LIMIT_EXCEEDED;
+    return AULA_STATUS_LIMIT_EXCEEDED;
   }
-  expected_length = LS200_CONTROL_HEADER_BYTES + (size_t)payload_length;
+  expected_length = AULA_CONTROL_HEADER_BYTES + (size_t)payload_length;
   if (client->request_length < expected_length) return control_incomplete_frame();
-  if (client->request_length != expected_length) return LS200_STATUS_INVALID_DATA;
+  if (client->request_length != expected_length) return AULA_STATUS_INVALID_DATA;
   out_input->data = client->request;
   out_input->length = client->request_length;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_control_handle_client(ls200_control_server *server,
-                                         ls200_control_client *client) {
-  ls200_control_frame request;
-  ls200_bytes input;
-  ls200_status status;
+aula_status aula_control_handle_client(aula_control_server *server,
+                                         aula_control_client *client) {
+  aula_control_frame request;
+  aula_bytes input;
+  aula_status status;
   if (server == NULL || client == NULL || client->descriptor < 0)
-    return LS200_STATUS_INVALID_ARGUMENT;
-  if (!ls200_control_peer_is_authorized(server, client->descriptor))
-    return LS200_STATUS_PERMISSION_DENIED;
+    return AULA_STATUS_INVALID_ARGUMENT;
+  if (!aula_control_peer_is_authorized(server, client->descriptor))
+    return AULA_STATUS_PERMISSION_DENIED;
   status = control_receive_request_bytes(server, client);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   status = control_complete_request(server, client, &input);
-  if (status != LS200_STATUS_OK) return status;
-  if (ls200_control_frame_decode(input, &request) != LS200_STATUS_OK ||
+  if (status != AULA_STATUS_OK) return status;
+  if (aula_control_frame_decode(input, &request) != AULA_STATUS_OK ||
       request.payload.length > server->config.maximum_request_bytes) {
-    return LS200_STATUS_INVALID_DATA;
+    return AULA_STATUS_INVALID_DATA;
   }
   dispatch_request(server, client->descriptor, &request);
   protocol_secure_zero(client->request, client->request_length);
   client->request_length = 0U;
   (void)memset(&request, 0, sizeof(request));
-  return client->response_length == 0U ? LS200_STATUS_INTERNAL_ERROR :
-                                        LS200_STATUS_OK;
+  return client->response_length == 0U ? AULA_STATUS_INTERNAL_ERROR :
+                                        AULA_STATUS_OK;
 }

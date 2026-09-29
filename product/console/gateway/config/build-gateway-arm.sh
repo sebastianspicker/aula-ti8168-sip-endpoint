@@ -7,9 +7,9 @@ console_dir=$(CDPATH='' cd -- "$script_dir/../.." && pwd -P)
 repository_dir=$(CDPATH='' cd -- "$console_dir/../.." && pwd -P)
 sipd_dir=$repository_dir/product/sipd
 path_guard=$repository_dir/tooling/workspace/protected_output.py
-cross_prefix=${LS200_CROSS_PREFIX:?set LS200_CROSS_PREFIX to an ARM EABI5 toolchain prefix}
-sysroot=${LS200_SYSROOT:?set LS200_SYSROOT to the reviewed development sysroot}
-build_dir=${LS200_GATEWAY_ARM_BUILD_DIR:?set LS200_GATEWAY_ARM_BUILD_DIR to an existing output directory}
+cross_prefix=${AULA_CROSS_PREFIX:?set AULA_CROSS_PREFIX to an ARM EABI5 toolchain prefix}
+sysroot=${AULA_SYSROOT:?set AULA_SYSROOT to the reviewed development sysroot}
+build_dir=${AULA_GATEWAY_ARM_BUILD_DIR:?set AULA_GATEWAY_ARM_BUILD_DIR to an existing output directory}
 
 [ -d "$sysroot" ] && [ -d "$build_dir" ] || {
     echo "build-gateway-arm: sysroot and output directory must already exist" >&2
@@ -49,7 +49,7 @@ set -- \
     -I"$console_dir/gateway" -I"$console_dir/gateway/preview" \
     -I"$sipd_dir/include" -I"$sipd_dir/src/backends" \
     -I"$canonical_sysroot/usr/include" \
-    -DLS200_GATEWAY_WITH_FCGI
+    -DAULA_GATEWAY_WITH_FCGI
 
 for source in $gateway_sources $device_client_sources; do
     set -- "$@" "$console_dir/$source"
@@ -71,6 +71,6 @@ set -- "$@" \
     "$canonical_sysroot/usr/lib/libcrypto.a" \
     "$canonical_sysroot/usr/lib/libfcgi.a" \
     -lm -lpthread -lrt -ldl \
-    -o "$canonical_build/ls200-gateway-fcgi"
+    -o "$canonical_build/aula-gateway-fcgi"
 
 "$compiler" "$@"

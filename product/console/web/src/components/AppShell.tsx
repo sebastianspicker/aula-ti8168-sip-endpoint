@@ -31,12 +31,12 @@ export function AppShell({ children, page, onPage, role, connection, onLogout, l
   return <div className="app-shell">
     <a href="#main-content" className="skip-link">Skip to content</a>
     <header className="topbar">
-      <div className="brand"><Video aria-hidden="true" size={26} strokeWidth={1.8} /><span>LS200 Console</span></div>
+      <div className="brand"><Video aria-hidden="true" size={26} strokeWidth={1.8} /><span>Aula Console</span></div>
       <div className="topbar__status"><Freshness state={connection} label={connection === 'live' ? (legacy ? 'Device online' : 'Zoom status current') : connection === 'loading' ? 'Checking device' : connection === 'stale' ? 'Zoom status stale' : 'Zoom status unavailable'} /><span className="security"><ShieldCheck aria-hidden="true" size={20} />{secureOrigin ? 'HTTPS session' : 'Development origin'}</span><span className="account"><CircleUserRound aria-hidden="true" size={25} />{role}<ChevronDown aria-hidden="true" size={17} /></span><button className="logout" onClick={onLogout}>Sign out</button></div>
     </header>
     <nav className="rail" aria-label="Main navigation">
       <div>{navigation.map(({ page: destination, Icon }) => <button key={destination} className={page === destination ? 'nav-item nav-item--active' : 'nav-item'} onClick={() => onPage(destination)} aria-current={page === destination ? 'page' : undefined}><Icon aria-hidden="true" size={25} strokeWidth={1.7} /><span>{PAGE_LABELS[destination]}</span></button>)}</div>
-      <p className="rail__footer">LS200 Systems</p>
+      <p className="rail__footer">Aula</p>
     </nav>
     <main id="main-content" className="content" tabIndex={-1}>{children}</main>
     <nav className="bottom-nav" aria-label="Main navigation">{navigation.map(({ page: destination, Icon }) => <button key={destination} className={page === destination ? 'bottom-nav__item bottom-nav__item--active' : 'bottom-nav__item'} onClick={() => onPage(destination)} aria-current={page === destination ? 'page' : undefined}><Icon aria-hidden="true" size={25} strokeWidth={1.7} /><span>{PAGE_LABELS[destination]}</span></button>)}</nav>

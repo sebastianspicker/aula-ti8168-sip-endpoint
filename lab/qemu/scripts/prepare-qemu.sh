@@ -1,5 +1,5 @@
 #!/bin/sh
-# Create the isolated patched LS-200 worktree without touching the base clone.
+# Create an isolated patched TI8168 model worktree from explicit local source.
 set -eu
 
 SCRIPT_DIR=$(CDPATH='' cd "$(dirname "$0")" && pwd)
@@ -7,7 +7,7 @@ PROTO_DIR=$(CDPATH='' cd "$SCRIPT_DIR/.." && pwd)
 REPO_DIR=$(CDPATH='' cd "$PROTO_DIR/../.." && pwd)
 WORK_DIR=${QEMU_WORK_DIR:-"$REPO_DIR/.work/build/qemu"}
 BASE_SOURCE=${QEMU_BASE_SOURCE:-"$WORK_DIR/qemu-v11.0.3"}
-SOURCE_DIR=${QEMU_SOURCE:-"$WORK_DIR/qemu-ls200-v11.0.3"}
+SOURCE_DIR=${QEMU_SOURCE:-"$WORK_DIR/qemu-aula-v11.0.3"}
 
 # shellcheck source=lib/common.sh
 . "$SCRIPT_DIR/lib/common.sh"
@@ -23,7 +23,7 @@ done
 [ -n "$FINAL_PATCH" ] || die "QEMU patch stack is empty"
 
 require_command git
-[ -d "$BASE_SOURCE" ] || die "base QEMU checkout is absent; run fetch-qemu.sh first"
+[ -d "$BASE_SOURCE" ] || die "base QEMU checkout is absent: $BASE_SOURCE"
 git -C "$BASE_SOURCE" rev-parse --is-inside-work-tree >/dev/null 2>&1 || \
     die "base QEMU source is not a Git checkout: $BASE_SOURCE"
 [ "$(git -C "$BASE_SOURCE" rev-parse HEAD)" = "$QEMU_COMMIT" ] || \
@@ -34,7 +34,7 @@ if [ -e "$SOURCE_DIR" ]; then
     SOURCE_DIR=$SOURCE_DIR verify_checkout
     if git -C "$SOURCE_DIR" apply --reverse --check "$FINAL_PATCH" >/dev/null 2>&1; then
         verify_prepared_source
-        printf '%s\n' "Patched LS-200 QEMU worktree is ready: $SOURCE_DIR"
+        printf '%s\n' "Patched Aula QEMU worktree is ready: $SOURCE_DIR"
         exit 0
     fi
     [ -z "$(git -C "$SOURCE_DIR" status --porcelain --untracked-files=normal)" ] || \
@@ -43,6 +43,6 @@ else
     git -C "$BASE_SOURCE" worktree add --detach "$SOURCE_DIR" "$QEMU_COMMIT"
 fi
 
-QEMU_SOURCE=$SOURCE_DIR sh "$SCRIPT_DIR/apply-overlay.sh"
+git -C "$SOURCE_DIR" apply "$FINAL_PATCH" || die "QEMU patch does not apply"
 verify_prepared_source
-printf '%s\n' "Prepared modular LS-200 QEMU source: $SOURCE_DIR"
+printf '%s\n' "Prepared modular Aula QEMU source: $SOURCE_DIR"

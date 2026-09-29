@@ -1,6 +1,6 @@
 #include "preview_flv.h"
 
-#include "ls200_sipd/h264.h"
+#include "aula_sipd/h264.h"
 
 #include <limits.h>
 #include <string.h>
@@ -36,24 +36,24 @@ static void write_u32(uint8_t output[4], uint32_t value) {
   output[3] = (uint8_t)value;
 }
 
-static ls200_status emit(ls200_preview_flv_mux *mux,
-                         ls200_preview_write_fn write_fn, void *context,
+static aula_status emit(aula_preview_flv_mux *mux,
+                         aula_preview_write_fn write_fn, void *context,
                          const uint8_t *data, size_t length) {
-  ls200_status status;
-  if (length == 0U) return LS200_STATUS_OK;
-  status = write_fn(context, (ls200_bytes){data, length});
-  if (status != LS200_STATUS_OK) {
-    mux->last_error = LS200_PREVIEW_FLV_ERROR_WRITE_FAILED;
+  aula_status status;
+  if (length == 0U) return AULA_STATUS_OK;
+  status = write_fn(context, (aula_bytes){data, length});
+  if (status != AULA_STATUS_OK) {
+    mux->last_error = AULA_PREVIEW_FLV_ERROR_WRITE_FAILED;
   }
   return status;
 }
 
-static ls200_status emit_tag_header(ls200_preview_flv_mux *mux,
-                                    ls200_preview_write_fn write_fn,
+static aula_status emit_tag_header(aula_preview_flv_mux *mux,
+                                    aula_preview_write_fn write_fn,
                                     void *context, uint32_t data_size,
                                     uint32_t timestamp_ms) {
   uint8_t header[FLV_TAG_HEADER_BYTES] = {0U};
-  if (data_size > 0x00ffffffU) return LS200_STATUS_LIMIT_EXCEEDED;
+  if (data_size > 0x00ffffffU) return AULA_STATUS_LIMIT_EXCEEDED;
   header[0] = 9U;
   write_u24(header + 1U, data_size);
   write_u24(header + 4U, timestamp_ms & 0x00ffffffU);
@@ -61,8 +61,8 @@ static ls200_status emit_tag_header(ls200_preview_flv_mux *mux,
   return emit(mux, write_fn, context, header, sizeof(header));
 }
 
-static ls200_status emit_previous_tag_size(ls200_preview_flv_mux *mux,
-                                           ls200_preview_write_fn write_fn,
+static aula_status emit_previous_tag_size(aula_preview_flv_mux *mux,
+                                           aula_preview_write_fn write_fn,
                                            void *context,
                                            uint32_t data_size) {
   uint8_t encoded[4];
@@ -115,22 +115,22 @@ static int rbsp_read_ue(rbsp_reader *reader, uint32_t *out_value) {
   return 1;
 }
 
-static ls200_status slice_timing_supported(const ls200_h264_nal *nal) {
+static aula_status slice_timing_supported(const aula_h264_nal *nal) {
   rbsp_reader reader;
   uint32_t first_macroblock;
   uint32_t slice_type;
-  if (nal->type == 5U) return LS200_STATUS_OK;
-  if (nal->type != 1U || nal->length < 2U) return LS200_STATUS_UNSUPPORTED;
+  if (nal->type == 5U) return AULA_STATUS_OK;
+  if (nal->type != 1U || nal->length < 2U) return AULA_STATUS_UNSUPPORTED;
   (void)memset(&reader, 0, sizeof(reader));
   reader.data = nal->data + 1U;
   reader.length = nal->length - 1U;
   if (!rbsp_read_ue(&reader, &first_macroblock) ||
       !rbsp_read_ue(&reader, &slice_type) || slice_type > 9U) {
-    return LS200_STATUS_UNSUPPORTED;
+    return AULA_STATUS_UNSUPPORTED;
   }
   (void)first_macroblock;
-  return (slice_type % 5U) == 1U ? LS200_STATUS_UNSUPPORTED :
-                                  LS200_STATUS_OK;
+  return (slice_type % 5U) == 1U ? AULA_STATUS_UNSUPPORTED :
+                                  AULA_STATUS_OK;
 }
 
 typedef struct access_unit_plan {
@@ -139,85 +139,85 @@ typedef struct access_unit_plan {
   int has_vcl;
 } access_unit_plan;
 
-static ls200_status plan_nal(const ls200_h264_nal *nal,
+static aula_status plan_nal(const aula_h264_nal *nal,
                              access_unit_plan *plan,
                              uint64_t *payload_bytes,
-                             ls200_preview_flv_mux *mux) {
-  ls200_status status;
-  if (nal->type == 7U || nal->type == 8U) return LS200_STATUS_OK;
+                             aula_preview_flv_mux *mux) {
+  aula_status status;
+  if (nal->type == 7U || nal->type == 8U) return AULA_STATUS_OK;
   if (nal->type >= 1U && nal->type <= 5U) {
     plan->has_vcl = 1;
     if (nal->type == 5U) plan->has_idr = 1;
     status = slice_timing_supported(nal);
-    if (status != LS200_STATUS_OK) {
-      mux->last_error = LS200_PREVIEW_FLV_ERROR_UNSUPPORTED_TIMING;
-      return LS200_STATUS_UNSUPPORTED;
+    if (status != AULA_STATUS_OK) {
+      mux->last_error = AULA_PREVIEW_FLV_ERROR_UNSUPPORTED_TIMING;
+      return AULA_STATUS_UNSUPPORTED;
     }
   } else if (nal->type == 19U || nal->type == 20U || nal->type == 21U) {
-    mux->last_error = LS200_PREVIEW_FLV_ERROR_UNSUPPORTED_TIMING;
-    return LS200_STATUS_UNSUPPORTED;
+    mux->last_error = AULA_PREVIEW_FLV_ERROR_UNSUPPORTED_TIMING;
+    return AULA_STATUS_UNSUPPORTED;
   }
   *payload_bytes += 4U + nal->length;
-  return *payload_bytes > 0x00ffffffU ? LS200_STATUS_LIMIT_EXCEEDED :
-                                       LS200_STATUS_OK;
+  return *payload_bytes > 0x00ffffffU ? AULA_STATUS_LIMIT_EXCEEDED :
+                                       AULA_STATUS_OK;
 }
 
-static ls200_status plan_access_unit(const ls200_preview_access_unit *unit,
+static aula_status plan_access_unit(const aula_preview_access_unit *unit,
                                      access_unit_plan *out_plan,
-                                     ls200_preview_flv_mux *mux) {
-  ls200_h264_annexb_iterator iterator;
-  ls200_h264_nal nal;
-  ls200_status status;
+                                     aula_preview_flv_mux *mux) {
+  aula_h264_annexb_iterator iterator;
+  aula_h264_nal nal;
+  aula_status status;
   uint64_t payload_bytes = FLV_AVC_PACKET_HEADER_BYTES;
   (void)memset(out_plan, 0, sizeof(*out_plan));
-  status = ls200_h264_annexb_iterator_init(
-      &iterator, unit->annex_b, LS200_SIPD_MAX_VIDEO_ACCESS_UNIT_BYTES);
-  if (status != LS200_STATUS_OK) return status;
+  status = aula_h264_annexb_iterator_init(
+      &iterator, unit->annex_b, AULA_SIPD_MAX_VIDEO_ACCESS_UNIT_BYTES);
+  if (status != AULA_STATUS_OK) return status;
   for (;;) {
-    status = ls200_h264_annexb_iterator_next(&iterator, &nal);
-    if (status == LS200_STATUS_END) break;
-    if (status != LS200_STATUS_OK) return status;
+    status = aula_h264_annexb_iterator_next(&iterator, &nal);
+    if (status == AULA_STATUS_END) break;
+    if (status != AULA_STATUS_OK) return status;
     status = plan_nal(&nal, out_plan, &payload_bytes, mux);
-    if (status != LS200_STATUS_OK) return status;
+    if (status != AULA_STATUS_OK) return status;
   }
   if (out_plan->has_vcl == 0 || out_plan->has_idr != (unit->keyframe != 0)) {
-    mux->last_error = LS200_PREVIEW_FLV_ERROR_INVALID_ACCESS_UNIT;
-    return LS200_STATUS_INVALID_DATA;
+    mux->last_error = AULA_PREVIEW_FLV_ERROR_INVALID_ACCESS_UNIT;
+    return AULA_STATUS_INVALID_DATA;
   }
   out_plan->payload_bytes = (uint32_t)payload_bytes;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status emit_flv_header(ls200_preview_flv_mux *mux,
-                                    ls200_preview_write_fn write_fn,
+static aula_status emit_flv_header(aula_preview_flv_mux *mux,
+                                    aula_preview_write_fn write_fn,
                                     void *context) {
   static const uint8_t header[] = {
     'F', 'L', 'V', 0x01U, 0x01U, 0x00U, 0x00U, 0x00U, 0x09U,
     0x00U, 0x00U, 0x00U, 0x00U
   };
-  ls200_status status = emit(mux, write_fn, context, header, sizeof(header));
-  if (status == LS200_STATUS_OK) mux->header_written = 1;
+  aula_status status = emit(mux, write_fn, context, header, sizeof(header));
+  if (status == AULA_STATUS_OK) mux->header_written = 1;
   return status;
 }
 
-static ls200_status emit_decoder_config(
-    ls200_preview_flv_mux *mux, const ls200_preview_access_unit *unit,
-    uint32_t timestamp_ms, ls200_preview_write_fn write_fn, void *context) {
+static aula_status emit_decoder_config(
+    aula_preview_flv_mux *mux, const aula_preview_access_unit *unit,
+    uint32_t timestamp_ms, aula_preview_write_fn write_fn, void *context) {
   uint8_t fixed[16];
   uint8_t length[2];
   uint32_t data_size;
-  ls200_status status;
+  aula_status status;
   int sps_valid = unit->sps.data != NULL && unit->sps.length >= 4U &&
                   unit->sps.length <= 1024U;
   int pps_valid = unit->pps.data != NULL && unit->pps.length != 0U &&
                   unit->pps.length <= 1024U;
   if (!sps_valid || !pps_valid) {
-    mux->last_error = LS200_PREVIEW_FLV_ERROR_INVALID_ACCESS_UNIT;
-    return LS200_STATUS_INVALID_DATA;
+    mux->last_error = AULA_PREVIEW_FLV_ERROR_INVALID_ACCESS_UNIT;
+    return AULA_STATUS_INVALID_DATA;
   }
   data_size = (uint32_t)(16U + unit->sps.length + unit->pps.length);
   status = emit_tag_header(mux, write_fn, context, data_size, timestamp_ms);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   fixed[0] = 0x17U;
   fixed[1] = 0x00U;
   fixed[2] = 0x00U;
@@ -231,76 +231,76 @@ static ls200_status emit_decoder_config(
   fixed[10] = 0xe1U;
   write_u16(fixed + 11U, (uint16_t)unit->sps.length);
   status = emit(mux, write_fn, context, fixed, 13U);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   status = emit(mux, write_fn, context, unit->sps.data, unit->sps.length);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   fixed[0] = 0x01U;
   write_u16(length, (uint16_t)unit->pps.length);
   status = emit(mux, write_fn, context, fixed, 1U);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   status = emit(mux, write_fn, context, length, sizeof(length));
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   status = emit(mux, write_fn, context, unit->pps.data, unit->pps.length);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   status = emit_previous_tag_size(mux, write_fn, context, data_size);
-  if (status == LS200_STATUS_OK) {
+  if (status == AULA_STATUS_OK) {
     mux->decoder_config_written = 1;
     mux->parameter_set_generation = unit->parameter_set_generation;
   }
   return status;
 }
 
-static ls200_status emit_video_tag(ls200_preview_flv_mux *mux,
-                                   const ls200_preview_access_unit *unit,
+static aula_status emit_video_tag(aula_preview_flv_mux *mux,
+                                   const aula_preview_access_unit *unit,
                                    const access_unit_plan *plan,
                                    uint32_t timestamp_ms,
-                                   ls200_preview_write_fn write_fn,
+                                   aula_preview_write_fn write_fn,
                                    void *context) {
-  ls200_h264_annexb_iterator iterator;
-  ls200_h264_nal nal;
+  aula_h264_annexb_iterator iterator;
+  aula_h264_nal nal;
   uint8_t avc_header[FLV_AVC_PACKET_HEADER_BYTES] = {0U};
   uint8_t length[4];
-  ls200_status status;
+  aula_status status;
   status = emit_tag_header(mux, write_fn, context, plan->payload_bytes,
                            timestamp_ms);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   avc_header[0] = unit->keyframe != 0 ? 0x17U : 0x27U;
   avc_header[1] = 0x01U;
   status = emit(mux, write_fn, context, avc_header, sizeof(avc_header));
-  if (status != LS200_STATUS_OK) return status;
-  status = ls200_h264_annexb_iterator_init(
-      &iterator, unit->annex_b, LS200_SIPD_MAX_VIDEO_ACCESS_UNIT_BYTES);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
+  status = aula_h264_annexb_iterator_init(
+      &iterator, unit->annex_b, AULA_SIPD_MAX_VIDEO_ACCESS_UNIT_BYTES);
+  if (status != AULA_STATUS_OK) return status;
   for (;;) {
-    status = ls200_h264_annexb_iterator_next(&iterator, &nal);
-    if (status == LS200_STATUS_END) break;
-    if (status != LS200_STATUS_OK) return status;
+    status = aula_h264_annexb_iterator_next(&iterator, &nal);
+    if (status == AULA_STATUS_END) break;
+    if (status != AULA_STATUS_OK) return status;
     if (nal.type == 7U || nal.type == 8U) continue;
-    if (nal.length > UINT32_MAX) return LS200_STATUS_LIMIT_EXCEEDED;
+    if (nal.length > UINT32_MAX) return AULA_STATUS_LIMIT_EXCEEDED;
     write_u32(length, (uint32_t)nal.length);
     status = emit(mux, write_fn, context, length, sizeof(length));
-    if (status != LS200_STATUS_OK) return status;
+    if (status != AULA_STATUS_OK) return status;
     status = emit(mux, write_fn, context, nal.data, nal.length);
-    if (status != LS200_STATUS_OK) return status;
+    if (status != AULA_STATUS_OK) return status;
   }
   return emit_previous_tag_size(mux, write_fn, context, plan->payload_bytes);
 }
 
-void ls200_preview_flv_mux_init(ls200_preview_flv_mux *mux) {
+void aula_preview_flv_mux_init(aula_preview_flv_mux *mux) {
   if (mux != NULL) (void)memset(mux, 0, sizeof(*mux));
 }
 
-static int mux_input_is_valid(const ls200_preview_flv_mux *mux,
-                              const ls200_preview_access_unit *unit,
-                              ls200_preview_write_fn write_fn) {
+static int mux_input_is_valid(const aula_preview_flv_mux *mux,
+                              const aula_preview_access_unit *unit,
+                              aula_preview_write_fn write_fn) {
   if (mux == NULL || unit == NULL || write_fn == NULL) return 0;
   if (unit->annex_b.data == NULL || unit->annex_b.length == 0U) return 0;
-  return unit->annex_b.length <= LS200_SIPD_MAX_VIDEO_ACCESS_UNIT_BYTES &&
+  return unit->annex_b.length <= AULA_SIPD_MAX_VIDEO_ACCESS_UNIT_BYTES &&
          unit->parameter_set_generation != 0U;
 }
 
-static ls200_status mux_timestamp(ls200_preview_flv_mux *mux,
-                                  const ls200_preview_access_unit *unit,
+static aula_status mux_timestamp(aula_preview_flv_mux *mux,
+                                  const aula_preview_access_unit *unit,
                                   uint32_t *out_timestamp_ms) {
   uint64_t delta;
   uint64_t milliseconds;
@@ -308,61 +308,61 @@ static ls200_status mux_timestamp(ls200_preview_flv_mux *mux,
     mux->first_timestamp_90khz = unit->timestamp_90khz;
     mux->last_timestamp_90khz = unit->timestamp_90khz;
   } else if (unit->timestamp_90khz < mux->last_timestamp_90khz) {
-    mux->last_error = LS200_PREVIEW_FLV_ERROR_INVALID_ACCESS_UNIT;
-    return LS200_STATUS_INVALID_DATA;
+    mux->last_error = AULA_PREVIEW_FLV_ERROR_INVALID_ACCESS_UNIT;
+    return AULA_STATUS_INVALID_DATA;
   }
   delta = unit->timestamp_90khz - mux->first_timestamp_90khz;
   if (delta > UINT64_MAX / UINT64_C(1000)) {
-    return LS200_STATUS_LIMIT_EXCEEDED;
+    return AULA_STATUS_LIMIT_EXCEEDED;
   }
   milliseconds = (delta * UINT64_C(1000)) / UINT64_C(90000);
-  if (milliseconds > UINT32_MAX) return LS200_STATUS_LIMIT_EXCEEDED;
+  if (milliseconds > UINT32_MAX) return AULA_STATUS_LIMIT_EXCEEDED;
   *out_timestamp_ms = (uint32_t)milliseconds;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_preview_flv_mux_write(
-    ls200_preview_flv_mux *mux, const ls200_preview_access_unit *unit,
-    ls200_preview_write_fn write_fn, void *write_context) {
+aula_status aula_preview_flv_mux_write(
+    aula_preview_flv_mux *mux, const aula_preview_access_unit *unit,
+    aula_preview_write_fn write_fn, void *write_context) {
   access_unit_plan plan;
   uint32_t timestamp_ms;
   int config_required;
-  ls200_status status;
+  aula_status status;
   if (!mux_input_is_valid(mux, unit, write_fn)) {
-    if (mux != NULL) mux->last_error = LS200_PREVIEW_FLV_ERROR_INVALID_ACCESS_UNIT;
-    return LS200_STATUS_INVALID_ARGUMENT;
+    if (mux != NULL) mux->last_error = AULA_PREVIEW_FLV_ERROR_INVALID_ACCESS_UNIT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   }
-  mux->last_error = LS200_PREVIEW_FLV_ERROR_NONE;
+  mux->last_error = AULA_PREVIEW_FLV_ERROR_NONE;
   status = plan_access_unit(unit, &plan, mux);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   config_required = mux->decoder_config_written == 0 || unit->discontinuity != 0 ||
                     mux->parameter_set_generation !=
                         unit->parameter_set_generation;
   if ((mux->header_written == 0 || config_required) && unit->keyframe == 0) {
-    mux->last_error = LS200_PREVIEW_FLV_ERROR_INVALID_ACCESS_UNIT;
-    return LS200_STATUS_STATE_ERROR;
+    mux->last_error = AULA_PREVIEW_FLV_ERROR_INVALID_ACCESS_UNIT;
+    return AULA_STATUS_STATE_ERROR;
   }
   status = mux_timestamp(mux, unit, &timestamp_ms);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   if (mux->header_written == 0) {
     status = emit_flv_header(mux, write_fn, write_context);
-    if (status != LS200_STATUS_OK) return status;
+    if (status != AULA_STATUS_OK) return status;
   }
   if (config_required) {
     status = emit_decoder_config(mux, unit, timestamp_ms, write_fn,
                                  write_context);
-    if (status != LS200_STATUS_OK) return status;
+    if (status != AULA_STATUS_OK) return status;
   }
   status = emit_video_tag(mux, unit, &plan, timestamp_ms, write_fn,
                           write_context);
-  if (status == LS200_STATUS_OK) {
+  if (status == AULA_STATUS_OK) {
     mux->last_timestamp_90khz = unit->timestamp_90khz;
   }
   return status;
 }
 
-ls200_preview_flv_error ls200_preview_flv_mux_last_error(
-    const ls200_preview_flv_mux *mux) {
-  return mux == NULL ? LS200_PREVIEW_FLV_ERROR_INVALID_ACCESS_UNIT :
+aula_preview_flv_error aula_preview_flv_mux_last_error(
+    const aula_preview_flv_mux *mux) {
+  return mux == NULL ? AULA_PREVIEW_FLV_ERROR_INVALID_ACCESS_UNIT :
                        mux->last_error;
 }

@@ -5,7 +5,7 @@
     "downloads_during_build": false,
     "missing_hash_behavior": "fail_closed",
     "target": "ARM EABI5, Linux 2.6.37, glibc 2.12 ceiling",
-    "note": "Versions are frozen by the implementation plan. A null archive_sha256 blocks acquisition, packaging, and release."
+    "note": "Versions are frozen by the implementation plan. A null archive_sha256 blocks acquisition, packaging, and release. Current Aula ARM closure is unverified; the dated review and archive hashes do not establish a replacement cross-build."
   },
   "packages": [
     {
@@ -17,7 +17,7 @@
       "enabled": ["pjlib", "pjlib-util without asynchronous resolver attachment", "pjsip-core", "pjsip-ua", "pjsip-simple", "UDP", "TCP", "TLS 1.2 and TLS 1.3"],
       "disabled": ["PJSUA", "pjmedia devices/codecs/conference", "STUN", "TURN", "ICE", "H.263", "RED", "XML", "samples", "applications", "incoming multipart forwarding or re-serialization"],
             "host_closure": "exact-commit low-level signaling compile/link, UDP private-lab call, authenticated TLS hostname acceptance/rejection, and SHA-256 digest TLS proxy REGISTER/contact-specific unregister verified; the combined exact-source dependency suite passes 13/13 CTests",
-      "arm_closure": "exact pinned signaling-only static libraries built for ARM EABI5 with the digest-gated media/C++ exclusion patch, linked into ls200-sipd, passed the recovered-reference ABI gate, and executed in both recovered QEMU firmware slots; live SIP/TLS interoperability remains unproven"
+      "arm_closure": "Unverified for the current Aula ARM build; no approved replacement sysroot, cross-build, ABI check, or QEMU execution has been established for this package."
     },
         {
             "name": "nginx",
@@ -28,7 +28,7 @@
       "enabled": ["http", "static files", "FastCGI", "TLS"],
       "disabled": ["HTTP/2", "WebSocket proxying", "CGI", "Lua", "SSI", "WebDAV", "directory listings", "compression", "arbitrary proxying", "mail", "stream"],
             "host_closure": null,
-      "arm_closure": "exact 1.31.4 source built for ARM EABI5 with the digest-gated LS200 cross patch and minimal HTTP/static/SSL/FastCGI module set, passed the recovered-reference ABI gate, and reported nginx/1.31.4 with OpenSSL 3.5.8 in both recovered QEMU firmware slots"
+      "arm_closure": "Unverified for the current Aula ARM build; no approved replacement sysroot, cross-build, ABI check, or QEMU execution has been established for this package."
     },
     {
       "name": "OpenSSL",
@@ -39,7 +39,7 @@
       "enabled": ["TLS", "SHA-256", "HMAC", "PBKDF2", "CSPRNG"],
       "disabled": ["legacy provider"],
       "host_closure": "compatible host OpenSSL used by gateway tests; exact 3.5.8 not acquired",
-      "arm_closure": "exact 3.5.8 source built no-asm as static ARM EABI5 libraries, linked into sipd, gateway, and nginx candidates whose dynamic closure and GLIBC ceiling passed; guest nginx reported OpenSSL 3.5.8, while live TLS and the unused async-context path remain unproven"
+      "arm_closure": "Unverified for the current Aula ARM build; no approved replacement sysroot, cross-build, ABI check, or QEMU execution has been established for this package."
     },
     {
       "name": "FastCGI",
@@ -50,7 +50,7 @@
       "enabled": ["unprivileged C gateway adapter"],
       "disabled": ["generic CGI execution"],
       "host_closure": null,
-      "arm_closure": "exact 2.4.7 source built statically for ARM EABI5 and linked into the gateway candidate; the candidate passed the recovered-reference ABI gate and executed to its expected no-request exit in both recovered QEMU firmware slots"
+      "arm_closure": "Unverified for the current Aula ARM build; no approved replacement sysroot, cross-build, ABI check, or QEMU execution has been established for this package."
     },
     {
       "name": "Jansson",
@@ -61,7 +61,7 @@
       "enabled": ["bounded JSON parsing and serialization"],
       "disabled": [],
       "host_closure": "compatible system library used by gateway tests; exact source not acquired",
-      "arm_closure": "exact 2.14 source built statically for ARM EABI5 and linked into the gateway candidate; the candidate passed the recovered-reference ABI gate and executed in both recovered QEMU firmware slots"
+      "arm_closure": "Unverified for the current Aula ARM build; no approved replacement sysroot, cross-build, ABI check, or QEMU execution has been established for this package."
     },
     {
       "name": "FAAD2",
@@ -72,7 +72,7 @@
       "enabled": ["AAC-LC decode only"],
       "disabled": ["CLI applications"],
       "host_closure": "exact locked source archive built statically without CLI or DRC and linked into the native AAC host gate; successful persistent AAC-LC priming/decode oracle passes",
-      "arm_closure": "exact 2.11.2 source built statically for ARM EABI5 and linked into ls200-sipd; the daemon passed the recovered-reference ABI gate and executed in both recovered QEMU firmware slots, but target AAC decode and live media remain unproven"
+      "arm_closure": "Unverified for the current Aula ARM build; no approved replacement sysroot, cross-build, ABI check, or QEMU execution has been established for this package."
     },
     {
       "name": "SpeexDSP",
@@ -83,7 +83,7 @@
       "enabled": ["resampler", "echo canceller"],
       "disabled": [],
       "host_closure": "exact locked source archive built statically without examples or SSE and linked into the native AAC host gate; 8 kHz mono resampling oracle passes",
-      "arm_closure": "exact 1.2.1 source built statically for ARM EABI5 and linked into ls200-sipd; the daemon passed the recovered-reference ABI gate and executed in both recovered QEMU firmware slots, but target resampling, AEC, and live media remain unproven"
+      "arm_closure": "Unverified for the current Aula ARM build; no approved replacement sysroot, cross-build, ABI check, or QEMU execution has been established for this package."
     },
         {
             "name": "libsrtp",
@@ -94,7 +94,7 @@
       "enabled": ["AES_CM_128_HMAC_SHA1_80"],
       "disabled": ["test applications", "unsupported crypto policies"],
             "host_closure": "exact locked source archive built statically with the built-in crypto backend; upstream make runtest passes; strict AES_CM_128_HMAC_SHA1_80 RTP/SRTCP protect, unprotect, pre-unprotect tuple authorization, replay, tamper, wrong-key, full and mixed re-INVITE downgrade, and staged-timeout cleanup host oracles pass in the combined 13/13 CTest and ASan/UBSan suites",
-      "arm_closure": "exact 2.8.0 source built statically for ARM EABI5 and linked into ls200-sipd; the daemon passed the recovered-reference ABI gate and executed in both recovered QEMU firmware slots, but target SRTP traffic and Zoom negotiation remain unproven"
+      "arm_closure": "Unverified for the current Aula ARM build; no approved replacement sysroot, cross-build, ABI check, or QEMU execution has been established for this package."
     }
   ]
 }

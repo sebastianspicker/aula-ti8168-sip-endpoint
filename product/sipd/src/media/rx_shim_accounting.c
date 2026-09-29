@@ -1,15 +1,15 @@
 #include "rx_shim_private.h"
-#include "ls200_sipd/platform.h"
+#include "aula_sipd/platform.h"
 #include <string.h>
 
-void ls200_rx_shim_reject_entry(ls200_rx_shim *shim, uint32_t media_id, uint32_t ssrc) {
-  ls200_rx_source_entry *entry = ls200_rx_shim_find_entry(shim, media_id, ssrc);
+void aula_rx_shim_reject_entry(aula_rx_shim *shim, uint32_t media_id, uint32_t ssrc) {
+  aula_rx_source_entry *entry = aula_rx_shim_find_entry(shim, media_id, ssrc);
   if (entry != NULL) {
     entry->stats.rtp.rejected++;
   }
 }
 
-int ls200_rx_shim_account_sequence(ls200_rx_source_entry *entry,
+int aula_rx_shim_account_sequence(aula_rx_source_entry *entry,
                                           uint16_t sequence_number) {
   int32_t delta;
   if (entry->has_sequence == 0) {
@@ -50,7 +50,7 @@ int ls200_rx_shim_account_sequence(ls200_rx_source_entry *entry,
   }
 }
 
-void ls200_rx_shim_account_jitter(ls200_rx_source_entry *entry,
+void aula_rx_shim_account_jitter(aula_rx_source_entry *entry,
                                          uint32_t timestamp, uint64_t now_ns) {
   uint64_t seconds = now_ns / UINT64_C(1000000000);
   uint64_t remainder = now_ns % UINT64_C(1000000000);
@@ -74,9 +74,9 @@ void ls200_rx_shim_account_jitter(ls200_rx_source_entry *entry,
       entry->stats.rtp_clock_rate;
 }
 
-void ls200_rx_shim_report_metrics(ls200_rx_source_entry *entry,
+void aula_rx_shim_report_metrics(aula_rx_source_entry *entry,
                                          uint32_t reporter_ssrc, uint64_t now_ns,
-                                         ls200_rtcp_report_metrics *out_metrics) {
+                                         aula_rtcp_report_metrics *out_metrics) {
   uint64_t expected = (uint64_t)entry->highest_sequence_extended - entry->base_sequence + 1U;
   uint64_t lost = expected > entry->unique_received ? expected - entry->unique_received : 0U;
   uint64_t expected_interval = expected - entry->previous_expected;
@@ -101,118 +101,118 @@ void ls200_rx_shim_report_metrics(ls200_rx_source_entry *entry,
   entry->stats.rtp.lost = lost;
 }
 
-void ls200_rx_shim_commit_report_interval(ls200_rx_source_entry *entry) {
+void aula_rx_shim_commit_report_interval(aula_rx_source_entry *entry) {
   entry->previous_expected = (uint64_t)entry->highest_sequence_extended - entry->base_sequence + 1U;
   entry->previous_received = entry->unique_received;
 }
 
-ls200_status ls200_rx_shim_get_receiver_report_metrics_internal(
-    ls200_rx_shim *shim, uint32_t media_id, uint32_t report_block_ssrc,
-    uint32_t local_ssrc, ls200_rtcp_report_metrics *out_metrics);
-ls200_status ls200_rx_shim_commit_receiver_report_internal(
-    ls200_rx_shim *shim, uint32_t media_id, uint32_t report_block_ssrc);
+aula_status aula_rx_shim_get_receiver_report_metrics_internal(
+    aula_rx_shim *shim, uint32_t media_id, uint32_t report_block_ssrc,
+    uint32_t local_ssrc, aula_rtcp_report_metrics *out_metrics);
+aula_status aula_rx_shim_commit_receiver_report_internal(
+    aula_rx_shim *shim, uint32_t media_id, uint32_t report_block_ssrc);
 
-ls200_status ls200_rx_shim_build_receiver_report(ls200_rx_shim *shim,
+aula_status aula_rx_shim_build_receiver_report(aula_rx_shim *shim,
                                                  uint32_t local_ssrc,
-                                                 ls200_mutable_bytes *output) {
+                                                 aula_mutable_bytes *output) {
   uint32_t index;
-  ls200_rtcp_report_metrics metrics;
+  aula_rtcp_report_metrics metrics;
   if (shim == NULL || output == NULL || output->data == NULL || shim->started == 0) {
-    return LS200_STATUS_INVALID_ARGUMENT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   }
-  if (shim->local_ssrc != 0U && local_ssrc != shim->local_ssrc) return LS200_STATUS_PERMISSION_DENIED;
+  if (shim->local_ssrc != 0U && local_ssrc != shim->local_ssrc) return AULA_STATUS_PERMISSION_DENIED;
   for (index = 0U; index < shim->maximum_ssrcs; index++) {
     if (shim->entries[index].active != 0) {
-      ls200_status status = ls200_rx_shim_get_receiver_report_metrics_internal(
+      aula_status status = aula_rx_shim_get_receiver_report_metrics_internal(
           shim, shim->entries[index].media_id, shim->entries[index].stats.ssrc,
           local_ssrc, &metrics);
-      if (status != LS200_STATUS_OK) return status;
+      if (status != AULA_STATUS_OK) return status;
       {
-        status = ls200_rtcp_build_receiver_report(&metrics, output);
-        if (status != LS200_STATUS_OK) return status;
+        status = aula_rtcp_build_receiver_report(&metrics, output);
+        if (status != AULA_STATUS_OK) return status;
       }
-      return ls200_rx_shim_commit_receiver_report_internal(
+      return aula_rx_shim_commit_receiver_report_internal(
           shim, shim->entries[index].media_id, shim->entries[index].stats.ssrc);
     }
   }
-  return LS200_STATUS_AGAIN;
+  return AULA_STATUS_AGAIN;
 }
-ls200_status ls200_rx_shim_get_receiver_report_metrics_internal(
-    ls200_rx_shim *shim, uint32_t media_id, uint32_t report_block_ssrc,
-    uint32_t local_ssrc, ls200_rtcp_report_metrics *out_metrics) {
-  ls200_rx_source_entry *entry;
+aula_status aula_rx_shim_get_receiver_report_metrics_internal(
+    aula_rx_shim *shim, uint32_t media_id, uint32_t report_block_ssrc,
+    uint32_t local_ssrc, aula_rtcp_report_metrics *out_metrics) {
+  aula_rx_source_entry *entry;
   uint64_t now_ns = 0U;
   if (shim == NULL || out_metrics == NULL || local_ssrc == 0U || shim->started == 0) {
-    return LS200_STATUS_INVALID_ARGUMENT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   }
-  entry = ls200_rx_shim_find_entry(shim, media_id, report_block_ssrc);
-  if (entry == NULL || entry->stats.remote_bye_received != 0) return LS200_STATUS_AGAIN;
-  if (ls200_platform_monotonic_now(&now_ns) != LS200_STATUS_OK) return LS200_STATUS_IO_ERROR;
-  ls200_rx_shim_report_metrics(entry, local_ssrc, now_ns, out_metrics);
-  return LS200_STATUS_OK;
+  entry = aula_rx_shim_find_entry(shim, media_id, report_block_ssrc);
+  if (entry == NULL || entry->stats.remote_bye_received != 0) return AULA_STATUS_AGAIN;
+  if (aula_platform_monotonic_now(&now_ns) != AULA_STATUS_OK) return AULA_STATUS_IO_ERROR;
+  aula_rx_shim_report_metrics(entry, local_ssrc, now_ns, out_metrics);
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_rx_shim_get_receiver_report_metrics(ls200_rx_shim *shim,
+aula_status aula_rx_shim_get_receiver_report_metrics(aula_rx_shim *shim,
                                                         uint32_t report_block_ssrc,
                                                         uint32_t local_ssrc,
-                                                        ls200_rtcp_report_metrics *out_metrics) {
-  return ls200_rx_shim_get_receiver_report_metrics_internal(shim, 0U, report_block_ssrc,
+                                                        aula_rtcp_report_metrics *out_metrics) {
+  return aula_rx_shim_get_receiver_report_metrics_internal(shim, 0U, report_block_ssrc,
                                                              local_ssrc, out_metrics);
 }
 
-ls200_status ls200_rx_shim_get_receiver_report_metrics_for_media(
-    ls200_rx_shim *shim, uint32_t media_id, uint32_t report_block_ssrc,
-    uint32_t local_ssrc, ls200_rtcp_report_metrics *out_metrics) {
-  if (media_id == 0U) return LS200_STATUS_INVALID_ARGUMENT;
-  return ls200_rx_shim_get_receiver_report_metrics_internal(shim, media_id, report_block_ssrc,
+aula_status aula_rx_shim_get_receiver_report_metrics_for_media(
+    aula_rx_shim *shim, uint32_t media_id, uint32_t report_block_ssrc,
+    uint32_t local_ssrc, aula_rtcp_report_metrics *out_metrics) {
+  if (media_id == 0U) return AULA_STATUS_INVALID_ARGUMENT;
+  return aula_rx_shim_get_receiver_report_metrics_internal(shim, media_id, report_block_ssrc,
                                                              local_ssrc, out_metrics);
 }
 
-ls200_status ls200_rx_shim_commit_receiver_report_internal(ls200_rx_shim *shim,
+aula_status aula_rx_shim_commit_receiver_report_internal(aula_rx_shim *shim,
                                                                     uint32_t media_id,
                                                                     uint32_t report_block_ssrc) {
-  ls200_rx_source_entry *entry;
-  if (shim == NULL || shim->started == 0) return LS200_STATUS_INVALID_ARGUMENT;
-  entry = ls200_rx_shim_find_entry(shim, media_id, report_block_ssrc);
-  if (entry == NULL || entry->stats.remote_bye_received != 0) return LS200_STATUS_AGAIN;
-  ls200_rx_shim_commit_report_interval(entry);
-  (void)ls200_platform_monotonic_now(&shim->last_report_ns);
-  return LS200_STATUS_OK;
+  aula_rx_source_entry *entry;
+  if (shim == NULL || shim->started == 0) return AULA_STATUS_INVALID_ARGUMENT;
+  entry = aula_rx_shim_find_entry(shim, media_id, report_block_ssrc);
+  if (entry == NULL || entry->stats.remote_bye_received != 0) return AULA_STATUS_AGAIN;
+  aula_rx_shim_commit_report_interval(entry);
+  (void)aula_platform_monotonic_now(&shim->last_report_ns);
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_rx_shim_commit_receiver_report(ls200_rx_shim *shim,
+aula_status aula_rx_shim_commit_receiver_report(aula_rx_shim *shim,
                                                    uint32_t report_block_ssrc) {
-  return ls200_rx_shim_commit_receiver_report_internal(shim, 0U, report_block_ssrc);
+  return aula_rx_shim_commit_receiver_report_internal(shim, 0U, report_block_ssrc);
 }
 
-ls200_status ls200_rx_shim_commit_receiver_report_for_media(ls200_rx_shim *shim,
+aula_status aula_rx_shim_commit_receiver_report_for_media(aula_rx_shim *shim,
                                                              uint32_t media_id,
                                                              uint32_t report_block_ssrc) {
-  if (media_id == 0U) return LS200_STATUS_INVALID_ARGUMENT;
-  return ls200_rx_shim_commit_receiver_report_internal(shim, media_id, report_block_ssrc);
+  if (media_id == 0U) return AULA_STATUS_INVALID_ARGUMENT;
+  return aula_rx_shim_commit_receiver_report_internal(shim, media_id, report_block_ssrc);
 }
 
-ls200_status ls200_rx_shim_build_report(ls200_rx_shim *shim,
-                                        ls200_mutable_bytes *output) {
+aula_status aula_rx_shim_build_report(aula_rx_shim *shim,
+                                        aula_mutable_bytes *output) {
   uint32_t index;
-  ls200_rtcp_report_metrics metrics;
-  ls200_status status;
+  aula_rtcp_report_metrics metrics;
+  aula_status status;
   uint64_t now_ns = 0U;
-  if (shim == NULL || output == NULL || shim->started == 0) return LS200_STATUS_INVALID_ARGUMENT;
-  if (shim->reporter == NULL || shim->local_ssrc == 0U) return LS200_STATUS_CONFIGURATION_ERROR;
+  if (shim == NULL || output == NULL || shim->started == 0) return AULA_STATUS_INVALID_ARGUMENT;
+  if (shim->reporter == NULL || shim->local_ssrc == 0U) return AULA_STATUS_CONFIGURATION_ERROR;
   for (index = 0U; index < shim->maximum_ssrcs; ++index) {
     if (shim->entries[index].active == 0) continue;
-    status = ls200_rx_shim_get_receiver_report_metrics_internal(
+    status = aula_rx_shim_get_receiver_report_metrics_internal(
         shim, shim->entries[index].media_id, shim->entries[index].stats.ssrc,
         shim->local_ssrc, &metrics);
-    if (status != LS200_STATUS_OK) return status;
-    status = ls200_rtcp_reporter_build_receiver_report(shim->reporter, &metrics, output);
-    if (status == LS200_STATUS_OK && ls200_platform_monotonic_now(&now_ns) == LS200_STATUS_OK) {
+    if (status != AULA_STATUS_OK) return status;
+    status = aula_rtcp_reporter_build_receiver_report(shim->reporter, &metrics, output);
+    if (status == AULA_STATUS_OK && aula_platform_monotonic_now(&now_ns) == AULA_STATUS_OK) {
       shim->last_report_ns = now_ns;
-      (void)ls200_rx_shim_commit_receiver_report_internal(
+      (void)aula_rx_shim_commit_receiver_report_internal(
           shim, shim->entries[index].media_id, shim->entries[index].stats.ssrc);
     }
     return status;
   }
-  return LS200_STATUS_AGAIN;
+  return AULA_STATUS_AGAIN;
 }

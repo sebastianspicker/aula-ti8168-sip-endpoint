@@ -7,10 +7,10 @@ The parser accepts only the five sections and keys listed below. It rejects
 unknown and duplicate keys, malformed syntax, control characters, `..` path
 segments, values of 512 bytes or more, configuration files larger than 64 KiB,
 and lines longer than 1,023 bytes. Use
-`config/ls200-sipd.example.conf` as the non-operational starting point.
+`config/aula-sipd.example.conf` as the non-operational starting point.
 
 The physical service launcher supplies DHCP nameservers separately through
-`LS200_SIPD_DNS_SERVERS`: one to three comma-separated IPv4 literals, without
+`AULA_SIPD_DNS_SERVERS`: one to three comma-separated IPv4 literals, without
 spaces or ports. This initializes the glibc system resolver where vendor
 directory permissions prevent reading `/etc/resolv.conf` after privilege drop.
 Unset leaves the ordinary system resolver unchanged; malformed explicit values
@@ -55,7 +55,7 @@ the documented network-scope and encryption checks.
 | Key | Default | Accepted values and constraints |
 | --- | --- | --- |
 | `runtime.foreground` | `true` | Must be `true`; `false` is rejected. |
-| `runtime.pid_file` | `/run/ls200-sipd.pid` | Required absolute output path. No `..`, controls, or symlink target. Its parent must be a suitable existing directory. |
+| `runtime.pid_file` | `/run/aula-sipd.pid` | Required absolute output path. No `..`, controls, or symlink target. Its parent must be a suitable existing directory. |
 | `runtime.log_sink` | `stderr` | `stderr` or `syslog`. |
 | `runtime.log_level` | `info` | `debug`, `info`, `notice`, `warning`, or `error`. |
 | `runtime.log_summary_interval_seconds` | `60` | Positive unsigned decimal integer. |
@@ -82,7 +82,7 @@ the documented network-scope and encryption checks.
 
 | Key | Default | Accepted values and constraints |
 | --- | --- | --- |
-| `media.backend` | `fixture` | `fixture`, `rtsp_native`, or the compatibility spelling `rtsp_gst_process`. The latter two use the native RTSP seam, not a GStreamer process; selecting either is not proof of an approved or discovered LS-200 media contract. |
+| `media.backend` | `fixture` | `fixture`, `rtsp_native`, or the compatibility spelling `rtsp_gst_process`. The latter two use the native RTSP seam, not a GStreamer process; selecting either is not proof of an approved or discovered target media contract. |
 | `media.video_source` | empty | Aggregate RTSP URI for `rtsp_native`. Do not publish a live endpoint. Native setup selects the H.264 and MPEG4-GENERIC AAC tracks only from its DESCRIBE SDP; it does not assume track names or payload types. |
 | `media.audio_source` | empty | Retained compatibility source detail. Native RTSP does not use it to choose an audio track; SDP selection is authoritative. Do not publish a device or local capture command. |
 | `media.authorized_rtsp_ipv4` | `127.0.0.1` | Canonical numeric IPv4 only. A URI must use this exact target. Loopback is accepted; non-loopback targets must be RFC 1918 private space or IPv4 link-local. Unspecified, multicast, broadcast, reserved, and global addresses are rejected. The value is operational data and is not included in formatted configuration or logs. |
@@ -134,8 +134,8 @@ scheme must be lowercase `rtsp`, its host must be the exact
 safe-path grammar. DNS, credentials, IPv6, alternate numeric forms, queries,
 and fragments are rejected. The daemon copies the parsed IPv4 bytes directly
 into its TCP socket address and performs no resolver call. A loopback target
-connects only when `LS200_SIPD_ENABLE_LOCAL_RTSP=1`; a non-loopback target
-instead requires `LS200_SIPD_ENABLE_AUTHORIZED_RTSP=1`. When `LS200_LAB_PEER`
+connects only when `AULA_SIPD_ENABLE_LOCAL_RTSP=1`; a non-loopback target
+instead requires `AULA_SIPD_ENABLE_AUTHORIZED_RTSP=1`. When `AULA_LAB_PEER`
 is present, it must be the same canonical IPv4 literal before the socket is
 created. These gates do not authorize a live test.
 
@@ -144,7 +144,7 @@ created. These gates do not authorize a live test.
 | Key | Default | Accepted values and constraints |
 | --- | --- | --- |
 | `control.enable_local_control` | `false` | Enables a Unix-domain socket only. It never creates a network listener. |
-| `control.unix_socket_path` | `/run/ls200-sipd/control.sock` | Required absolute output path when control is enabled; no `..`, controls, or symlink target. |
+| `control.unix_socket_path` | `/run/aula-sipd/control.sock` | Required absolute output path when control is enabled; no `..`, controls, or symlink target. |
 | `control.unix_socket_mode` | `0660` | `0600` or `0660`; deployment uses `0660` with the dedicated control group. |
 | `control.gateway_uid` | `65534` | Unsigned numeric UID authorized to connect as the gateway. It must not be `4294967295`; Unix peer credentials must match it. |
 
@@ -209,11 +209,11 @@ When a built binary and a root-owned candidate configuration are available,
 the implemented syntax-check entry point is:
 
 ```sh
-ls200-sipd --check-config /path/to/ls200-sipd.conf
+aula-sipd --check-config /path/to/aula-sipd.conf
 ```
 
 This reference does not claim that this command has passed on ARM hardware,
-against a live LS-200, or against an authorized Zoom peer. The exact host
+against a live target, or against an authorized Zoom peer. The exact host
 pjproject build did pass its deterministic 13/13 suite, including real local
 UDP and authenticated TLS private-lab LSZ1 calls and authenticated
 `zoom_proxy` registration; that is not ARM,

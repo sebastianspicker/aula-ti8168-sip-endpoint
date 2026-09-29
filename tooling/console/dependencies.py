@@ -111,7 +111,7 @@ class Dependencies:
             self.check_link()
             if self.valid():
                 return 0
-            if os.environ.get('LS200_CONSOLE_REQUIRE_READY') == '1':
+            if os.environ.get('AULA_CONSOLE_REQUIRE_READY') == '1':
                 raise RuntimeError('reviewed console dependencies must be prepared before this build')
             lock = self.leases.acquire(exclusive=True)
             self.remove_link()

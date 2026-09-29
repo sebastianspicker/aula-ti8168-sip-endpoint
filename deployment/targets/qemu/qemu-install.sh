@@ -2,8 +2,8 @@
 # QEMU-only idempotent entrypoint for a staged, already verified payload.
 set -eu
 
-CURRENT=/opt/ls200-zoom/current
-BOOTSTRAP=/opt/ls200-zoom/bootstrap
+CURRENT=/opt/aula-ti8168-sip-endpoint/current
+BOOTSTRAP=/opt/aula-ti8168-sip-endpoint/bootstrap
 TRUSTED_VERIFIER=$BOOTSTRAP/verify-payload.sh
 DIGEST_FILE=$BOOTSTRAP/payload-manifest.sha256
 
@@ -34,9 +34,9 @@ if [ -L "$CURRENT" ]; then
         printf '%s\n' 'error: active QEMU release version is unsafe' >&2
         exit 1 ;;
     esac
-    sh "$TRUSTED_VERIFIER" --payload "/opt/ls200-zoom/$current_target" \
+    sh "$TRUSTED_VERIFIER" --payload "/opt/aula-ti8168-sip-endpoint/$current_target" \
         --manifest-sha256 "$MANIFEST_SHA256" >/dev/null
-    printf '%s\n' 'LS200_ZOOM_ALREADY_INSTALLED'
+    printf '%s\n' 'AULA_ZOOM_ALREADY_INSTALLED'
     exit 0
 fi
 [ ! -e "$CURRENT" ] || {
@@ -50,8 +50,8 @@ fi
 sh "$TRUSTED_VERIFIER" --payload "$BOOTSTRAP/runtime" \
     --manifest-sha256 "$MANIFEST_SHA256" >/dev/null
 
-LS200_ZOOM_PAYLOAD_DIR=$BOOTSTRAP \
-LS200_ZOOM_VERSION=qemu-prototype \
-LS200_ZOOM_MANIFEST_SHA256=$MANIFEST_SHA256 \
+AULA_ZOOM_PAYLOAD_DIR=$BOOTSTRAP \
+AULA_ZOOM_VERSION=qemu-prototype \
+AULA_ZOOM_MANIFEST_SHA256=$MANIFEST_SHA256 \
     "$BOOTSTRAP/install.sh"
-printf '%s\n' 'LS200_ZOOM_INSTALLED'
+printf '%s\n' 'AULA_ZOOM_INSTALLED'

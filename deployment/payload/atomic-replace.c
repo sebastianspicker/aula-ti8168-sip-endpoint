@@ -10,7 +10,7 @@
 
 static int fail_path(const char *operation, const char *path)
 {
-    (void)fprintf(stderr, "ls200-atomic-replace: %s %s: %s\n", operation,
+    (void)fprintf(stderr, "aula-atomic-replace: %s %s: %s\n", operation,
                   path, strerror(errno));
     return 1;
 }
@@ -48,7 +48,7 @@ int main(int argc, char **argv)
 
     if (argc != 3) {
         (void)fprintf(stderr,
-                      "usage: ls200-atomic-replace SOURCE_SYMLINK DESTINATION_SYMLINK\n");
+                      "usage: aula-atomic-replace SOURCE_SYMLINK DESTINATION_SYMLINK\n");
         return 64;
     }
     if (parent_directory(argv[1], source_parent) != 0 ||

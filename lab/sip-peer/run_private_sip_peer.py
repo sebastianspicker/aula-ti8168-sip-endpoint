@@ -15,7 +15,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from qemu_profile import PrivateSipPeer, QEMU_LS200_ADDRESS  # noqa: E402
+from qemu_profile import PrivateSipPeer, QEMU_AULA_ADDRESS  # noqa: E402
 
 
 MAX_TIMEOUT_SECONDS = 65 * 60
@@ -83,8 +83,8 @@ def main() -> int:
                         help="exact local IPv4 literal to bind")
     parser.add_argument("--advertised-address",
                         help="exact SDP/contact IPv4 literal; defaults to bind address")
-    parser.add_argument("--authorized-source-address", default=QEMU_LS200_ADDRESS,
-                        help="exact authorised LS200 IPv4 literal")
+    parser.add_argument("--authorized-source-address", default=QEMU_AULA_ADDRESS,
+                        help="exact authorised Aula IPv4 literal")
     parser.add_argument("--sip-port", type=int, default=15060)
     parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--require-bidirectional", action="store_true")

@@ -6,54 +6,54 @@
 #include <string.h>
 
 static int crc_address_parse(const char *address, uint8_t out_address[4]) {
-  ls200_sip_transport_info peer;
+  aula_sip_transport_info peer;
   if (address == NULL || address[0] == '\0' || out_address == NULL ||
       strlen(address) >= 16U)
     return 0;
   (void)memset(&peer, 0, sizeof(peer));
-  peer.transport = LS200_TRANSPORT_TLS;
+  peer.transport = AULA_TRANSPORT_TLS;
   peer.local_port = 5060U;
   peer.remote_port = 5061U;
   peer.remote_address_length = 4U;
   if (inet_pton(AF_INET, address, peer.remote_address) != 1 ||
-      ls200_sip_transport_is_restricted_network(&peer))
+      aula_sip_transport_is_restricted_network(&peer))
     return 0;
   (void)memcpy(out_address, peer.remote_address, 4U);
   return 1;
 }
 
-int ls200_sip_crc_address_is_valid(const char *address) {
+int aula_sip_crc_address_is_valid(const char *address) {
   uint8_t parsed[4];
   return address == NULL || address[0] == '\0' ||
       crc_address_parse(address, parsed);
 }
 
-ls200_status ls200_sip_crc_route_initialize(ls200_sip_crc_route *route,
+aula_status aula_sip_crc_route_initialize(aula_sip_crc_route *route,
                                             const char *address) {
-  if (route == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+  if (route == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   (void)memset(route, 0, sizeof(*route));
-  if (address == NULL || address[0] == '\0') return LS200_STATUS_OK;
+  if (address == NULL || address[0] == '\0') return AULA_STATUS_OK;
   if (!crc_address_parse(address, route->address))
-    return LS200_STATUS_INVALID_DATA;
+    return AULA_STATUS_INVALID_DATA;
   route->present = 1;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_sip_crc_route_resolve_initial(
-    const ls200_sip_crc_route *route, ls200_zoom_profile profile,
-    const char *host, uint16_t port, ls200_transport transport,
-    ls200_sip_resolver_result *out_result) {
+aula_status aula_sip_crc_route_resolve_initial(
+    const aula_sip_crc_route *route, aula_zoom_profile profile,
+    const char *host, uint16_t port, aula_transport transport,
+    aula_sip_resolver_result *out_result) {
   if (route == NULL || host == NULL || out_result == NULL)
-    return LS200_STATUS_INVALID_ARGUMENT;
-  if (route->present == 0 || profile != LS200_ZOOM_PROFILE_DIRECT_CRC ||
-      strcmp(host, LS200_ZOOM_CRC_DOMAIN) != 0 || port != 5061U ||
-      transport != LS200_TRANSPORT_TLS)
-    return LS200_STATUS_AGAIN;
+    return AULA_STATUS_INVALID_ARGUMENT;
+  if (route->present == 0 || profile != AULA_ZOOM_PROFILE_DIRECT_CRC ||
+      strcmp(host, AULA_ZOOM_CRC_DOMAIN) != 0 || port != 5061U ||
+      transport != AULA_TRANSPORT_TLS)
+    return AULA_STATUS_AGAIN;
   (void)memset(out_result, 0, sizeof(*out_result));
-  out_result->peer.transport = LS200_TRANSPORT_TLS;
+  out_result->peer.transport = AULA_TRANSPORT_TLS;
   out_result->peer.local_port = 5060U;
   out_result->peer.remote_port = 5061U;
   out_result->peer.remote_address_length = 4U;
   (void)memcpy(out_result->peer.remote_address, route->address, 4U);
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }

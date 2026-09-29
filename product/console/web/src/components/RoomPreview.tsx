@@ -17,6 +17,6 @@ export function RoomPreview() {
   const player = usePreviewPlayer(video, usable ? path : null, state)
   return <section className="preview-frame room-preview" aria-labelledby="room-preview-title">
     <div className="preview-frame__head"><h2 id="room-preview-title">Local preview</h2><span>{usable ? player : data || error ? 'Unavailable' : 'Connecting'}</span></div>
-    {usable ? <video ref={video} aria-label="Authenticated local LS200 source" muted playsInline controls /> : <div className="preview-empty"><Video aria-hidden="true" size={38} /><h3>{data || error ? 'Local preview unavailable' : 'Connecting to local preview'}</h3><p>{error ? 'The authenticated preview could not be refreshed.' : 'The device has not supplied an authenticated preview stream.'}</p></div>}
+    {usable ? <video ref={video} aria-label="Authenticated local Aula source" muted playsInline controls /> : <div className="preview-empty"><Video aria-hidden="true" size={38} /><h3>{data || error ? 'Local preview unavailable' : 'Connecting to local preview'}</h3><p>{error ? 'The authenticated preview could not be refreshed.' : 'The device has not supplied an authenticated preview stream.'}</p></div>}
   </section>
 }

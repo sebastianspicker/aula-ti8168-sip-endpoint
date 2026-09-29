@@ -1,5 +1,5 @@
 {
-  "schema": "ls200-live-build-inputs-v1",
+  "schema": "aula-ti8168-sip-endpoint-live-build-inputs-v1",
   "toolchain": {
     "cross_prefix": "/reviewed/toolchain/bin/arm-linux-gnueabi-",
     "node": {"path": "/reviewed/host/bin/node", "sha256": "REPLACE_WITH_LOWERCASE_SHA256"},
@@ -30,7 +30,7 @@
     "srtp_library": "/reviewed/sysroot/usr/lib/libsrtp2.a"
   },
   "reference_binary": {
-    "path": "/private/reviewed/ls200-reference-arm-binary",
+    "path": "/private/reviewed/aula-reference-arm-binary",
     "sha256": "REPLACE_WITH_LOWERCASE_SHA256"
   }
 }

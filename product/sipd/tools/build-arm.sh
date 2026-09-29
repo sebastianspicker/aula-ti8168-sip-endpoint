@@ -5,19 +5,19 @@ set -eu
 project_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
 repository_root=$(CDPATH='' cd -- "$project_dir/../.." && pwd -P)
 path_guard="$repository_root/tooling/workspace/protected_output.py"
-cross_prefix=${LS200_CROSS_PREFIX:?set LS200_CROSS_PREFIX to an ARM EABI5 toolchain prefix}
-sysroot=${LS200_SYSROOT:?set LS200_SYSROOT to a separately generated development sysroot}
-build_dir=${LS200_ARM_BUILD_DIR:-"$repository_root/.work/build/sipd-arm"}
-pjsip_include=${LS200_SIPD_PJSIP_INCLUDE_DIR:?set LS200_SIPD_PJSIP_INCLUDE_DIR to the reviewed pjproject include root in the sysroot}
-pjsip_libraries=${LS200_SIPD_PJSIP_LIBRARIES:?set LS200_SIPD_PJSIP_LIBRARIES to a semicolon-separated list of reviewed ARM libraries in the sysroot}
-pjsip_ua_library=${LS200_SIPD_PJSIP_UA_LIBRARY:?set LS200_SIPD_PJSIP_UA_LIBRARY to the reviewed ARM libpjsip-ua archive in the sysroot}
-pjmedia_library=${LS200_SIPD_PJMEDIA_LIBRARY:?set LS200_SIPD_PJMEDIA_LIBRARY to the reviewed ARM libpjmedia archive in the sysroot}
-faad2_include=${LS200_SIPD_FAAD2_INCLUDE_DIR:?set LS200_SIPD_FAAD2_INCLUDE_DIR to the reviewed FAAD2 2.11.2 include root in the sysroot}
-faad2_library=${LS200_SIPD_FAAD2_LIBRARY:?set LS200_SIPD_FAAD2_LIBRARY to the reviewed FAAD2 2.11.2 ARM library in the sysroot}
-speexdsp_include=${LS200_SIPD_SPEEXDSP_INCLUDE_DIR:?set LS200_SIPD_SPEEXDSP_INCLUDE_DIR to the reviewed SpeexDSP 1.2.1 include root in the sysroot}
-speexdsp_library=${LS200_SIPD_SPEEXDSP_LIBRARY:?set LS200_SIPD_SPEEXDSP_LIBRARY to the reviewed SpeexDSP 1.2.1 ARM library in the sysroot}
-srtp_include=${LS200_SIPD_SRTP_INCLUDE_DIR:?set LS200_SIPD_SRTP_INCLUDE_DIR to the reviewed libsrtp 2.8 include root in the sysroot}
-srtp_library=${LS200_SIPD_SRTP_LIBRARY:?set LS200_SIPD_SRTP_LIBRARY to the reviewed libsrtp 2.8 ARM library in the sysroot}
+cross_prefix=${AULA_CROSS_PREFIX:?set AULA_CROSS_PREFIX to an ARM EABI5 toolchain prefix}
+sysroot=${AULA_SYSROOT:?set AULA_SYSROOT to a separately generated development sysroot}
+build_dir=${AULA_ARM_BUILD_DIR:-"$repository_root/.work/build/sipd-arm"}
+pjsip_include=${AULA_SIPD_PJSIP_INCLUDE_DIR:?set AULA_SIPD_PJSIP_INCLUDE_DIR to the reviewed pjproject include root in the sysroot}
+pjsip_libraries=${AULA_SIPD_PJSIP_LIBRARIES:?set AULA_SIPD_PJSIP_LIBRARIES to a semicolon-separated list of reviewed ARM libraries in the sysroot}
+pjsip_ua_library=${AULA_SIPD_PJSIP_UA_LIBRARY:?set AULA_SIPD_PJSIP_UA_LIBRARY to the reviewed ARM libpjsip-ua archive in the sysroot}
+pjmedia_library=${AULA_SIPD_PJMEDIA_LIBRARY:?set AULA_SIPD_PJMEDIA_LIBRARY to the reviewed ARM libpjmedia archive in the sysroot}
+faad2_include=${AULA_SIPD_FAAD2_INCLUDE_DIR:?set AULA_SIPD_FAAD2_INCLUDE_DIR to the reviewed FAAD2 2.11.2 include root in the sysroot}
+faad2_library=${AULA_SIPD_FAAD2_LIBRARY:?set AULA_SIPD_FAAD2_LIBRARY to the reviewed FAAD2 2.11.2 ARM library in the sysroot}
+speexdsp_include=${AULA_SIPD_SPEEXDSP_INCLUDE_DIR:?set AULA_SIPD_SPEEXDSP_INCLUDE_DIR to the reviewed SpeexDSP 1.2.1 include root in the sysroot}
+speexdsp_library=${AULA_SIPD_SPEEXDSP_LIBRARY:?set AULA_SIPD_SPEEXDSP_LIBRARY to the reviewed SpeexDSP 1.2.1 ARM library in the sysroot}
+srtp_include=${AULA_SIPD_SRTP_INCLUDE_DIR:?set AULA_SIPD_SRTP_INCLUDE_DIR to the reviewed libsrtp 2.8 include root in the sysroot}
+srtp_library=${AULA_SIPD_SRTP_LIBRARY:?set AULA_SIPD_SRTP_LIBRARY to the reviewed libsrtp 2.8 ARM library in the sysroot}
 
 canonical_dir() {
     (CDPATH='' cd -- "$1" && pwd -P)
@@ -95,7 +95,7 @@ for pjsip_library do
 done
 
 export SYSROOT="$canonical_sysroot"
-export LS200_ARM_BUILD_DIR="$canonical_build"
+export AULA_ARM_BUILD_DIR="$canonical_build"
 
 command -v cmake >/dev/null 2>&1 || {
     echo "build-arm: cmake is required" >&2
@@ -125,22 +125,22 @@ cmake -S "$project_dir" -B "$canonical_build" \
     -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
     -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
     -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY \
-    -DLS200_SIPD_TARGET_PROFILE=ls200-arm-eabi5 \
-    -DLS200_SIPD_ENABLE_PJSIP=ON \
-    -DLS200_SIPD_PJSIP_INCLUDE_DIR="$canonical_pjsip_include" \
-    -DLS200_SIPD_PJSIP_LIBRARIES="$canonical_pjsip_libraries" \
-    -DLS200_SIPD_PJSIP_UA_LIBRARY="$canonical_pjsip_ua_library" \
-    -DLS200_SIPD_PJMEDIA_LIBRARY="$canonical_pjmedia_library" \
-    -DLS200_SIPD_ENABLE_FAAD2=ON \
-    -DLS200_SIPD_FAAD2_INCLUDE_DIR="$canonical_faad2_include" \
-    -DLS200_SIPD_FAAD2_LIBRARY="$canonical_faad2_library" \
-    -DLS200_SIPD_ENABLE_SPEEXDSP=ON \
-    -DLS200_SIPD_SPEEXDSP_INCLUDE_DIR="$canonical_speexdsp_include" \
-    -DLS200_SIPD_SPEEXDSP_LIBRARY="$canonical_speexdsp_library" \
-    -DLS200_SIPD_ENABLE_SRTP=ON \
-    -DLS200_SIPD_SRTP_INCLUDE_DIR="$canonical_srtp_include" \
-    -DLS200_SIPD_SRTP_LIBRARY="$canonical_srtp_library" \
-    -DLS200_SIPD_BUILD_TESTS=OFF \
-    -DLS200_SIPD_BUILD_FUZZ=OFF \
-    -DLS200_SIPD_ENABLE_SANITIZERS=OFF
-cmake --build "$canonical_build" --target ls200-sipd --parallel "${LS200_BUILD_JOBS:-1}"
+    -DAULA_SIPD_TARGET_PROFILE=aula-arm-eabi5 \
+    -DAULA_SIPD_ENABLE_PJSIP=ON \
+    -DAULA_SIPD_PJSIP_INCLUDE_DIR="$canonical_pjsip_include" \
+    -DAULA_SIPD_PJSIP_LIBRARIES="$canonical_pjsip_libraries" \
+    -DAULA_SIPD_PJSIP_UA_LIBRARY="$canonical_pjsip_ua_library" \
+    -DAULA_SIPD_PJMEDIA_LIBRARY="$canonical_pjmedia_library" \
+    -DAULA_SIPD_ENABLE_FAAD2=ON \
+    -DAULA_SIPD_FAAD2_INCLUDE_DIR="$canonical_faad2_include" \
+    -DAULA_SIPD_FAAD2_LIBRARY="$canonical_faad2_library" \
+    -DAULA_SIPD_ENABLE_SPEEXDSP=ON \
+    -DAULA_SIPD_SPEEXDSP_INCLUDE_DIR="$canonical_speexdsp_include" \
+    -DAULA_SIPD_SPEEXDSP_LIBRARY="$canonical_speexdsp_library" \
+    -DAULA_SIPD_ENABLE_SRTP=ON \
+    -DAULA_SIPD_SRTP_INCLUDE_DIR="$canonical_srtp_include" \
+    -DAULA_SIPD_SRTP_LIBRARY="$canonical_srtp_library" \
+    -DAULA_SIPD_BUILD_TESTS=OFF \
+    -DAULA_SIPD_BUILD_FUZZ=OFF \
+    -DAULA_SIPD_ENABLE_SANITIZERS=OFF
+cmake --build "$canonical_build" --target aula-sipd --parallel "${AULA_BUILD_JOBS:-1}"

@@ -3,9 +3,13 @@
 `dependency-lock.json` is the single package inventory for the prototype. It
 records the frozen versions and minimal feature boundaries used by the current
 build tooling. The listed official source archives were retrieved and hashed on
-2026-08-26. The 2026-08-27 ARM closure strings record the bounded local
-cross-build, ABI, and recovered-QEMU execution proof. They are not a release
-attestation and do not replace live LS200, license, advisory, or Zoom CRC gates.
+2026-08-26. The 2026-08-27 review date belongs to that earlier dependency
+inventory; its ARM cross-build and recovered-QEMU observations concerned the
+previous product build. Every `arm_closure` entry now marks the current Aula ARM
+build unverified: no approved replacement sysroot or complete cross-build, ABI,
+and QEMU proof has been established. The archive hashes and host results remain
+useful, but they do not attest to an Aula release or replace live target-device,
+license, advisory, or Zoom CRC gates.
 
 `advisories/pjproject-advisory-snapshot.json` is the dated, feature-scoped PJSIP review.
 After acquiring the exact pinned Git history, verify every recorded fix
@@ -38,13 +42,14 @@ device payload.
 
 Nginx 1.31.4's upstream `--crossbuild` mode still executes generated target
 programs and reports the whole platform tuple as the operating-system name.
-`prepare-nginx-ls200-cross.sh` applies a digest-gated patch that parses the
-target tuple, compile-tests runtime probes, and supplies only facts recovered
-for the LS200 target: ARM32 type sizes, little-endian byte order, Linux 2.6.37,
-the glibc error-table bound, and an unavailable `accept4()`. Although the
-cross sysroot headers expose `accept4()`, the recovered 2.6.37 kernel returns
-`ENOSYS`; the target profile explicitly writes `NGX_HAVE_ACCEPT4` as `0` so
-nginx uses `accept()` from startup. The console build script applies this patch
+`prepare-nginx-aula-cross.sh` applies a digest-gated target profile patch to
+nginx 1.31.4. The profile encodes explicit ARM32 sizes, little-endian byte
+order, a Linux 2.6.37 target tuple, a glibc error-table bound, and a
+conservative `accept()` path. These are build inputs requiring independent
+target validation; a version string or recovered artifact alone does not prove
+runtime ABI or kernel support. The patch disables `accept4()` for this profile
+until that support is verified on the target.
+The console build script applies this patch
 before configuring the minimal HTTPS/FastCGI module set.
 
 Builds consume only explicitly supplied local inputs. They do not download,

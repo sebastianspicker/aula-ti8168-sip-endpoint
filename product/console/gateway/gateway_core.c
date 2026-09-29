@@ -31,12 +31,12 @@
 extern int getpeereid(int descriptor, uid_t *uid, gid_t *gid);
 #endif
 
-int gateway_state_lock(ls200_gateway *gateway) {
+int gateway_state_lock(aula_gateway *gateway) {
   return gateway != NULL && gateway->synchronization_ready != 0 &&
       pthread_mutex_lock(&gateway->state_mutex) == 0;
 }
 
-void gateway_state_unlock(ls200_gateway *gateway) {
+void gateway_state_unlock(aula_gateway *gateway) {
   (void)pthread_mutex_unlock(&gateway->state_mutex);
 }
 
@@ -64,7 +64,7 @@ void gateway_install_secure_json_allocator(void) {
   json_set_alloc_funcs(secure_json_malloc, gateway_secure_json_free);
 }
 
-int ls200_gateway_parse_content_length(const char *text, size_t maximum, size_t *length_out) {
+int aula_gateway_parse_content_length(const char *text, size_t maximum, size_t *length_out) {
   char *end = NULL;
   unsigned long value;
   if (length_out == NULL) return 0;
@@ -111,10 +111,10 @@ int gateway_hex_encode(const uint8_t *input, size_t length, char *output, size_t
   return 1;
 }
 
-int gateway_hex_decode_32(const char *input, uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
+int gateway_hex_decode_32(const char *input, uint8_t output[AULA_GATEWAY_HASH_BYTES]) {
   size_t index;
-  if (input == NULL || strlen(input) != LS200_GATEWAY_HASH_BYTES * 2U) return 0;
-  for (index = 0U; index < LS200_GATEWAY_HASH_BYTES; ++index) {
+  if (input == NULL || strlen(input) != AULA_GATEWAY_HASH_BYTES * 2U) return 0;
+  for (index = 0U; index < AULA_GATEWAY_HASH_BYTES; ++index) {
     int high = isdigit((unsigned char)input[index * 2U]) ? input[index * 2U] - '0' :
         (input[index * 2U] >= 'a' && input[index * 2U] <= 'f' ? input[index * 2U] - 'a' + 10 : -1);
     int low = isdigit((unsigned char)input[index * 2U + 1U]) ? input[index * 2U + 1U] - '0' :
@@ -139,48 +139,48 @@ int gateway_hex_decode(const char *input, uint8_t *output, size_t output_length)
   return 1;
 }
 
-int gateway_sha256(const uint8_t *input, size_t input_length, uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
+int gateway_sha256(const uint8_t *input, size_t input_length, uint8_t output[AULA_GATEWAY_HASH_BYTES]) {
   unsigned int output_length = 0U;
   return EVP_Digest(input, input_length, output, &output_length, EVP_sha256(), NULL) == 1 &&
-      output_length == LS200_GATEWAY_HASH_BYTES;
+      output_length == AULA_GATEWAY_HASH_BYTES;
 }
 
-int gateway_password_hash(const char *password, const uint8_t salt[LS200_GATEWAY_SALT_BYTES],
-                          uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
+int gateway_password_hash(const char *password, const uint8_t salt[AULA_GATEWAY_SALT_BYTES],
+                          uint8_t output[AULA_GATEWAY_HASH_BYTES]) {
   if (password == NULL || strlen(password) < 12U || strlen(password) > 256U) return 0;
-  return PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt, LS200_GATEWAY_SALT_BYTES,
-                           LS200_GATEWAY_PBKDF2_ITERATIONS, EVP_sha256(),
-                           LS200_GATEWAY_HASH_BYTES, output) == 1;
+  return PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt, AULA_GATEWAY_SALT_BYTES,
+                           AULA_GATEWAY_PBKDF2_ITERATIONS, EVP_sha256(),
+                           AULA_GATEWAY_HASH_BYTES, output) == 1;
 }
 
-int gateway_password_hash_candidate(const char *password, const uint8_t salt[LS200_GATEWAY_SALT_BYTES],
-                                    uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
+int gateway_password_hash_candidate(const char *password, const uint8_t salt[AULA_GATEWAY_SALT_BYTES],
+                                    uint8_t output[AULA_GATEWAY_HASH_BYTES]) {
   if (password == NULL || strlen(password) > 256U) return 0;
-  return PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt, LS200_GATEWAY_SALT_BYTES,
-                           LS200_GATEWAY_PBKDF2_ITERATIONS, EVP_sha256(),
-                           LS200_GATEWAY_HASH_BYTES, output) == 1;
+  return PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt, AULA_GATEWAY_SALT_BYTES,
+                           AULA_GATEWAY_PBKDF2_ITERATIONS, EVP_sha256(),
+                           AULA_GATEWAY_HASH_BYTES, output) == 1;
 }
 
-void gateway_write_error(ls200_gateway_response *response, unsigned int status,
+void gateway_write_error(aula_gateway_response *response, unsigned int status,
                          const char *code, const char *message) {
   response->status = status;
   (void)snprintf(response->content_type, sizeof(response->content_type), "application/json");
   (void)snprintf(response->body, sizeof(response->body),
                  "{\"revision\":%u,\"ok\":false,\"error\":{\"code\":\"%s\",\"message\":\"%s\"}}",
-                 LS200_GATEWAY_API_REVISION, code, message);
+                 AULA_GATEWAY_API_REVISION, code, message);
 }
 
-void gateway_write_rate_limited(ls200_gateway_response *response, unsigned int retry_after) {
+void gateway_write_rate_limited(aula_gateway_response *response, unsigned int retry_after) {
   gateway_write_error(response, 429U, "AUTH_RATE_LIMITED", "try again later");
   response->retry_after = retry_after == 0U ? 1U : retry_after;
 }
 
-void gateway_write_success(ls200_gateway_response *response, unsigned int status, const char *data) {
+void gateway_write_success(aula_gateway_response *response, unsigned int status, const char *data) {
   response->status = status;
   (void)snprintf(response->content_type, sizeof(response->content_type), "application/json");
   (void)snprintf(response->body, sizeof(response->body),
                  "{\"revision\":%u,\"ok\":true,\"data\":%s}",
-                 LS200_GATEWAY_API_REVISION, data == NULL ? "{}" : data);
+                 AULA_GATEWAY_API_REVISION, data == NULL ? "{}" : data);
 }
 
 int gateway_json_object_exact(json_t *object, const char *const *keys, size_t key_count) {
@@ -247,7 +247,7 @@ static int open_verified_child_directory(int directory, const char *name) {
         (unsigned int)(expected.st_mode & 07777U), S_ISDIR(expected.st_mode) ? 1 : 0);
     return -1;
   }
-  child = openat(directory, name, O_RDONLY | O_DIRECTORY | LS200_O_NOFOLLOW);
+  child = openat(directory, name, O_RDONLY | O_DIRECTORY | AULA_O_NOFOLLOW);
   if (child < 0) {
     (void)fprintf(stderr, "gateway storage: component open failed name=%s errno=%d\n",
                   name, errno);
@@ -274,7 +274,7 @@ int gateway_open_parent_directory(const char *path, int *parent_out, char name[N
       parent_out == NULL || name == NULL) return 0;
   if (strncmp(path, "/run/", 5U) == 0) {
     (void)snprintf(copy, sizeof(copy), "%s", path + 5U);
-    directory = open("/run", O_RDONLY | O_DIRECTORY | LS200_O_NOFOLLOW);
+    directory = open("/run", O_RDONLY | O_DIRECTORY | AULA_O_NOFOLLOW);
   } else {
     (void)snprintf(copy, sizeof(copy), "%s", path + 1U);
     directory = open("/", O_RDONLY | O_DIRECTORY);
@@ -320,7 +320,7 @@ int gateway_open_verified_regular(const char *path, int missing_is_ok, int *desc
     (void)fprintf(stderr, "gateway storage: final metadata failed errno=%d\n", failure);
     return 0;
   }
-  descriptor = openat(parent, name, O_RDONLY | LS200_O_NOFOLLOW);
+  descriptor = openat(parent, name, O_RDONLY | AULA_O_NOFOLLOW);
   (void)close(parent);
   if (descriptor < 0) {
     (void)fprintf(stderr, "gateway storage: final open failed errno=%d\n", errno);

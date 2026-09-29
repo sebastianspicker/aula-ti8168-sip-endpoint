@@ -51,8 +51,8 @@ static int credentials_state_valid(json_t *document) {
   if (json_integer_value(revision) != (json_int_t)json_array_size(receipts) + 1) return 0;
   if (!present) return json_is_null(credentials) && json_array_size(receipts) == 0;
   return json_array_size(receipts) > 0 && json_object_size(credentials) == 2 &&
-      ls200_device_credential_text(json_object_get(credentials, "username"), 64) &&
-      ls200_device_credential_text(json_object_get(credentials, "password"), 128);
+      aula_device_credential_text(json_object_get(credentials, "username"), 64) &&
+      aula_device_credential_text(json_object_get(credentials, "password"), 128);
 }
 
 static int credentials_file_valid(int fd) {
@@ -62,7 +62,7 @@ static int credentials_file_valid(int fd) {
       info.st_size >= 0 && info.st_size <= 16384;
 }
 
-void ls200_device_credentials_close(void) {
+void aula_device_credentials_close(void) {
   json_decref(state);
   state = NULL;
   if (state_directory >= 0) close(state_directory);
@@ -79,11 +79,11 @@ static int recover_credentials_pending(int directory) {
   return okay && unlinkat(directory, "oem-credentials.pending", 0) == 0 && fsync(directory) == 0;
 }
 
-int ls200_device_credentials_open(int directory) {
+int aula_device_credentials_open(int directory) {
   struct stat info;
   json_error_t error;
   int fd;
-  ls200_device_credentials_close();
+  aula_device_credentials_close();
   if (fstat(directory, &info) != 0 || !S_ISDIR(info.st_mode) ||
       info.st_uid != geteuid() || (info.st_mode & 0077) != 0) return 0;
   state_directory = fcntl(directory, F_DUPFD_CLOEXEC, 0);
@@ -151,14 +151,14 @@ static const char *credential_duplicate(const char *key, const char *fingerprint
   return NULL;
 }
 
-const char *ls200_device_credentials_update(json_t *arguments, const char *key) {
+const char *aula_device_credentials_update(json_t *arguments, const char *key) {
   char fingerprint[65];
   const char *duplicate;
   json_t *next, *credentials, *receipt;
   json_int_t revision;
   int okay;
   if (!state_healthy) return "unavailable";
-  if (!ls200_device_credentials_schema(arguments) || !hex_digest(key)) return "invalid";
+  if (!aula_device_credentials_schema(arguments) || !hex_digest(key)) return "invalid";
   if (!arguments_digest(arguments, fingerprint)) return "unavailable";
   duplicate = credential_duplicate(key, fingerprint);
   if (duplicate != NULL) return duplicate;
@@ -180,14 +180,14 @@ const char *ls200_device_credentials_update(json_t *arguments, const char *key) 
   return "succeeded";
 }
 
-json_t *ls200_device_credentials_status(const char *connection) {
+json_t *aula_device_credentials_status(const char *connection) {
   if (!state_healthy) return NULL;
   return json_pack("{s:O,s:b,s:s}", "revision", json_object_get(state, "revision"),
       "credentials_present", json_is_object(json_object_get(state, "credentials")),
       "connection", connection);
 }
 
-json_t *ls200_device_credentials_receipt(const char *key) {
+json_t *aula_device_credentials_receipt(const char *key) {
   json_t *receipt;
   size_t index;
   if (!state_healthy || key == NULL) return NULL;
@@ -198,25 +198,4 @@ json_t *ls200_device_credentials_receipt(const char *key) {
         "credentials_present", 1, "connection", "unknown");
   }
   return NULL;
-}
-
-char *ls200_device_credentials_login(void) {
-  json_t *credentials = json_object_get(state, "credentials");
-  char plain[194], encoded[261];
-  char *result = NULL;
-  json_t *body;
-  int length;
-  if (!state_healthy || !json_is_object(credentials)) return NULL;
-  length = snprintf(plain, sizeof(plain), "%s:%s",
-      json_string_value(json_object_get(credentials, "username")),
-      json_string_value(json_object_get(credentials, "password")));
-  if (length > 0 && length < (int)sizeof(plain)) {
-    EVP_EncodeBlock((unsigned char *)encoded, (unsigned char *)plain, length);
-    body = json_pack("{s:s,s:i}", "authorization", encoded, "tab_id", 0);
-    result = json_dumps(body, JSON_COMPACT);
-    json_decref(body);
-  }
-  OPENSSL_cleanse(plain, sizeof(plain));
-  OPENSSL_cleanse(encoded, sizeof(encoded));
-  return result;
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Construct a deterministic, hash-verified LS-200 Zoom release payload.
+"""Construct a deterministic, hash-verified Aula Zoom release payload.
 
 Inputs are prebuilt artifacts only.  This tool never downloads, compiles, or
 claims ARM compatibility for any component.
@@ -21,11 +21,11 @@ RUNTIME = DEPLOYMENT / "runtime"
 REPOSITORY = DEPLOYMENT.parent.parent
 EVIDENCE_ROOT = REPOSITORY / "evidence"
 WORK_ROOT = REPOSITORY / ".work"
-FORMAT = "ls200-zoom-payload-v1"
+FORMAT = "aula-ti8168-sip-endpoint-payload-v1"
 INSTALL_PREFIXES = (
-    "/opt/ls200-zoom",
-    "/var/lib/cbox/ls200-zoom",
-    "/run/ls200-zoom-state",
+    "/opt/aula-ti8168-sip-endpoint",
+    "/var/lib/cbox/aula-ti8168-sip-endpoint",
+    "/run/aula-state",
 )
 
 
@@ -99,11 +99,11 @@ def normalize_directory_modes(root: Path) -> None:
 def nginx_config(source: Path, install_prefix: str) -> bytes:
     value = regular(source, "nginx config").read_text(encoding="utf-8")
     replacements = {
-        "root /var/lib/ls200-console/ui;": f"root {install_prefix}/current/ui;",
-        "/usr/libexec/ls200-gateway-fcgi": f"{install_prefix}/current/bin/ls200-gateway-fcgi",
-        "/etc/ls200-console/tls/": "/run/ls200-zoom-state/tls/",
-        "pid /run/ls200-nginx.pid;": "pid /run/ls200-zoom-state/nginx/nginx.pid;",
-        "/var/log/ls200-console/": "/run/ls200-zoom-state/nginx/",
+        "root /var/lib/aula-console/ui;": f"root {install_prefix}/current/ui;",
+        "/usr/libexec/aula-gateway-fcgi": f"{install_prefix}/current/bin/aula-gateway-fcgi",
+        "/etc/aula-console/tls/": "/run/aula-state/tls/",
+        "pid /run/aula-nginx.pid;": "pid /run/aula-state/nginx/nginx.pid;",
+        "/var/log/aula-console/": "/run/aula-state/nginx/",
         "include mime.types;": f"include {install_prefix}/current/etc/nginx/mime.types;",
         "include fastcgi_params;": f"include {install_prefix}/current/etc/nginx/fastcgi_params;",
     }
@@ -122,15 +122,15 @@ def gateway_config(source: Path) -> bytes:
                 "preview_enabled", "preview_rtsp_ipv4", "preview_rtsp_port"}
     if set(value) != required:
         die("gateway config example has an unexpected schema")
-    if value["account_store_path"] != "/var/lib/ls200-console/account.json":
+    if value["account_store_path"] != "/var/lib/aula-console/account.json":
         die("gateway config example has an unexpected account-store path")
-    value["account_store_path"] = "/run/ls200-zoom-state/gateway/account.json"
+    value["account_store_path"] = "/run/aula-state/gateway/account.json"
     return (json.dumps(value, sort_keys=True, indent=2) + "\n").encode("utf-8")
 
 
 def rewrite_runtime_prefix(path: Path, install_prefix: str) -> None:
     value = regular(path, "runtime path contract").read_text(encoding="utf-8")
-    anchor = "/opt/ls200-zoom/current"
+    anchor = "/opt/aula-ti8168-sip-endpoint/current"
     if anchor not in value:
         die(f"runtime path contract lacks fixed prefix anchor: {path}")
     os.chmod(path, 0o644)
@@ -185,7 +185,7 @@ def main() -> int:
     parser.add_argument("--sip-config", required=True, type=Path)
     parser.add_argument("--gateway-config", required=True, type=Path)
     parser.add_argument("--install-prefix", choices=INSTALL_PREFIXES,
-                        default="/opt/ls200-zoom")
+                        default="/opt/aula-ti8168-sip-endpoint")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
@@ -205,27 +205,27 @@ def main() -> int:
     for item in output.rglob("*"):
         if item.is_file():
             os.chmod(item, 0o444)
-    for executable in (output / "bin/ls200-zoom-service",
-                       output / "bin/verify-ls200-zoom-payload",
-                       output / "etc/init.d/S99ls200-zoom"):
+    for executable in (output / "bin/aula-service",
+                       output / "bin/verify-aula-ti8168-sip-endpoint-payload",
+                       output / "etc/init.d/S99aula"):
         os.chmod(executable, 0o555)
-    rewrite_runtime_prefix(output / "bin/ls200-zoom-service", args.install_prefix)
-    rewrite_runtime_prefix(output / "etc/init.d/S99ls200-zoom", args.install_prefix)
-    os.chmod(output / "bin/ls200-zoom-service", 0o555)
-    os.chmod(output / "etc/init.d/S99ls200-zoom", 0o555)
-    copy_file(args.sipd, output / "bin/ls200-sipd", 0o555)
-    copy_file(args.gateway, output / "bin/ls200-gateway-fcgi", 0o555)
-    copy_file(args.device, output / "bin/ls200-device-control", 0o555)
+    rewrite_runtime_prefix(output / "bin/aula-service", args.install_prefix)
+    rewrite_runtime_prefix(output / "etc/init.d/S99aula", args.install_prefix)
+    os.chmod(output / "bin/aula-service", 0o555)
+    os.chmod(output / "etc/init.d/S99aula", 0o555)
+    copy_file(args.sipd, output / "bin/aula-sipd", 0o555)
+    copy_file(args.gateway, output / "bin/aula-gateway-fcgi", 0o555)
+    copy_file(args.device, output / "bin/aula-device-control", 0o555)
     copy_file(args.nginx, output / "bin/nginx", 0o555)
-    copy_file(args.atomic_replace, output / "bin/ls200-atomic-replace", 0o555)
+    copy_file(args.atomic_replace, output / "bin/aula-atomic-replace", 0o555)
     copy_file(args.mime_types, output / "etc/nginx/mime.types", 0o444)
     copy_file(args.fastcgi_params, output / "etc/nginx/fastcgi_params", 0o444)
     (output / "etc/nginx/nginx.conf").write_bytes(
         nginx_config(args.nginx_config, args.install_prefix))
     os.chmod(output / "etc/nginx/nginx.conf", 0o444)
-    copy_file(args.sip_config, output / "etc/ls200-zoom/ls200-sipd.conf.example", 0o444)
-    (output / "etc/ls200-zoom/gateway.conf.example").write_bytes(gateway_config(args.gateway_config))
-    os.chmod(output / "etc/ls200-zoom/gateway.conf.example", 0o444)
+    copy_file(args.sip_config, output / "etc/aula-ti8168-sip-endpoint/aula-sipd.conf.example", 0o444)
+    (output / "etc/aula-ti8168-sip-endpoint/gateway.conf.example").write_bytes(gateway_config(args.gateway_config))
+    os.chmod(output / "etc/aula-ti8168-sip-endpoint/gateway.conf.example", 0o444)
     # nginx serves the console below /zoom/ with a normal `root` directive.
     # Preserve that URI prefix in the payload so /zoom/index.html resolves to
     # <release>/ui/zoom/index.html and absolute /zoom/assets/* URLs remain

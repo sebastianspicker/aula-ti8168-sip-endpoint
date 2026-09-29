@@ -1,9 +1,10 @@
-# LS-200 SIP daemon
+# Aula SIP daemon
 
-`ls200-sipd` is the native C endpoint used by the maintained LS-200 Zoom
-extension. It owns SIP and media session state, exposes a local typed control
-protocol to the console gateway, and keeps platform, signaling, and media
-integrations behind explicit adapters.
+`aula-sipd` is the native C SIP daemon of Aula, built for the
+[TI8168 media
+board](../../docs/reference/ti8168-board.md). It owns SIP and media session
+state, exposes a local typed control protocol to the console gateway, and keeps
+platform, signaling, and media integrations behind explicit adapters.
 
 It is a prototype, not a released Zoom endpoint. Host and QEMU fixtures do not
 establish provider interoperability, trusted target TLS/SRTP, sustained device
@@ -13,13 +14,13 @@ media, calibrated AEC, or recovery under power loss.
 
 The CMake project builds:
 
-- `ls200_sipd_core`, which contains configuration, endpoint, SIP/SDP,
+- `aula_sipd_core`, which contains configuration, endpoint, SIP/SDP,
   RTP/RTCP, media, backend, platform, and LSZ1 control modules;
-- `ls200-sipd`, the foreground daemon entry point; and
+- `aula-sipd`, the foreground daemon entry point; and
 - unit, integration, fixture-call, corpus-replay, sanitizer, coverage, and fuzz
   targets when their options and toolchains are available.
 
-Public headers live under `include/ls200_sipd/`. The gateway-facing control
+Public headers live under `include/aula_sipd/`. The gateway-facing control
 server uses bounded `SOCK_SEQPACKET` messages on a Unix socket and authenticates
 the configured peer UID. It has no TCP or UDP control listener. Supported
 operations are typed status, call, DTMF, media, settings, credentials,
@@ -29,6 +30,11 @@ do not alter the legacy opcode-1 status payload. Stream counters reset with a
 media session and poll-lateness counters reset with the process. The current
 backend health contract is session-wide, so its drop and restart counters are
 repeated for both stream entries.
+
+The standalone RS-232 observation-to-call bridge and its public header were
+removed from this maintained source. Existing LSZ1 call operations remain;
+there is no RS-232 adapter in the daemon. This is an intentional public C API
+removal, separate from any future protocol migration.
 
 The opcode-10 response shape is:
 
@@ -138,7 +144,7 @@ From the repository root, a focused default host build is:
 
 ```sh
 cmake -S product/sipd -B .work/build/sipd \
-  -DLS200_SIPD_BUILD_TESTS=ON
+  -DAULA_SIPD_BUILD_TESTS=ON
 cmake --build .work/build/sipd
 ctest --test-dir .work/build/sipd --output-on-failure
 ```
@@ -148,9 +154,12 @@ a fuzz smoke test in addition to CMake and repository checks:
 
 ```sh
 mkdir -p .work/build .work/cache .work/dist .work/reports
-LS200_SIPD_VERIFY_ENABLE=1 \
+AULA_SIPD_VERIFY_ENABLE=1 \
   sh product/sipd/tools/verify-repository.sh --run
 ```
+
+The H.264 test parameter sets are synthetic and have a documented generation
+record in [the fixture provenance note](tests/fixtures/h264-parameter-sets.md).
 
 Use `--inventory` to print the verifier recipe without running it. The root
 `make test-product` also runs the console and UI gates.
@@ -194,8 +203,8 @@ transcode video or lower the source level.
 
 Zoom Direct CRC has one send-only interoperability exception: if both offered
 media sections are send-only and Zoom answers both as send/receive, negotiation
-keeps the actual answer for diagnostics and limits the LS200 to sending. It
-does not enable receive processing or rendering. Generic SIP negotiation and
+keeps the actual answer for diagnostics and limits the target device to
+sending. It does not enable receive processing or rendering. Generic SIP negotiation and
 other incompatible direction combinations remain strict; media security and
 codec validation are unchanged.
 
@@ -207,7 +216,7 @@ and does not require a provider-specific CIDR list, allowing hosted services suc
 as Zoom-X to supply their media routes. Explicit operator media authorizers keep
 precedence. SIP identity checks and other profiles are unchanged.
 
-An explicit `LS200_SIPD_RECEIVE_MONITOR` absolute executable path selects the
+An explicit `AULA_SIPD_RECEIVE_MONITOR` absolute executable path selects the
 headless receive monitor for a non-fixture backend. The operator must verify
 that target FFmpeg executable before enabling it. The daemon starts two bounded,
 unprivileged children through the verified-inode process API: H.264 keyframe
@@ -221,10 +230,10 @@ including STAP-A and FU-A. Bounded parameter-set prefixes may precede the first
 picture timestamp. Broken fragments and video queue overflow request keyframe
 recovery instead of terminating the call. Queue acceptance counters are not
 proof of physical playback. This monitor does not drive HDMI or speakers; the
-AREC hardware renderer factory still returns `unsupported`. Fixtures keep
+vendor hardware renderer factory still returns `unsupported`. Fixtures keep
 their fake renderer.
 
-The CMake option contract is in `cmake/LS200SipdOptions.cmake`. Version,
+The CMake option contract is in `cmake/AulaSipdOptions.cmake`. Version,
 integrity, feature, and license status is recorded in
 [`third_party/README.md`](third_party/README.md),
 [`../dependencies/README.md`](../../dependencies/README.md), and the
@@ -233,7 +242,7 @@ library path does not approve distribution or live network use.
 
 ## Configuration
 
-Start from [`config/ls200-sipd.example.conf`](config/ls200-sipd.example.conf)
+Start from [`config/aula-sipd.example.conf`](config/aula-sipd.example.conf)
 and read the complete
 [`configuration-reference.md`](docs/operator/configuration-reference.md).
 The parser rejects unknown or duplicate keys, unsafe paths, malformed values,
@@ -257,7 +266,7 @@ The setting requires the direct profile, public networking, TLS and required SRT
 It is static configuration and requires a service restart. Remove it before
 rolling back to a binary that predates this setting.
 
-The physical launcher also supplies `LS200_SIPD_DNS_SERVERS`, a bounded list of
+The physical launcher also supplies `AULA_SIPD_DNS_SERVERS`, a bounded list of
 up to three comma-separated IPv4 DHCP nameservers, before dropping privileges.
 On glibc this initializes the system resolver used by `getaddrinfo` when the
 vendor resolver file is inaccessible to the service. An absent variable leaves
@@ -302,10 +311,10 @@ transport configuration.
 Useful non-network commands are:
 
 ```sh
-ls200-sipd --version
-ls200-sipd --self-test
-ls200-sipd --fixture-call
-ls200-sipd --check-config /path/to/ls200-sipd.conf
+aula-sipd --version
+aula-sipd --self-test
+aula-sipd --fixture-call
+aula-sipd --check-config /path/to/aula-sipd.conf
 ```
 
 The fixture call does not prove SIP, RTP, hardware, or Zoom interoperability.

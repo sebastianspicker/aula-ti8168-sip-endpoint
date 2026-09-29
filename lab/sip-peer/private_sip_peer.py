@@ -1,4 +1,4 @@
-"""Protocol-neutral, bounded UDP SIP/RTP peer for one authorised LS200 source.
+"""Protocol-neutral, bounded UDP SIP/RTP peer for one authorised Aula source.
 
 Only counters, timings, tuples, SSRCs, and SHA-256 packet digests survive in
 evidence. SIP bodies and RTP payloads are transient parsing inputs.
@@ -21,8 +21,8 @@ from typing import Callable
 
 SIP_PORT = 15060
 MEDIA_PORT_MIN, MEDIA_PORT_MAX = 15200, 15298
-LS200_MEDIA_PORT_MIN, LS200_MEDIA_PORT_MAX = 40000, 40100
-_TAG = "ls200-private-peer"
+AULA_MEDIA_PORT_MIN, AULA_MEDIA_PORT_MAX = 40000, 40100
+_TAG = "aula-private-peer"
 _BASELINE_H264_PROFILE = "42e01f"
 
 
@@ -86,8 +86,8 @@ class SipRtpPeer:
     def __init__(self, sip_port: int = SIP_PORT, *, bind_address: str,
                  advertised_address: str, authorized_source_address: str,
                  media_port_min: int = MEDIA_PORT_MIN, media_port_max: int = MEDIA_PORT_MAX,
-                 ls200_media_port_min: int = LS200_MEDIA_PORT_MIN,
-                 ls200_media_port_max: int = LS200_MEDIA_PORT_MAX,
+                 aula_media_port_min: int = AULA_MEDIA_PORT_MIN,
+                 aula_media_port_max: int = AULA_MEDIA_PORT_MAX,
                  withhold_first_invite_final: bool = False,
                  withheld_final_timeout: float = 5.0,
                  peer_initiated_hangup: bool = False,
@@ -97,14 +97,14 @@ class SipRtpPeer:
             raise ValueError("SIP port must be between 0 and 65535")
         if media_port_min % 2 or media_port_max % 2 or media_port_min > media_port_max:
             raise ValueError("media pool must be an ascending inclusive even port range")
-        if not 1024 <= ls200_media_port_min <= ls200_media_port_max <= 65535:
-            raise ValueError("LS200 media ports must be an ascending UDP port range")
+        if not 1024 <= aula_media_port_min <= aula_media_port_max <= 65535:
+            raise ValueError("Aula media ports must be an ascending UDP port range")
         if withhold_first_invite_final and withheld_final_timeout <= 0:
             raise ValueError("withheld final timeout must be positive")
         self.bind_address = _ipv4(bind_address, "SIP peer bind address")
         self.advertised_address = _ipv4(advertised_address, "SIP peer advertised address")
-        self.authorized_source_address = _ipv4(authorized_source_address, "authorised LS200 source address")
-        self.ls200_media_port_min, self.ls200_media_port_max = ls200_media_port_min, ls200_media_port_max
+        self.authorized_source_address = _ipv4(authorized_source_address, "authorised Aula source address")
+        self.aula_media_port_min, self.aula_media_port_max = aula_media_port_min, aula_media_port_max
         self.withhold_first_invite_final = withhold_first_invite_final
         self.withheld_final_timeout = withheld_final_timeout
         self.peer_initiated_hangup = peer_initiated_hangup
@@ -118,7 +118,7 @@ class SipRtpPeer:
         self.evidence = PeerEvidence(); self._started = time.monotonic()
         self._video_hash, self._audio_hash = hashlib.sha256(), hashlib.sha256()
         self._stop = threading.Event(); self._closed = False; self._error: BaseException | None = None
-        self._thread = threading.Thread(target=self._run, name="ls200-sip-rtp-peer", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="aula-sip-rtp-peer", daemon=True)
         self._first_invite_final_withheld = False
         self._clear_dialog()
 
@@ -303,7 +303,7 @@ class SipRtpPeer:
 
     def _sdp(self) -> str:
         sps = base64.b64encode(b"\x67" + bytes.fromhex(self._h264_profile_level_id)).decode("ascii")
-        return (f"v=0\r\no=- 2 2 IN IP4 {self.advertised_address}\r\ns=ls200-private-peer\r\nc=IN IP4 {self.advertised_address}\r\nt=0 0\r\n"
+        return (f"v=0\r\no=- 2 2 IN IP4 {self.advertised_address}\r\ns=aula-private-peer\r\nc=IN IP4 {self.advertised_address}\r\nt=0 0\r\n"
                 f"m=video {self.video.getsockname()[1]} RTP/AVP 96\r\na=rtcp-mux\r\na=rtpmap:96 H264/90000\r\na=fmtp:96 packetization-mode=1;profile-level-id={self._h264_profile_level_id};sprop-parameter-sets={sps},aM4G4g==\r\na={self._directions['video']}\r\n"
                 f"m=audio {self.audio.getsockname()[1]} RTP/AVP 0 8 101\r\na=rtcp-mux\r\na=rtpmap:0 PCMU/8000\r\na=rtpmap:8 PCMA/8000\r\na=rtpmap:101 telephone-event/8000\r\na=fmtp:101 0-16\r\na={self._directions['audio']}\r\n")
 
@@ -468,7 +468,7 @@ class SipRtpPeer:
 
     def _handle_rtp(self, descriptor: socket.socket, video: bool) -> None:
         packet, address = descriptor.recvfrom(65535)
-        if self._sip_state != "acked" or address[0] != self.authorized_source_address or not self.ls200_media_port_min <= address[1] <= self.ls200_media_port_max: self.evidence.rejected_media_packets += 1; return
+        if self._sip_state != "acked" or address[0] != self.authorized_source_address or not self.aula_media_port_min <= address[1] <= self.aula_media_port_max: self.evidence.rejected_media_packets += 1; return
         try:
             expected, ssrc = (self._video_guest, self._video_ssrc) if video else (self._audio_guest, self._audio_ssrc)
             if len(packet) >= 2 and 192 <= packet[1] <= 223:
@@ -503,7 +503,7 @@ class SipRtpPeer:
         self._peer_bye_cseq = self._invite_cseq + 1
         message = (
             f"BYE sip:peer@{self.authorized_source_address} SIP/2.0\r\n"
-            f"Via: SIP/2.0/UDP {self.advertised_address}:{self.port};branch=z9hG4bK-ls200-peer\r\n"
+            f"Via: SIP/2.0/UDP {self.advertised_address}:{self.port};branch=z9hG4bK-aula-peer\r\n"
             f"From: {self._to}\r\nTo: {self._from}\r\nCall-ID: {self._call_id}\r\n"
             f"CSeq: {self._peer_bye_cseq} BYE\r\nContent-Length: 0\r\n\r\n"
         ).encode("ascii")

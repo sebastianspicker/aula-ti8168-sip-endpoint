@@ -1,4 +1,4 @@
-# LS-200 console gateway
+# Console gateway
 
 The unprivileged HTTPS-to-LSZ1 boundary exposes no raw SIP URI, destination,
 path, executable, or environment-driven control input. Every response uses
@@ -30,7 +30,7 @@ interfaces.
 | `gateway_status.c` | Backend call/media status envelope validation and safe media projection |
 | `gateway_metrics.c` | Backend diagnostics-metrics envelope validation |
 | `gateway_route_schema.c` | HTTP request-body schema validators referenced by the route table |
-| `gateway_route_backend.c` | Backend response normalization (`ls200_gateway_backend_response_normalize`) and status-route shaping |
+| `gateway_route_backend.c` | Backend response normalization (`aula_gateway_backend_response_normalize`) and status-route shaping |
 | `gateway_route_events.c` | Call-state event validation and the bounded, de-duplicated event history |
 | `gateway_route_directory.c` | Safe directory and recent-call collection validation, storage, and mutation |
 | `gateway_route_users.c` | HTTP-driven account listing and mutation |
@@ -39,8 +39,8 @@ interfaces.
 | `gateway_route_response.c` | Shapes the HTTP response for local and backend-dispatched routes |
 | `gateway_route_request.c` | Request validation and redacted/cleansed payload preparation |
 | `gateway_device.c` | Unprivileged passthrough to the device companion's credential/status protocol |
-| `gateway_transaction.c` | Copies and revalidates a request across control I/O; `ls200_gateway_handle` |
-| `gateway_control.c` | The LSZ1 wire transport to `ls200-sipd` |
+| `gateway_transaction.c` | Copies and revalidates a request across control I/O; `aula_gateway_handle` |
+| `gateway_control.c` | The LSZ1 wire transport to `aula-sipd` |
 
 Request handling uses a state mutex and separate serialized read and mutation
 control lanes. At most one read and one mutation exchange may run concurrently. Bounded
@@ -132,14 +132,14 @@ server-side SHA-256 hashes, capped at four concurrent sessions, idle-expire in
 eight prior token hashes remain valid for a bounded 60-second delivery grace, and a rotated
 cookie is retained when downstream route processing returns an error. Cookies
 are always `Secure; HttpOnly; SameSite=Strict; Path=/zoom/`. Cookie parsing accepts
-only exact semicolon-delimited `ls200_session` pairs and rejects duplicates;
+only exact semicolon-delimited `aula_session` pairs and rejects duplicates;
 unrelated cookie names and values cannot supply a session token.
 
 Passwords use PBKDF2-HMAC-SHA256 with exactly 600000 iterations, a 16-byte
 salt, and a 32-byte output. Login and bootstrap spend that work only after
 application-side account, source, and global token budgets admit the request;
 429 responses carry `Retry-After`. The FastCGI adapter accepts the source only
-from nginx's `LS200_CLIENT_ID` parameter, not client JSON or forwarding headers.
+from nginx's `AULA_CLIENT_ID` parameter, not client JSON or forwarding headers.
 Credential failures perform the same PBKDF2 work for configured and absent
 accounts. Login snapshots credentials and their revision under the state mutex,
 reserves the single hashing slot, then performs PBKDF2 outside that mutex. An
@@ -177,7 +177,7 @@ after `F_FULLFSYNC` when available (then file `fsync`).
 
 The optional FastCGI 2.4.7 adapter and nginx 1.31.4 profile never download
 third-party sources. The LSZ1 client reuses the daemon's public
-`ls200_sipd/control_protocol.h` directly for the magic, version, opcode enum,
+`aula_sipd/control_protocol.h` directly for the magic, version, opcode enum,
 header size, and frame flags; a gateway-local `GATEWAY_LSZ1_MAX_PAYLOAD`
 enforces the gateway's own tighter payload bound (statically asserted against
 the daemon's wire limit) over network-order flags/request ID/length and
@@ -186,10 +186,11 @@ directory revision conflicts, v1/v2/v3 persistence, safe recents and event
 history, export expiry, and the typed supported request boundaries; they are
 not a guest deployment or live-device result.
 
-For the LS200 target, `config/build-gateway-arm.sh` accepts only the explicit
-reviewed ARM sysroot, cross-prefix, and an existing output directory. It links
-the pinned Jansson, OpenSSL, and FastCGI static archives and refuses to read or
-write beneath the repository evidence corpus. Generated output must resolve
+For the [TI8168 media board](../../../docs/reference/ti8168-board.md),
+`config/build-gateway-arm.sh` accepts only the explicit reviewed ARM sysroot,
+cross-prefix, and an existing output directory. It links the pinned Jansson,
+OpenSSL, and FastCGI static archives and refuses to read or write beneath the
+repository evidence corpus. Generated output must resolve
 strictly beneath the canonical repository `.work` directory.
 
 Run `make test-fastcgi FCGI_PREFIX=/reviewed/native/fcgi` from the repository
@@ -206,10 +207,10 @@ before releasing the result. The response exposes only recording/streaming
 activity enums; unavailable transport returns `DEVICE_UNAVAILABLE` (503).
 
 The gateway links only the client half of the device protocol (`device/client.c`,
-transport, wire framing, the recorder projection, and credential *schema*
+transport, wire framing, strict projected-status validation, and credential *schema*
 validation). The companion's serving loop and its persistent credential store
 (`device/server.c`, `device/credentials_store.c`) link only into
-`ls200-device-control`; see the [companion contract](../device/README.md).
+`aula-device-control`; see the [companion contract](../device/README.md).
 
 `GET /zoom/api/v1/library` and `/zoom/api/v1/schedule` require viewer access.
 `GET /zoom/api/v1/device/settings` and `/zoom/api/v1/maintenance` require admin

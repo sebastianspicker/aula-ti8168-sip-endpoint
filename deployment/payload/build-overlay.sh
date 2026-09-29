@@ -6,14 +6,14 @@ SCRIPT_DIR=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 DEPLOYMENT_DIR=$(CDPATH='' cd "$SCRIPT_DIR/.." && pwd)
 REPOSITORY=$(CDPATH='' cd "$DEPLOYMENT_DIR/.." && pwd)
 QEMU_TARGET="$DEPLOYMENT_DIR/targets/qemu"
-TRUSTED_VERIFIER="$DEPLOYMENT_DIR/targets/ls200/verify-payload.sh"
-BOOTSTRAP_HELPER="$DEPLOYMENT_DIR/targets/ls200/bootstrap-transaction.sh"
+TRUSTED_VERIFIER="$DEPLOYMENT_DIR/targets/ti8168/verify-payload.sh"
+BOOTSTRAP_HELPER="$DEPLOYMENT_DIR/targets/ti8168/bootstrap-transaction.sh"
 PATH_GUARD="$REPOSITORY/tooling/workspace/protected_output.py"
 PAYLOAD=${1:-}
 OUTPUT=${2:-}
-MANIFEST_SHA256=${3:-${LS200_ZOOM_MANIFEST_SHA256:-}}
-QEMU_PROFILE=${LS200_ZOOM_QEMU_PROFILE:-0}
-QEMU_ENTROPY_HELPER=${LS200_ZOOM_QEMU_ENTROPY_HELPER:-}
+MANIFEST_SHA256=${3:-${AULA_ZOOM_MANIFEST_SHA256:-}}
+QEMU_PROFILE=${AULA_ZOOM_QEMU_PROFILE:-0}
+QEMU_ENTROPY_HELPER=${AULA_ZOOM_QEMU_ENTROPY_HELPER:-}
 [ -n "$PAYLOAD" ] && [ -n "$OUTPUT" ] && [ -n "$MANIFEST_SHA256" ] || {
     printf '%s\n' "usage: $0 PAYLOAD_DIRECTORY OUTPUT_DIRECTORY MANIFEST_SHA256" >&2
     exit 1
@@ -38,7 +38,7 @@ PAYLOAD=$(python3 "$PATH_GUARD" --input "$REPOSITORY" "$PAYLOAD") || exit 2
 OUTPUT=$(python3 "$PATH_GUARD" "$REPOSITORY" "$OUTPUT") || exit 2
 case $QEMU_PROFILE in
     0|1) ;;
-    *) printf '%s\n' 'error: LS200_ZOOM_QEMU_PROFILE must be 0 or 1' >&2; exit 1 ;;
+    *) printf '%s\n' 'error: AULA_ZOOM_QEMU_PROFILE must be 0 or 1' >&2; exit 1 ;;
 esac
 sh "$TRUSTED_VERIFIER" --payload "$PAYLOAD" --manifest-sha256 "$MANIFEST_SHA256" >/dev/null
 STAGING=$OUTPUT.staging.$$
@@ -47,13 +47,13 @@ STAGING=$OUTPUT.staging.$$
     exit 1
 }
 trap 'rm -rf "$STAGING"' EXIT HUP INT TERM
-mkdir -p "$STAGING/opt/ls200-zoom/bootstrap"
+mkdir -p "$STAGING/opt/aula-ti8168-sip-endpoint/bootstrap"
 cp "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/rollback.sh" "$SCRIPT_DIR/remove.sh" "$SCRIPT_DIR/nginx-records.sh" \
     "$QEMU_TARGET/qemu-install.sh" "$TRUSTED_VERIFIER" "$BOOTSTRAP_HELPER" \
-    "$STAGING/opt/ls200-zoom/bootstrap/"
-cp -Rp "$PAYLOAD" "$STAGING/opt/ls200-zoom/bootstrap/runtime"
-BOOTSTRAP=$STAGING/opt/ls200-zoom/bootstrap
-chmod 0755 "$STAGING" "$STAGING/opt" "$STAGING/opt/ls200-zoom" "$BOOTSTRAP"
+    "$STAGING/opt/aula-ti8168-sip-endpoint/bootstrap/"
+cp -Rp "$PAYLOAD" "$STAGING/opt/aula-ti8168-sip-endpoint/bootstrap/runtime"
+BOOTSTRAP=$STAGING/opt/aula-ti8168-sip-endpoint/bootstrap
+chmod 0755 "$STAGING" "$STAGING/opt" "$STAGING/opt/aula-ti8168-sip-endpoint" "$BOOTSTRAP"
 printf '%s\n' "$MANIFEST_SHA256" > "$BOOTSTRAP/payload-manifest.sha256"
 chmod 0444 "$BOOTSTRAP/payload-manifest.sha256"
 chmod 0555 "$BOOTSTRAP/install.sh" "$BOOTSTRAP/rollback.sh" \
@@ -73,7 +73,7 @@ if [ "$QEMU_PROFILE" = 1 ]; then
     }
     [ -f "$QEMU_ENTROPY_HELPER" ] && [ ! -L "$QEMU_ENTROPY_HELPER" ] &&
         [ -x "$QEMU_ENTROPY_HELPER" ] || {
-        printf '%s\n' 'error: LS200_ZOOM_QEMU_ENTROPY_HELPER must name a reviewed ARM executable' >&2
+        printf '%s\n' 'error: AULA_ZOOM_QEMU_ENTROPY_HELPER must name a reviewed ARM executable' >&2
         exit 1
     }
     QEMU_ENTROPY_HELPER=$(python3 "$PATH_GUARD" --input "$REPOSITORY" "$QEMU_ENTROPY_HELPER") || exit 2
@@ -93,7 +93,7 @@ if [ "$QEMU_PROFILE" = 1 ]; then
     chmod 0400 "$profile/tls/server.key"
     chmod 0400 "$profile/entropy.bin"
     chmod 0444 "$profile/tls/server.crt" "$profile/media/"*
-    printf '%s\n' 'ls200-zoom-qemu-profile-v1' > "$profile/format"
+    printf '%s\n' 'aula-ti8168-sip-endpoint-qemu-profile-v1' > "$profile/format"
     chmod 0444 "$profile/format"
 fi
 mv "$STAGING" "$OUTPUT"

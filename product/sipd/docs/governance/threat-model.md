@@ -1,7 +1,7 @@
 # Threat model
 
 Status: source-derived control model. Host tests validate selected controls;
-ARM, live LS-200, private-peer, and Zoom evidence remain separate gates.
+ARM, live target, private-peer, and Zoom evidence remain separate gates.
 
 ## Assets and trust boundaries
 

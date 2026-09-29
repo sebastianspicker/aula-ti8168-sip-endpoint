@@ -14,10 +14,12 @@ static int revision_one_request(json_t *request) {
       operation != NULL && strcmp(operation, "status") == 0;
 }
 
-static json_t *status_response(ls200_device_read_fn read_status) {
-  json_t *raw = read_status();
-  json_t *response = ls200_device_project_recorder(raw);
-  json_decref(raw);
+static json_t *status_response(aula_device_read_fn read_status) {
+  json_t *response = read_status();
+  if (!aula_device_status_valid(response)) {
+    json_decref(response);
+    return NULL;
+  }
   return response;
 }
 
@@ -38,7 +40,7 @@ static int job_query_valid(json_t *arguments) {
       json_integer_value(offset) >= 0 && json_integer_value(offset) <= 32;
 }
 
-static json_t *job_page(ls200_device_read_fn read_jobs, size_t offset) {
+static json_t *job_page(aula_device_read_fn read_jobs, size_t offset) {
   json_t *all = read_jobs == NULL ? NULL : read_jobs();
   json_t *page = json_array(), *result = NULL;
   size_t end = offset + 8;
@@ -54,8 +56,8 @@ done:
   return result;
 }
 
-static json_t *query_response(json_t *request, ls200_device_read_fn read_status,
-    ls200_device_read_fn read_jobs, ls200_device_dispatch_fn dispatch) {
+static json_t *query_response(json_t *request, aula_device_read_fn read_status,
+    aula_device_read_fn read_jobs, aula_device_dispatch_fn dispatch) {
   json_t *data = NULL, *arguments, *response;
   const char *operation, *outcome = NULL;
   if (!query_request_valid(request)) return NULL;
@@ -67,7 +69,7 @@ static json_t *query_response(json_t *request, ls200_device_read_fn read_status,
     data = job_page(read_jobs, (size_t)json_integer_value(json_object_get(arguments, "offset")));
   else if (dispatch != NULL &&
       ((strcmp(operation, "credentials.status") == 0 && json_object_size(arguments) == 0) ||
-       (strcmp(operation, "credentials.replace") == 0 && ls200_device_credentials_schema(arguments))))
+       (strcmp(operation, "credentials.replace") == 0 && aula_device_credentials_schema(arguments))))
     data = dispatch(operation, arguments, json_string_value(json_object_get(request, "correlation")), &outcome);
   else return NULL;
   if (outcome == NULL) outcome = data == NULL ? "unavailable" : "succeeded";
@@ -78,26 +80,26 @@ static json_t *query_response(json_t *request, ls200_device_read_fn read_status,
   return response;
 }
 
-int ls200_device_serve_commands(int fd, uint32_t peer_uid, ls200_device_read_fn read_status,
-    ls200_device_read_fn read_jobs, ls200_device_dispatch_fn dispatch) {
-  uint64_t deadline = ls200_device_clock() + 4000;
+int aula_device_serve_commands(int fd, uint32_t peer_uid, aula_device_read_fn read_status,
+    aula_device_read_fn read_jobs, aula_device_dispatch_fn dispatch) {
+  uint64_t deadline = aula_device_clock() + 4000;
   json_t *request, *response;
   int result;
-  if (read_status == NULL || !ls200_device_peer(fd, peer_uid)) return 0;
-  request = ls200_device_receive_message(fd, deadline);
+  if (read_status == NULL || !aula_device_peer(fd, peer_uid)) return 0;
+  request = aula_device_receive_message(fd, deadline);
   response = revision_one_request(request) ? status_response(read_status) :
       query_response(request, read_status, read_jobs, dispatch);
   json_decref(request);
-  result = response != NULL && ls200_device_send_message(fd, response, deadline);
+  result = response != NULL && aula_device_send_message(fd, response, deadline);
   json_decref(response);
   return result;
 }
 
-int ls200_device_serve_queries(int fd, ls200_device_read_fn read_status,
-    ls200_device_read_fn read_jobs) {
-  return ls200_device_serve_commands(fd, (uint32_t)geteuid(), read_status, read_jobs, NULL);
+int aula_device_serve_queries(int fd, aula_device_read_fn read_status,
+    aula_device_read_fn read_jobs) {
+  return aula_device_serve_commands(fd, (uint32_t)geteuid(), read_status, read_jobs, NULL);
 }
 
-int ls200_device_serve_request(int fd, ls200_device_read_fn read_status) {
-  return ls200_device_serve_queries(fd, read_status, NULL);
+int aula_device_serve_request(int fd, aula_device_read_fn read_status) {
+  return aula_device_serve_queries(fd, read_status, NULL);
 }

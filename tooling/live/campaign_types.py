@@ -1,4 +1,4 @@
-"""Shared contracts for the physical LS-200 campaign modules."""
+"""Shared offline contracts for physical TI8168 media-board campaign modules."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
-LIVE_TARGET = ROOT / "deployment/targets/ls200"
-PAYLOAD = ROOT / ".work/dist/ls200-live/runtime"
+LIVE_TARGET = ROOT / "deployment/targets/ti8168"
+PAYLOAD = ROOT / ".work/dist/aula-ti8168-sip-endpoint-live/runtime"
 MUTATING_ACTIONS = frozenset(
     {"install", "smoke", "soak-15", "soak-30", "soak-60", "reboot", "remove"}
 )
@@ -17,8 +17,6 @@ SAFE_ENV = {"LANG": "C", "LC_ALL": "C", "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"}
 SECRET_PATTERN = re.compile(
     r"(?i)(authorization|cookie|password|passwd|bootstrap|credential|private[-_ ]?key|set-cookie)"
 )
-CONTROL_IDENTITY_REQUEST = bytes.fromhex("55 f0 04 01 67 47 4d 0d")
-CONTROL_IDENTITY_RESPONSE = bytes.fromhex("55 f0 0a 01 06 47 4d 4c 53 2d 32 30 30 0d")
 DTMF_SETTLE_SECONDS = 0.25
 MEDIA_SETTLE_SECONDS = 3.0
 PEER_STARTUP_TIMEOUT_SECONDS = 10.0
@@ -45,6 +43,10 @@ BOOT_ID_COMMAND = (
 
 class CampaignError(RuntimeError):
     """An authorization, topology, target, or evidence gate failed closed."""
+
+
+def require_private_identity_provider() -> None:
+    raise CampaignError("physical campaigns require separately reviewed private tooling")
 
 
 class PeerCompletionError(CampaignError):

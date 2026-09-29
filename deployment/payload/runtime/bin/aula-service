@@ -1,0 +1,39 @@
+#!/bin/sh
+# Dispatches only fixed, version-owned production component paths.
+set -eu
+
+case ${1:-} in
+    web)
+        executable=/opt/aula-ti8168-sip-endpoint/current/bin/nginx
+        log=/run/aula-state/nginx/service.log
+        set -- "$executable" -p /run/aula-state/nginx \
+            -e /run/aula-state/nginx/nginx-error.log \
+            -c /opt/aula-ti8168-sip-endpoint/current/etc/nginx/nginx.conf \
+            -g 'daemon off;'
+        ;;
+    gateway)
+        executable=/opt/aula-ti8168-sip-endpoint/current/bin/aula-gateway-fcgi
+        log=/run/aula-state/gateway/service.log
+        set -- "$executable" --policy \
+            /run/aula-state/gateway.conf --listen \
+            /run/aula-console/gateway.fcgi.sock
+        ;;
+    device)
+        executable=/opt/aula-ti8168-sip-endpoint/current/bin/aula-device-control
+        log=/run/aula-state/device/service.log
+        set -- "$executable" --launch
+        ;;
+    sip)
+        executable=/opt/aula-ti8168-sip-endpoint/current/bin/aula-sipd
+        log=/run/aula-state/sip/service.log
+        export AULA_SIPD_ENABLE_LOCAL_RTSP=1
+        set -- "$executable" --foreground --config \
+            /run/aula-state/aula-sipd.conf
+        ;;
+    *) printf '%s\n' 'error: service must be web, gateway, device, or sip' >&2; exit 2 ;;
+esac
+[ -x "$executable" ] || {
+    printf '%s\n' "error: production component is absent: $executable" >&2
+    exit 78
+}
+exec "$@" >> "$log" 2>&1

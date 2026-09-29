@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ls200-emulator"
+name = "aula-emulator"
 version = "0.2.0"
-description = "Local control, web API, state, and media development emulator for the AREC LS-200"
+description = "Synthetic local recording and stream state for development checks"
 requires-python = ">=3.11"
 dependencies = []
 
@@ -13,12 +13,7 @@ dependencies = []
 dev = ["pytest>=9.0,<10"]
 
 [project.scripts]
-ls200-emulator = "ls200_emulator.__main__:main"
-ls200-rs232-capture = "ls200_emulator.serial_capture:main"
-ls200-rs232-probe = "ls200_emulator.serial_probe:main"
-ls200-autonomous-investigation = "ls200_emulator.autonomous_investigation:main"
-ls200-device-access = "ls200_emulator.device_access:main"
-ls200-network-observe = "ls200_emulator.network_observe:main"
+aula-emulator = "aula_emulator.__main__:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -27,6 +22,3 @@ cache_dir = "../../.work/cache/pytest/emulator"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-ls200_emulator = ["safety_manifest.v2.json"]

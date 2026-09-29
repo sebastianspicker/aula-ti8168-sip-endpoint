@@ -25,16 +25,16 @@ sys.path.insert(0, str(ROOT / "tooling/workspace"))
 from protected_output import input_path, output_path  # noqa: E402
 
 ENV_PATH_KEYS = {
-    "pjsip_include": "LS200_SIPD_PJSIP_INCLUDE_DIR",
-    "pjsip_libraries": "LS200_SIPD_PJSIP_LIBRARIES",
-    "pjsip_ua_library": "LS200_SIPD_PJSIP_UA_LIBRARY",
-    "pjmedia_library": "LS200_SIPD_PJMEDIA_LIBRARY",
-    "faad2_include": "LS200_SIPD_FAAD2_INCLUDE_DIR",
-    "faad2_library": "LS200_SIPD_FAAD2_LIBRARY",
-    "speexdsp_include": "LS200_SIPD_SPEEXDSP_INCLUDE_DIR",
-    "speexdsp_library": "LS200_SIPD_SPEEXDSP_LIBRARY",
-    "srtp_include": "LS200_SIPD_SRTP_INCLUDE_DIR",
-    "srtp_library": "LS200_SIPD_SRTP_LIBRARY",
+    "pjsip_include": "AULA_SIPD_PJSIP_INCLUDE_DIR",
+    "pjsip_libraries": "AULA_SIPD_PJSIP_LIBRARIES",
+    "pjsip_ua_library": "AULA_SIPD_PJSIP_UA_LIBRARY",
+    "pjmedia_library": "AULA_SIPD_PJMEDIA_LIBRARY",
+    "faad2_include": "AULA_SIPD_FAAD2_INCLUDE_DIR",
+    "faad2_library": "AULA_SIPD_FAAD2_LIBRARY",
+    "speexdsp_include": "AULA_SIPD_SPEEXDSP_INCLUDE_DIR",
+    "speexdsp_library": "AULA_SIPD_SPEEXDSP_LIBRARY",
+    "srtp_include": "AULA_SIPD_SRTP_INCLUDE_DIR",
+    "srtp_library": "AULA_SIPD_SRTP_LIBRARY",
 }
 
 
@@ -275,7 +275,7 @@ def _read_input_manifest(path: Path) -> tuple[bytes, dict[str, Any]]:
         raise SystemExit("live-build: manifest is too large")
     document = exact_json(raw)
     required = {"schema", "toolchain", "sysroot", "nginx_source", "dependencies", "reference_binary"}
-    if not isinstance(document, dict) or set(document) != required or document["schema"] != "ls200-live-build-inputs-v1":
+    if not isinstance(document, dict) or set(document) != required or document["schema"] != "aula-ti8168-sip-endpoint-live-build-inputs-v1":
         raise SystemExit("live-build: unsupported or inexact build-input schema")
     return raw, document
 
@@ -319,8 +319,8 @@ def _validate_inputs(
         raise SystemExit("live-build: dependency path schema is inexact")
     environment = {
         "PATH": f"{Path(cross_prefix).parent}:/usr/bin:/bin:/usr/sbin:/sbin",
-        "LANG": "C", "LC_ALL": "C", "LS200_CROSS_PREFIX": cross_prefix,
-        "LS200_SYSROOT": str(sysroot.resolve()), "LS200_BUILD_JOBS": "1",
+        "LANG": "C", "LC_ALL": "C", "AULA_CROSS_PREFIX": cross_prefix,
+        "AULA_SYSROOT": str(sysroot.resolve()), "AULA_BUILD_JOBS": "1",
     }
     canonical_sysroot = sysroot.resolve()
     for key, variable in ENV_PATH_KEYS.items():
@@ -361,9 +361,9 @@ def _build_artifacts(
     build: Path, ui_dist: Path, nginx_source: Path, sysroot: Path, reference: Path,
     toolchain: dict[str, Any], cross_prefix: str, environment: dict[str, str],
 ) -> dict[str, Path]:
-    environment["LS200_ARM_BUILD_DIR"] = str(build / "sipd")
-    environment["LS200_GATEWAY_ARM_BUILD_DIR"] = str(build / "gateway")
-    environment["LS200_NGINX_ARM_BUILD_DIR"] = str(nginx_source)
+    environment["AULA_ARM_BUILD_DIR"] = str(build / "sipd")
+    environment["AULA_GATEWAY_ARM_BUILD_DIR"] = str(build / "gateway")
+    environment["AULA_NGINX_ARM_BUILD_DIR"] = str(nginx_source)
     run(["/bin/sh", str(ROOT / "product/sipd/tools/build-arm.sh")], environment)
     run(["/bin/sh", str(ROOT / "product/console/gateway/config/build-gateway-arm.sh")], environment)
     run(["/usr/bin/make", "-C", str(ROOT / "product/console"), "device-control",
@@ -371,21 +371,21 @@ def _build_artifacts(
          "CPPFLAGS=-I" + str(sysroot / "usr/include"),
          "LDLIBS=" + " ".join(str(sysroot / "usr/lib" / name) for name in
                              ("libjansson.a", "libcrypto.a")) + " -lm -lpthread -lrt -ldl"], environment)
-    atomic = build / "atomic/ls200-atomic-replace"
+    atomic = build / "atomic/aula-atomic-replace"
     atomic_env = dict(environment)
     atomic_env["CC"] = cross_prefix + "gcc"
     run(["/bin/sh", str(ROOT / "deployment/payload/build-atomic-replace-arm.sh"), str(atomic)], atomic_env)
     run(["/bin/sh", str(ROOT / "product/console/nginx/build-nginx-1.31.4.sh")], environment, cwd=nginx_source)
     # UI assets are rebuilt locally without dependency acquisition.
-    ui_environment = dict(environment, LS200_CONSOLE_REQUIRE_READY='1')
+    ui_environment = dict(environment, AULA_CONSOLE_REQUIRE_READY='1')
     if 'node' in toolchain:
         node = Path(toolchain['node']['path']).resolve()
         ui_environment['PATH'] = str(node.parent) + os.pathsep + environment.get('PATH', '/usr/bin:/bin')
     run(["/usr/bin/make", "-C", str(ROOT / "product/console"), "ui-build"], ui_environment)
     artifacts = {
-        "sipd": build / "sipd/ls200-sipd",
-        "gateway": build / "gateway/ls200-gateway-fcgi",
-        "device": build / "device/ls200-device-control",
+        "sipd": build / "sipd/aula-sipd",
+        "gateway": build / "gateway/aula-gateway-fcgi",
+        "device": build / "device/aula-device-control",
         "nginx": nginx_source / "objs/nginx",
         "atomic_replace": atomic,
         "mime_types": nginx_source / "conf/mime.types",
@@ -431,7 +431,7 @@ def main() -> int:
     if args.manifest.read_bytes() != raw:
         raise BuildError("reviewed build manifest changed during build")
     receipt = {
-        "schema": "ls200-live-build-receipt-v1",
+        "schema": "aula-ti8168-sip-endpoint-live-build-receipt-v1",
         "artifacts": {
             **{name: {"path": str(path.resolve()), "sha256": digest(path)} for name, path in artifacts.items()},
             "ui_dist": tree_receipt(ui_dist),

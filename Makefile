@@ -4,11 +4,11 @@ WORK := $(CURDIR)/.work
 UV_CACHE := $(WORK)/cache/uv
 EMULATOR_ENV := $(WORK)/cache/emulator-venv
 QUALITY_ENV := $(WORK)/cache/quality-venv
-PAYLOAD := $(WORK)/dist/ls200/runtime
-QEMU_OVERLAY := $(WORK)/dist/qemu/ls200-zoom-overlay
+PAYLOAD := $(WORK)/dist/aula-ti8168-sip-endpoint/runtime
+QEMU_OVERLAY := $(WORK)/dist/qemu/aula-ti8168-sip-endpoint-overlay
 QEMU_WORK := $(WORK)/build/qemu
-QEMU_BINARY := $(QEMU_WORK)/build-ls200-v11.0.3/qemu-system-arm
-TRASH_BUNDLE ?= $(HOME)/.Trash/ls200-zoom-clean-$(shell date -u +%Y%m%dT%H%M%SZ)
+QEMU_BINARY := $(QEMU_WORK)/build-aula-v11.0.3/qemu-system-arm
+TRASH_BUNDLE ?= $(HOME)/.Trash/aula-ti8168-sip-endpoint-clean-$(shell date -u +%Y%m%dT%H%M%SZ)
 export PYTHONPYCACHEPREFIX := $(WORK)/cache/python
 export PYTEST_ADDOPTS := -p no:cacheprovider
 export UV_NO_EDITABLE := 1
@@ -18,11 +18,11 @@ LAB_PYTEST = UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(EMULATOR_ENV) uv 
 export UV_OFFLINE := 1
 
 .PHONY: verify check-layout quality test-product test-lab test-deployment \
-	package-qemu package-ls200 qemu-build qemu-verify qemu-run \
+	package-qemu package-ti8168 qemu-build qemu-verify qemu-run \
 	qemu-acceptance live-build live-package live-preflight live-install \
 	live-gates live-smoke live-soak-15 live-soak-30 live-soak-60 live-reboot live-remove clean
 
-verify: check-layout quality test-product-core test-lab-core test-deployment
+verify: check-layout check-source-boundary quality test-product-core test-lab-core test-deployment
 	@echo "Host baseline passed; native features and rebuilt QEMU model require verify-native and verify-qemu-model."
 
 .PHONY: verify-native quality-qemu-model verify-qemu-model verify-all verify-evidence
@@ -50,12 +50,10 @@ verify-evidence:
 	python3 -B evidence/firmware-analysis/reverse_engineering/deep/application/tools/test_generate_declarative_dataflow.py
 	python3 -B evidence/firmware-analysis/reverse_engineering/deep/kernel_modules/test_recover_kernel_abi_bindings.py
 	python3 -B evidence/firmware-analysis/reverse_engineering/deep/userland/test_rebuild_deep_userland.py
-	LS200_REQUIRE_EVIDENCE=1 UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(QUALITY_ENV) \
+	AULA_REQUIRE_EVIDENCE=1 UV_CACHE_DIR=$(UV_CACHE) UV_PROJECT_ENVIRONMENT=$(QUALITY_ENV) \
 		uv run --project tooling/quality --locked python -m unittest tooling.quality.tests.test_check
-	LS200_REQUIRE_EVIDENCE=1 python3 -B -m unittest tooling.console.tests.test_capability_inventory
 	$(MAKE) -C lab/emulator setup
-	LS200_REQUIRE_EVIDENCE=1 PYTHONPATH=$(CURDIR)/lab/emulator/src $(LAB_PYTEST) -m corpus lab/emulator/tests
-	LS200_REQUIRE_EVIDENCE=1 $(LAB_PYTEST) -m corpus lab/qemu/tests
+	AULA_REQUIRE_EVIDENCE=1 $(LAB_PYTEST) -m corpus lab/qemu/tests
 
 .PHONY: test-fastcgi benchmark-latency
 test-fastcgi:
@@ -72,6 +70,16 @@ test-lab: quality test-lab-core test-deployment
 check-layout:
 	python3 -B tooling/quality/layout.py
 
+.PHONY: check-source-boundary check-public-release release-source
+check-source-boundary:
+	python3 -B tooling/quality/public_release.py --check-boundary
+
+check-public-release:
+	python3 -B tooling/quality/public_release.py --check-release
+
+release-source:
+	python3 -B tooling/quality/public_release.py --export
+
 quality:
 	@mkdir -p $(WORK)/locks
 	@mkdir -p $(UV_CACHE)
@@ -83,9 +91,9 @@ quality:
 test-product-core:
 	@mkdir -p $(WORK)/build $(WORK)/cache $(WORK)/dist $(WORK)/reports
 	python3 -B -m unittest discover -s tooling/performance/tests
-	UV_CACHE_DIR=$(UV_CACHE) LS200_SIPD_VERIFY_ENABLE=1 sh product/sipd/tools/verify-repository.sh --run
+	UV_CACHE_DIR=$(UV_CACHE) AULA_SIPD_VERIFY_ENABLE=1 sh product/sipd/tools/verify-repository.sh --run
 	$(MAKE) -C product/console test
-	LS200_CONSOLE_REQUIRE_READY=1 $(MAKE) -C product/console ui-install ui-test ui-build
+	AULA_CONSOLE_REQUIRE_READY=1 $(MAKE) -C product/console ui-install ui-test ui-build
 
 test-lab-core:
 	@mkdir -p $(WORK)/build/qemu $(WORK)/cache $(WORK)/dist/qemu $(WORK)/reports/qemu
@@ -97,35 +105,31 @@ test-lab-core:
 test-deployment:
 	python3 -B deployment/tests/test_console_assets.py
 	python3 -B deployment/tests/test_shared_records.py
+	python3 -B deployment/tests/test_name_migration.py
 	python3 -B deployment/tests/test_deployment_contract.py
 	python3 -B deployment/tests/test_live_deployment_contract.py
 	python3 -B deployment/tests/test_payload_trust.py
-	python3 -B deployment/tests/test_qemu_zoom_two_slots_contract.py
-	python3 -B deployment/tests/test_root_access_contract.py
-	shellcheck -x -P deployment/targets/ls200/access deployment/targets/ls200/access/*.sh deployment/targets/ls200/access/lib/*.sh
-	cd tooling/device-evidence && shellcheck -x -P collectors collectors/*.sh
 	python3 -B -m unittest discover -s tooling/live/tests -p 'test_*.py'
 	python3 -B -m unittest discover -s tooling/device-evidence/tests -p 'test_*.py'
 	python3 -B -m unittest discover -s dependencies/scripts/tests -p 'test_*.py'
 
-package-ls200:
+package-ti8168:
 	@test -n "$(SIPD_BINARY)" -a -n "$(GATEWAY_BINARY)" -a -n "$(NGINX_BINARY)" \
 		-a -n "$(DEVICE_BINARY)" -a -n "$(ATOMIC_REPLACE_BINARY)" -a -n "$(MIME_TYPES)" -a -n "$(FASTCGI_PARAMS)" || \
 		{ echo "set SIPD_BINARY, GATEWAY_BINARY, DEVICE_BINARY, NGINX_BINARY, ATOMIC_REPLACE_BINARY, MIME_TYPES, and FASTCGI_PARAMS" >&2; exit 2; }
-	@mkdir -p $(WORK)/dist/ls200
+	@mkdir -p $(WORK)/dist/aula-ti8168-sip-endpoint
 	python3 deployment/payload/build-payload.py \
 		--sipd "$(SIPD_BINARY)" --gateway "$(GATEWAY_BINARY)" --device "$(DEVICE_BINARY)" \
 		--nginx "$(NGINX_BINARY)" --atomic-replace "$(ATOMIC_REPLACE_BINARY)" \
 		--ui-dist $(WORK)/dist/console-web \
 		--nginx-config product/console/nginx/nginx.conf \
 		--mime-types "$(MIME_TYPES)" --fastcgi-params "$(FASTCGI_PARAMS)" \
-		--sip-config product/sipd/config/ls200-sipd.example.conf \
-		--gateway-config product/console/gateway/config/ls200-console.example.conf \
+		--sip-config product/sipd/config/aula-sipd.example.conf \
+		--gateway-config product/console/gateway/config/aula-console.example.conf \
 		--output $(PAYLOAD)
 
-package-qemu: package-ls200
-	@mkdir -p $(WORK)/dist/qemu
-	sh deployment/payload/build-overlay.sh $(PAYLOAD) $(QEMU_OVERLAY) "$$(cat $(WORK)/dist/ls200/payload-manifest.sha256)"
+package-qemu:
+	@echo "QEMU payload overlay packaging is unavailable for the synthetic machine model" >&2; exit 2
 
 qemu-build:
 	sh lab/qemu/scripts/fetch-qemu.sh
@@ -135,18 +139,11 @@ qemu-build:
 qemu-verify: qemu-build
 	QEMU_BINARY=$(QEMU_BINARY) sh lab/qemu/scripts/verify.sh --require-source
 
-qemu-run: qemu-build
-	QEMU_BINARY=$(QEMU_BINARY) sh lab/qemu/scripts/run-ls200.sh
+qemu-run:
+	@echo "No maintained guest launcher; supply a reviewed ELF or raw image to the synthetic QEMU model explicitly" >&2; exit 2
 
-qemu-acceptance: qemu-verify package-ls200
-	@test -n "$(QEMU_ENTROPY_HELPER)" || \
-		{ echo "set QEMU_ENTROPY_HELPER to a reviewed ARM entropy helper" >&2; exit 2; }
-	@mkdir -p $(WORK)/dist/qemu
-	LS200_ZOOM_QEMU_PROFILE=1 \
-	LS200_ZOOM_QEMU_ENTROPY_HELPER=$(QEMU_ENTROPY_HELPER) \
-		sh deployment/payload/build-overlay.sh $(PAYLOAD) $(QEMU_OVERLAY) "$$(cat $(WORK)/dist/ls200/payload-manifest.sha256)"
-	QEMU_BINARY=$(QEMU_BINARY) python3 -B lab/qemu/tests/test_qemu_zoom_two_slots.py \
-		--overlay $(QEMU_OVERLAY)
+qemu-acceptance:
+	@echo "Two-slot product acceptance is unavailable in the synthetic QEMU lane; live gates remain closed" >&2; exit 2
 
 live-build:
 	@test -n "$${LIVE_BUILD_MANIFEST:-}" || { echo "set LIVE_BUILD_MANIFEST to an absolute hash-reviewed input manifest" >&2; exit 2; }

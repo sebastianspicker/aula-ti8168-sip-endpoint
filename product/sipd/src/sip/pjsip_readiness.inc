@@ -1,8 +1,8 @@
 #include <unistd.h>
 
-#define LS200_PJSIP_MEDIA_WATCH_LIMIT 4U
+#define AULA_PJSIP_MEDIA_WATCH_LIMIT 4U
 
-typedef struct ls200_pjsip_media_watch {
+typedef struct aula_pjsip_media_watch {
   int source_descriptor;
   int owned_descriptor;
   pj_ioqueue_key_t *key;
@@ -10,20 +10,20 @@ typedef struct ls200_pjsip_media_watch {
   unsigned char peek_byte;
   int pending;
   int signaled;
-} ls200_pjsip_media_watch;
+} aula_pjsip_media_watch;
 
 static void pjsip_media_readiness_complete(pj_ioqueue_key_t *key,
                                            pj_ioqueue_op_key_t *operation,
                                            pj_ssize_t bytes_read) {
-  ls200_pjsip_media_watch *watch =
-      (ls200_pjsip_media_watch *)pj_ioqueue_get_user_data(key);
+  aula_pjsip_media_watch *watch =
+      (aula_pjsip_media_watch *)pj_ioqueue_get_user_data(key);
   (void)operation;
   if (watch == NULL) return;
   watch->pending = 0;
   if (bytes_read >= 0) watch->signaled = 1;
 }
 
-static void pjsip_media_watch_cancel(ls200_pjsip_media_watch *watch) {
+static void pjsip_media_watch_cancel(aula_pjsip_media_watch *watch) {
   if (watch->key != NULL) {
     if (watch->pending != 0)
       (void)pj_ioqueue_clear_key(watch->key);
@@ -41,7 +41,7 @@ static void pjsip_media_watch_cancel(ls200_pjsip_media_watch *watch) {
 }
 
 static void pjsip_media_readiness_cancel_instance(
-    ls200_pjsip_instance *instance) {
+    aula_pjsip_instance *instance) {
   size_t index;
   if (instance == NULL) return;
   for (index = 0U; index < instance->media_watch_count; ++index)
@@ -49,7 +49,7 @@ static void pjsip_media_readiness_cancel_instance(
   instance->media_watch_count = 0U;
 }
 
-static int pjsip_media_readiness_matches(const ls200_pjsip_instance *instance,
+static int pjsip_media_readiness_matches(const aula_pjsip_instance *instance,
                                          const int *descriptors,
                                          size_t descriptor_count) {
   size_t index;
@@ -61,16 +61,16 @@ static int pjsip_media_readiness_matches(const ls200_pjsip_instance *instance,
   return 1;
 }
 
-static ls200_status pjsip_media_watch_register(ls200_pjsip_instance *instance,
+static aula_status pjsip_media_watch_register(aula_pjsip_instance *instance,
                                                int descriptor,
-                                               ls200_pjsip_media_watch *watch) {
+                                               aula_pjsip_media_watch *watch) {
   pj_ioqueue_callback callbacks;
   pj_status_t status;
   (void)memset(watch, 0, sizeof(*watch));
   watch->source_descriptor = descriptor;
   watch->owned_descriptor = -1;
   watch->owned_descriptor = dup(descriptor);
-  if (watch->owned_descriptor < 0) return LS200_STATUS_IO_ERROR;
+  if (watch->owned_descriptor < 0) return AULA_STATUS_IO_ERROR;
   (void)memset(&callbacks, 0, sizeof(callbacks));
   callbacks.on_read_complete = pjsip_media_readiness_complete;
   status = pj_ioqueue_register_sock(
@@ -81,13 +81,13 @@ static ls200_status pjsip_media_watch_register(ls200_pjsip_instance *instance,
     watch->owned_descriptor = -1;
     return pjsip_status(status);
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status pjsip_media_watch_arm(ls200_pjsip_media_watch *watch) {
+static aula_status pjsip_media_watch_arm(aula_pjsip_media_watch *watch) {
   pj_ssize_t length = 1;
   pj_status_t status;
-  if (watch->pending != 0) return LS200_STATUS_OK;
+  if (watch->pending != 0) return AULA_STATUS_OK;
   watch->signaled = 0;
   pj_ioqueue_op_key_init(&watch->operation, sizeof(watch->operation));
   status = pj_ioqueue_recv(
@@ -95,36 +95,36 @@ static ls200_status pjsip_media_watch_arm(ls200_pjsip_media_watch *watch) {
       PJ_IOQUEUE_ALWAYS_ASYNC | (pj_uint32_t)pj_MSG_PEEK());
   if (status != PJ_EPENDING) return pjsip_status(status);
   watch->pending = 1;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status pjsip_media_readiness_arm(ls200_pjsip_instance *instance) {
+static aula_status pjsip_media_readiness_arm(aula_pjsip_instance *instance) {
   size_t index;
   for (index = 0U; index < instance->media_watch_count; ++index) {
-    ls200_status status = pjsip_media_watch_arm(&instance->media_watches[index]);
-    if (status != LS200_STATUS_OK) {
+    aula_status status = pjsip_media_watch_arm(&instance->media_watches[index]);
+    if (status != AULA_STATUS_OK) {
       pjsip_media_readiness_cancel_instance(instance);
       return status;
     }
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_pjsip_media_readiness_sync(const int *descriptors,
+aula_status aula_pjsip_media_readiness_sync(const int *descriptors,
                                                size_t descriptor_count) {
-  ls200_pjsip_instance *instance = pjsip_active_instance;
+  aula_pjsip_instance *instance = pjsip_active_instance;
   size_t index;
-  if (instance == NULL) return LS200_STATUS_UNSUPPORTED;
-  if (descriptor_count > LS200_PJSIP_MEDIA_WATCH_LIMIT ||
+  if (instance == NULL) return AULA_STATUS_UNSUPPORTED;
+  if (descriptor_count > AULA_PJSIP_MEDIA_WATCH_LIMIT ||
       (descriptor_count != 0U && descriptors == NULL))
-    return LS200_STATUS_INVALID_ARGUMENT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   if (pjsip_media_readiness_matches(instance, descriptors, descriptor_count))
     return pjsip_media_readiness_arm(instance);
   pjsip_media_readiness_cancel_instance(instance);
   for (index = 0U; index < descriptor_count; ++index) {
-    ls200_status status = pjsip_media_watch_register(
+    aula_status status = pjsip_media_watch_register(
         instance, descriptors[index], &instance->media_watches[index]);
-    if (status != LS200_STATUS_OK) {
+    if (status != AULA_STATUS_OK) {
       instance->media_watch_count = index + 1U;
       pjsip_media_readiness_cancel_instance(instance);
       return status;
@@ -134,6 +134,6 @@ ls200_status ls200_pjsip_media_readiness_sync(const int *descriptors,
   return pjsip_media_readiness_arm(instance);
 }
 
-void ls200_pjsip_media_readiness_cancel(void) {
+void aula_pjsip_media_readiness_cancel(void) {
   pjsip_media_readiness_cancel_instance(pjsip_active_instance);
 }

@@ -1,4 +1,4 @@
-"""Small runtime helpers shared by the LS-200 qtest entry point."""
+"""Synthetic TI8168 machine probes."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from probe_support import qtest_command
 EXPECTED_BASE_REGISTERS = (
     ("readl 0x48200000", "OK 0x0000000000000040", "INTC revision"),
     ("readl 0x48200014", "OK 0x0000000000000001", "INTC reset complete"),
-    ("readl 0x48140600", "OK 0x000000000b81e000", "TI8168 device ID"),
+    ("readl 0x48140600", "OK 0x0000000000000000", "synthetic device ID"),
     ("readl 0x50000000", "OK 0x0000000000000050", "GPMC revision"),
     ("readl 0x47400010", "OK 0x0000000000000000", "USB OTG SYSCONFIG"),
     ("readl 0x47400ffc", "OK 0x0000000000000000", "USB OTG aperture end"),
@@ -34,11 +34,11 @@ def machine_help_line(qemu: Path) -> str:
         timeout=10,
     ).stdout
     line = next(
-        (value for value in output.splitlines() if value.startswith("ti8168-ls200 ")),
+        (value for value in output.splitlines() if value.startswith("ti8168-mediaboard ")),
         None,
     )
     if line is None:
-        raise RuntimeError("ti8168-ls200 is absent from QEMU machine list")
+        raise RuntimeError("ti8168-mediaboard is absent from QEMU machine list")
     return line
 
 
@@ -50,8 +50,8 @@ def verify_base_registers(qtest: socket.socket) -> None:
             raise RuntimeError(f"{label} failed: {exc}") from exc
 
 
-def probe_recovered_sram(qtest: socket.socket) -> None:
-    """Verify only the independently recovered 2 KiB SRAM endpoints."""
+def probe_sram(qtest: socket.socket) -> None:
+    """Verify the synthetic SRAM aperture endpoints."""
     last_byte = SRAM + SRAM_SIZE - 1
 
     qtest_command(qtest, f"writeb {SRAM:#x} 0x3c")
@@ -76,7 +76,7 @@ def probe_wfi_barrier(qtest: socket.socket) -> None:
 
 
 def probe_dmm_bootstrap(qtest: socket.socket) -> None:
-    """Verify the retained DMM priority words used by vendor SysLink startup."""
+    """Verify the synthetic DMM storage words."""
     for index, offset in enumerate(DMM_PRIORITY_OFFSETS):
         value = 0x0A + index
         qtest_command(qtest, f"writel {DMM + offset:#x} {value:#x}")

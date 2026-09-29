@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Operator-driven, fail-closed physical LS-200 private-lab campaign."""
+"""Offline contracts for a physical TI8168 media-board private-lab campaign."""
 
 from __future__ import annotations
 
@@ -34,12 +34,12 @@ from session import ALLOWED_ACTIONS, LiveSession, SessionError, load_session
 
 from campaign_types import (
     ACTIVE_CALL_STATUS_KEYS, BOOT_ID_PATTERN, BOOT_ID_COMMAND as _BOOT_ID_COMMAND,
-    CONTROL_IDENTITY_REQUEST, CONTROL_IDENTITY_RESPONSE, DTMF_SETTLE_SECONDS,
+    DTMF_SETTLE_SECONDS,
     INITIAL_CALL_STATES, LIVE_TARGET, MAX_PEER_TIMEOUT_SECONDS, MEDIA_SETTLE_SECONDS,
     MUTATING_ACTIONS, PAYLOAD, PEER_STARTUP_TIMEOUT_SECONDS, PEER_READY_SIGNAL as _PEER_READY_SIGNAL,
     RETRY_EVIDENCE_CALL_STATES, ROOT, SAFE_ENV, SECRET_PATTERN,
     WITHHELD_FINAL_RECONNECT_POLL_SECONDS, WITHHELD_FINAL_RECONNECT_TIMEOUT_SECONDS,
-    CampaignError, PeerCompletionError,
+    CampaignError, PeerCompletionError, require_private_identity_provider as _require_private_identity_provider,
 )
 from campaign_evidence import (
     PhaseEvidence, _fsync_directory, _journal_root, _new_path, _private_root,
@@ -59,8 +59,8 @@ _ssh_options = _transport._ssh_options
 _ssh = _transport._ssh
 _control_identity = _transport._control_identity
 _verify_identity = _transport._verify_identity
-_reboot_persistent_contract = _transport._reboot_persistent_contract
-_reboot_pending_absence_contract = _transport._reboot_pending_absence_contract
+
+
 _reboot_preflight_command = _transport._reboot_preflight_command
 _reboot_postboot_command = _transport._reboot_postboot_command
 _certificate = _transport._certificate
@@ -180,7 +180,7 @@ def _local_topology(session: LiveSession, *, contact: bool) -> None:
     neighbor = _run(["/usr/sbin/arp", "-n", session.target_ipv4]).stdout.decode("ascii", "strict")
     mac_match = re.search(r"\bat\s+(\S+)\s+on\s+", neighbor)
     if not mac_match or _normalize_mac(mac_match.group(1)) != _normalize_mac(session.expected_mac):
-        raise CampaignError("neighbor MAC drifted from the authorized LS-200")
+        raise CampaignError("neighbor MAC drifted from the authorized Aula")
 
 
 
@@ -231,7 +231,7 @@ def _cpu_percent(previous_ticks: int, previous_time: float, current_ticks: int,
 
 def _sample(session: LiveSession, known: Path, control: Path) -> dict[str, int]:
     command = (
-        "set -eu; pids=$(cat /var/run/ls200-zoom/*.pid 2>/dev/null | tr '\\n' ' '); "
+        "set -eu; pids=$(cat /var/run/aula-ti8168-sip-endpoint/*.pid 2>/dev/null | tr '\\n' ' '); "
         "[ -n \"$pids\" ] || exit 1; rss=0; fds=0; cpu_ticks=0; for p in $pids; do [ -d /proc/$p ] || exit 1; "
         "r=$(awk '/VmRSS:/{print int($2/1024); exit}' /proc/$p/status); rss=$((rss+r)); "
         "f=$(find /proc/$p/fd -mindepth 1 -maxdepth 1 | wc -l); [ $f -gt $fds ] && fds=$f; "
@@ -273,7 +273,7 @@ def _sample(session: LiveSession, known: Path, control: Path) -> dict[str, int]:
         "printf 'available_ram_mib=%s\\nrss_mib=%s\\nfds=%s\\ncpu_ticks=%s\\nclk_tck=%s\\nstate_mib=%s\\nvendor_health=%s\\n"
         "kernel_errors=%s\\nnetwork_errors=%s\\njffs_mounts=%s\\next4_mounts=%s\\n' "
         "\"$available_ram_mib\" \"$rss\" \"$fds\" "
-        "\"$cpu_ticks\" \"$clk\" \"$(du -sm /var/lib/cbox/ls200-zoom | awk '{print $1}')\" \"$vendor\" "
+        "\"$cpu_ticks\" \"$clk\" \"$(du -sm /var/lib/cbox/aula-ti8168-sip-endpoint | awk '{print $1}')\" \"$vendor\" "
         "\"$kernel_errors\" \"$network_errors\" \"$jffs\" \"$ext4\""
     )
     output = _ssh(session, known, control, command).decode("ascii", "strict")
@@ -337,7 +337,7 @@ def _soak(session: LiveSession, evidence: PhaseEvidence, minutes: int) -> None:
                     if remaining > 0:
                         time.sleep(remaining)
                     cookie, csrf = _refresh_console_session(session, certificate, cookie, csrf)
-                    _ssh(session, known, control, "/var/lib/cbox/ls200-zoom/live-start.sh health", timeout=40.0)
+                    _ssh(session, known, control, "/var/lib/cbox/aula-ti8168-sip-endpoint/live-start.sh health", timeout=40.0)
                     sample = _sample(session, known, control)
                     sampled_at = time.monotonic()
                     ticks = sample.pop("cpu_ticks")
@@ -385,8 +385,8 @@ def _smoke(session: LiveSession, evidence: PhaseEvidence) -> None:
         _local_topology(session, contact=True)
         with _ssh_master(session) as (known, control):
             _verify_identity(session, known, control)
-            _ssh(session, known, control, "set -eu; /var/lib/cbox/ls200-zoom/live-start.sh start; "
-                 "/var/lib/cbox/ls200-zoom/live-start.sh health", timeout=120.0)
+            _ssh(session, known, control, "set -eu; /var/lib/cbox/aula-ti8168-sip-endpoint/live-start.sh start; "
+                 "/var/lib/cbox/aula-ti8168-sip-endpoint/live-start.sh health", timeout=120.0)
             cookie, csrf = _establish_console(session, known, control, certificate, password)
         signaling_result = _signaling_only_call(session, certificate, cookie, csrf)
         result = _local_hangup_media_call(session, certificate, cookie, csrf)
@@ -395,7 +395,7 @@ def _smoke(session: LiveSession, evidence: PhaseEvidence) -> None:
         _local_topology(session, contact=True)
         with _ssh_master(session) as (known, control):
             _verify_identity(session, known, control)
-            remote = f"/run/.ls200-live-{session.session_id}-b"
+            remote = f"/run/.aula-ti8168-sip-endpoint-live-{session.session_id}-b"
             _tar_transfer(
                 session, known, control, [PAYLOAD, LIVE_TARGET], remote,
                 expected_payload_digest=manifest_digest,
@@ -403,12 +403,12 @@ def _smoke(session: LiveSession, evidence: PhaseEvidence) -> None:
             _ssh(
                 session, known, control,
                 f"set -eu; base={remote}; trap 'rm -rf \"$base\"' 0 1 2 15; "
-                "/var/lib/cbox/ls200-zoom/live-start.sh stop; "
-                "sh $base/deployment/targets/ls200/install.sh "
-                f"--payload $base/.work/dist/ls200-live/runtime --version {session.version_b} "
+                "/var/lib/cbox/aula-ti8168-sip-endpoint/live-start.sh stop; "
+                "sh $base/deployment/targets/ti8168/install.sh "
+                f"--payload $base/.work/dist/aula-ti8168-sip-endpoint-live/runtime --version {session.version_b} "
                 f"--manifest-sha256 {manifest_digest}; rm -rf {remote}; trap - 0 1 2 15; "
-                f"/var/lib/cbox/ls200-zoom/live-rollback.sh --to {session.version_a}; "
-                "/var/lib/cbox/ls200-zoom/live-start.sh health",
+                f"/var/lib/cbox/aula-ti8168-sip-endpoint/live-rollback.sh --to {session.version_a}; "
+                "/var/lib/cbox/aula-ti8168-sip-endpoint/live-start.sh health",
                 capture=False, timeout=600.0,
             )
             cookie, csrf = _login_console(session, certificate, password)
@@ -443,8 +443,8 @@ def _reboot(session: LiveSession, evidence: PhaseEvidence) -> None:
             _verify_identity(session, known, control)
             preboot_boot_id = _authenticated_boot_id(session, known, control)
             _ssh(session, known, control,
-                 f"set -eu; /var/lib/cbox/ls200-zoom/live-rollback.sh --to {session.version_b}; "
-                 "/var/lib/cbox/ls200-zoom/live-start.sh enable-autostart", capture=False, timeout=300.0)
+                 f"set -eu; /var/lib/cbox/aula-ti8168-sip-endpoint/live-rollback.sh --to {session.version_b}; "
+                 "/var/lib/cbox/aula-ti8168-sip-endpoint/live-start.sh enable-autostart", capture=False, timeout=300.0)
             _ssh(session, known, control, _reboot_preflight_command(session.version_b), capture=False)
         time.sleep(15.0)
         deadline = time.monotonic() + 300.0
@@ -522,6 +522,7 @@ def main() -> int:
     evidence: PhaseEvidence | None = None
     locks = contextlib.ExitStack()
     try:
+        _require_private_identity_provider()
         session = load_session(os.environ.get("LIVE_SESSION"))
         session.require_action(args.action)
         require_confirmations(args.action, os.environ)

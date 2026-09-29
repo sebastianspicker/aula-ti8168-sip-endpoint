@@ -109,7 +109,7 @@ static int object_is_complete(control_json_cursor *cursor) {
   return cursor->offset == cursor->length;
 }
 
-static int parse_object(ls200_bytes payload, control_json_object *object) {
+static int parse_object(aula_bytes payload, control_json_object *object) {
   control_json_cursor cursor;
   if (payload.data == NULL || payload.length == 0U || object == NULL) return 0;
   (void)memset(object, 0, sizeof(*object));
@@ -161,40 +161,40 @@ static int copy_optional(char *output, size_t capacity, const char *value,
   return 1;
 }
 
-static int decode_profile(const char *profile, ls200_zoom_profile *out_profile) {
+static int decode_profile(const char *profile, aula_zoom_profile *out_profile) {
   if (strcmp(profile, "zoom_direct") == 0) {
-    *out_profile = LS200_ZOOM_PROFILE_DIRECT_CRC;
+    *out_profile = AULA_ZOOM_PROFILE_DIRECT_CRC;
   } else if (strcmp(profile, "zoom_proxy") == 0) {
-    *out_profile = LS200_ZOOM_PROFILE_PROXY_REGISTRATION;
+    *out_profile = AULA_ZOOM_PROFILE_PROXY_REGISTRATION;
   } else if (strcmp(profile, "private_lab") == 0) {
-    *out_profile = LS200_ZOOM_PROFILE_PRIVATE_LAB;
+    *out_profile = AULA_ZOOM_PROFILE_PRIVATE_LAB;
   } else {
     return 0;
   }
   return 1;
 }
 
-static int decode_layout(const char *layout, ls200_zoom_layout *out_layout) {
+static int decode_layout(const char *layout, aula_zoom_layout *out_layout) {
   if (strcmp(layout, "gallery") == 0) {
-    *out_layout = LS200_ZOOM_LAYOUT_GALLERY;
+    *out_layout = AULA_ZOOM_LAYOUT_GALLERY;
   } else if (strcmp(layout, "full_screen") == 0) {
-    *out_layout = LS200_ZOOM_LAYOUT_FULL_SCREEN;
+    *out_layout = AULA_ZOOM_LAYOUT_FULL_SCREEN;
   } else if (strcmp(layout, "dual_video") == 0) {
-    *out_layout = LS200_ZOOM_LAYOUT_DUAL_VIDEO;
+    *out_layout = AULA_ZOOM_LAYOUT_DUAL_VIDEO;
   } else {
     return 0;
   }
   return 1;
 }
 
-ls200_status ls200_control_decode_originate(
-    ls200_bytes payload, ls200_control_originate_request *out_request) {
+aula_status aula_control_decode_originate(
+    aula_bytes payload, aula_control_originate_request *out_request) {
   control_json_object object;
   const char *profile;
   const char *layout;
   const char *meeting;
-  ls200_status status = LS200_STATUS_INVALID_DATA;
-  if (out_request == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+  aula_status status = AULA_STATUS_INVALID_DATA;
+  if (out_request == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   (void)memset(out_request, 0, sizeof(*out_request));
   if (!parse_object(payload, &object) || object.count != 6U ||
       !all_values_are_strings(&object))
@@ -216,39 +216,39 @@ ls200_status ls200_control_decode_originate(
       !copy_optional(out_request->dial_code, sizeof(out_request->dial_code),
                      member_value(&object, "dial_code"), &out_request->dial.dial_code))
     goto cleanup;
-  status = LS200_STATUS_OK;
+  status = AULA_STATUS_OK;
 cleanup:
   control_json_wipe(&object, sizeof(object));
-  if (status != LS200_STATUS_OK)
+  if (status != AULA_STATUS_OK)
     control_json_wipe(out_request, sizeof(*out_request));
   return status;
 }
 
-ls200_status ls200_control_decode_dtmf(ls200_bytes payload,
+aula_status aula_control_decode_dtmf(aula_bytes payload,
                                        uint8_t *out_digit) {
   static const char symbols[] = "0123456789*#ABCD";
   control_json_object object;
   const char *tone;
   const char *match;
-  if (out_digit == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+  if (out_digit == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   if (!parse_object(payload, &object) || object.count != 1U ||
       !all_values_are_strings(&object) ||
       (tone = member_value(&object, "tone")) == NULL || tone[0] == '\0' ||
       tone[1] != '\0' || (match = strchr(symbols, tone[0])) == NULL)
-    return LS200_STATUS_INVALID_DATA;
+    return AULA_STATUS_INVALID_DATA;
   *out_digit = (uint8_t)(match - symbols);
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_control_decode_credentials(
-    ls200_bytes payload, ls200_control_credentials_request *out_request) {
+aula_status aula_control_decode_credentials(
+    aula_bytes payload, aula_control_credentials_request *out_request) {
   control_json_object object;
   const char *username;
   const char *password;
   size_t username_length;
   size_t password_length;
-  ls200_status status = LS200_STATUS_INVALID_DATA;
-  if (out_request == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+  aula_status status = AULA_STATUS_INVALID_DATA;
+  if (out_request == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   (void)memset(out_request, 0, sizeof(*out_request));
   if (!parse_object(payload, &object) || object.count != 2U ||
       !all_values_are_strings(&object) ||
@@ -262,61 +262,61 @@ ls200_status ls200_control_decode_credentials(
     goto cleanup;
   (void)memcpy(out_request->username, username, username_length + 1U);
   (void)memcpy(out_request->password, password, password_length + 1U);
-  status = LS200_STATUS_OK;
+  status = AULA_STATUS_OK;
 cleanup:
   control_json_wipe(&object, sizeof(object));
-  if (status != LS200_STATUS_OK)
+  if (status != AULA_STATUS_OK)
     control_json_wipe(out_request, sizeof(*out_request));
   return status;
 }
 
-static ls200_status decode_video_media_request(
-    ls200_bytes payload, const control_json_object *object,
-    ls200_control_media_request *out_request) {
+static aula_status decode_video_media_request(
+    aula_bytes payload, const control_json_object *object,
+    aula_control_media_request *out_request) {
   const char *mode;
   if (payload.length > CONTROL_VIDEO_MEDIA_JSON_MAX_BYTES || object->count != 1U ||
-      (mode = member_value(object, "mode")) == NULL) return LS200_STATUS_INVALID_DATA;
+      (mode = member_value(object, "mode")) == NULL) return AULA_STATUS_INVALID_DATA;
   if (strcmp(mode, "enabled") == 0) {
     out_request->video_transmit_enabled = 1;
   } else if (strcmp(mode, "disabled") != 0) {
-    return LS200_STATUS_INVALID_DATA;
+    return AULA_STATUS_INVALID_DATA;
   }
-  out_request->action = LS200_CONTROL_MEDIA_VIDEO_TRANSMIT;
-  return LS200_STATUS_OK;
+  out_request->action = AULA_CONTROL_MEDIA_VIDEO_TRANSMIT;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status decode_media_action_request(
-    const control_json_object *object, ls200_control_media_request *out_request) {
+static aula_status decode_media_action_request(
+    const control_json_object *object, aula_control_media_request *out_request) {
   const char *action = member_value(object, "action");
   const char *value = member_value(object, "value");
   if (object->count != 2U || action == NULL || value == NULL ||
-      member_value(object, "mode") != NULL) return LS200_STATUS_INVALID_DATA;
+      member_value(object, "mode") != NULL) return AULA_STATUS_INVALID_DATA;
   if (strcmp(action, "audio_mute") == 0) {
     if (strcmp(value, "enabled") == 0) out_request->audio_muted = 1;
     else if (strcmp(value, "disabled") == 0) out_request->audio_muted = 0;
-    else return LS200_STATUS_INVALID_DATA;
-    out_request->action = LS200_CONTROL_MEDIA_AUDIO_MUTE;
-    return LS200_STATUS_OK;
+    else return AULA_STATUS_INVALID_DATA;
+    out_request->action = AULA_CONTROL_MEDIA_AUDIO_MUTE;
+    return AULA_STATUS_OK;
   }
   if (strcmp(action, "keyframe") == 0 && strcmp(value, "request") == 0) {
-    out_request->action = LS200_CONTROL_MEDIA_KEYFRAME;
-    return LS200_STATUS_OK;
+    out_request->action = AULA_CONTROL_MEDIA_KEYFRAME;
+    return AULA_STATUS_OK;
   }
   if (strcmp(action, "layout_next") == 0 && strcmp(value, "request") == 0) {
-    out_request->action = LS200_CONTROL_MEDIA_LAYOUT_NEXT;
-    return LS200_STATUS_OK;
+    out_request->action = AULA_CONTROL_MEDIA_LAYOUT_NEXT;
+    return AULA_STATUS_OK;
   }
-  return LS200_STATUS_INVALID_DATA;
+  return AULA_STATUS_INVALID_DATA;
 }
 
-ls200_status ls200_control_decode_media(
-    ls200_bytes payload, ls200_control_media_request *out_request) {
+aula_status aula_control_decode_media(
+    aula_bytes payload, aula_control_media_request *out_request) {
   control_json_object object;
-  if (out_request == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+  if (out_request == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   (void)memset(out_request, 0, sizeof(*out_request));
   if (payload.length > CONTROL_MEDIA_JSON_MAX_BYTES || !parse_object(payload, &object) ||
       !all_values_are_strings(&object)) {
-    return LS200_STATUS_INVALID_DATA;
+    return AULA_STATUS_INVALID_DATA;
   }
   return member_value(&object, "mode") != NULL
       ? decode_video_media_request(payload, &object, out_request)
@@ -372,13 +372,13 @@ static int decode_settings_tls(const char *value) {
          strcmp(value, "not_required") == 0;
 }
 
-ls200_status ls200_control_decode_settings(
-    ls200_bytes payload, ls200_control_settings_request *out_request) {
+aula_status aula_control_decode_settings(
+    aula_bytes payload, aula_control_settings_request *out_request) {
   control_json_object object;
   const char *profile;
   const char *media;
   const char *tls;
-  if (out_request == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+  if (out_request == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   (void)memset(out_request, 0, sizeof(*out_request));
   if (!parse_object(payload, &object) ||
       !decode_settings_members(&object, &profile, &media, &tls,
@@ -386,11 +386,11 @@ ls200_status ls200_control_decode_settings(
       !decode_profile(profile, &out_request->profile) ||
       !decode_settings_media(media, &out_request->media_managed) ||
       !decode_settings_tls(tls))
-    return LS200_STATUS_INVALID_DATA;
-  return LS200_STATUS_OK;
+    return AULA_STATUS_INVALID_DATA;
+  return AULA_STATUS_OK;
 }
 
-int ls200_control_payload_is_empty_object(ls200_bytes payload) {
+int aula_control_payload_is_empty_object(aula_bytes payload) {
   control_json_object object;
   return payload.length == 0U || (parse_object(payload, &object) && object.count == 0U);
 }

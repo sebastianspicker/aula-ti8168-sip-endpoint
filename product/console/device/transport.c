@@ -16,13 +16,13 @@
 #include <time.h>
 #include <unistd.h>
 
-uint64_t ls200_device_clock(void) {
+uint64_t aula_device_clock(void) {
   struct timespec now;
   if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return 0;
   return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
 }
 
-int ls200_device_peer(int fd, uint32_t owner) {
+int aula_device_peer(int fd, uint32_t owner) {
 #if defined(__linux__)
   struct ucred credentials;
   socklen_t size = sizeof(credentials);
@@ -41,7 +41,7 @@ int ls200_device_peer(int fd, uint32_t owner) {
 static int device_wait(int fd, short events, uint64_t deadline) {
   struct pollfd item = {fd, events, 0};
   for (;;) {
-    uint64_t now = ls200_device_clock();
+    uint64_t now = aula_device_clock();
     int result;
     if (now == 0 || now >= deadline || deadline - now > INT_MAX) return 0;
     result = poll(&item, 1, (int)(deadline - now));
@@ -50,7 +50,7 @@ static int device_wait(int fd, short events, uint64_t deadline) {
   }
 }
 
-int ls200_device_transfer(int fd, void *buffer, size_t length, int writing,
+int aula_device_transfer(int fd, void *buffer, size_t length, int writing,
                           uint64_t deadline) {
   size_t offset = 0;
   int send_flags = 0;
@@ -110,13 +110,13 @@ static int device_connected(int fd, uint32_t owner, uint64_t deadline) {
   socklen_t size = sizeof(error);
   return device_wait(fd, POLLOUT, deadline) &&
       getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &size) == 0 &&
-      size == sizeof(error) && error == 0 && ls200_device_peer(fd, owner);
+      size == sizeof(error) && error == 0 && aula_device_peer(fd, owner);
 }
 
-int ls200_device_connect(const char *path, uint32_t owner, unsigned timeout_ms) {
+int aula_device_connect(const char *path, uint32_t owner, unsigned timeout_ms) {
   struct sockaddr_un address;
   int fd;
-  uint64_t now = ls200_device_clock();
+  uint64_t now = aula_device_clock();
   if (path == NULL || strlen(path) >= sizeof(address.sun_path) ||
       !now || timeout_ms == 0 || timeout_ms > 5000 ||
       !device_path_safe(path, owner)) return -1;

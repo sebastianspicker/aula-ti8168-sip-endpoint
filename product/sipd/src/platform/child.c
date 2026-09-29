@@ -5,7 +5,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "platform_private.h"
-#include "ls200_sipd/platform.h"
+#include "aula_sipd/platform.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -27,9 +27,9 @@
 #endif
 
 #if defined(__GLIBC__)
-typedef __rlimit_resource_t ls200_rlimit_resource_t;
+typedef __rlimit_resource_t aula_rlimit_resource_t;
 #else
-typedef int ls200_rlimit_resource_t;
+typedef int aula_rlimit_resource_t;
 #endif
 
 static int path_is_safe(const char *path) {
@@ -79,7 +79,7 @@ static int valid_environment(const char *const *environment) {
   return 1;
 }
 
-static int open_verified_child_executable(const ls200_child_process_config *config) {
+static int open_verified_child_executable(const aula_child_process_config *config) {
   struct stat details;
   int descriptor;
   if (config == NULL || !path_is_safe(config->executable_path)) return -1;
@@ -131,7 +131,7 @@ static int relocate_pipe_fds_above_stdio(int pipe_fds[2]) {
   return 1;
 }
 
-static int fd_is_allowlisted(const ls200_child_process_config *config, int descriptor,
+static int fd_is_allowlisted(const aula_child_process_config *config, int descriptor,
                              int retained_error_fd, int retained_executable_fd) {
   size_t index;
   if (descriptor == retained_error_fd || descriptor == retained_executable_fd) return 1;
@@ -141,7 +141,7 @@ static int fd_is_allowlisted(const ls200_child_process_config *config, int descr
   return 0;
 }
 
-static int fd_allowlist_is_valid(const ls200_child_process_config *config) {
+static int fd_allowlist_is_valid(const aula_child_process_config *config) {
   size_t index;
   size_t prior;
   if (config == NULL || config->fd_allowlist_count > 64U ||
@@ -166,12 +166,12 @@ static int parse_fd_name(const char *name, int *out_descriptor) {
   return 1;
 }
 #endif
-static int close_candidate_fd(const ls200_child_process_config *config, int descriptor,
+static int close_candidate_fd(const aula_child_process_config *config, int descriptor,
                               int retained_error_fd, int retained_executable_fd) {
   return descriptor <= STDERR_FILENO ||
       fd_is_allowlisted(config, descriptor, retained_error_fd, retained_executable_fd) || close(descriptor) == 0 || errno == EBADF;
 }
-static int close_uninherited_fds(const ls200_child_process_config *config,
+static int close_uninherited_fds(const aula_child_process_config *config,
                                  int retained_error_fd, int retained_executable_fd) {
 #if defined(__linux__)
   DIR *directory;
@@ -224,7 +224,7 @@ static int checked_rlimit_value(uint64_t value, rlim_t *out_value) {
   return 1;
 }
 
-static int apply_child_limit(ls200_rlimit_resource_t resource, uint64_t requested) {
+static int apply_child_limit(aula_rlimit_resource_t resource, uint64_t requested) {
   struct rlimit limit;
   rlim_t value;
   if (!checked_rlimit_value(requested, &value) || getrlimit(resource, &limit) != 0) return 0;
@@ -237,7 +237,7 @@ static int apply_child_limit(ls200_rlimit_resource_t resource, uint64_t requeste
   return setrlimit(resource, &limit) == 0;
 }
 
-static int restrict_child_resources(const ls200_child_process_limits *limits) {
+static int restrict_child_resources(const aula_child_process_limits *limits) {
   return apply_child_limit(RLIMIT_CPU, limits->cpu_seconds) &&
          apply_child_limit(RLIMIT_AS, limits->address_space_bytes) &&
          apply_child_limit(RLIMIT_FSIZE, limits->file_size_bytes) &&
@@ -246,7 +246,7 @@ static int restrict_child_resources(const ls200_child_process_limits *limits) {
          apply_child_limit(RLIMIT_CORE, limits->core_bytes);
 }
 
-static int child_limits_are_valid(const ls200_child_process_limits *limits) {
+static int child_limits_are_valid(const aula_child_process_limits *limits) {
   rlim_t discarded;
   if (limits == NULL || limits->cpu_seconds == 0U || limits->address_space_bytes == 0U ||
       limits->process_count == 0U || limits->open_files < 3U || limits->core_bytes != 0U) return 0;
@@ -263,7 +263,7 @@ static int redirect_fd(int source, int target) {
   return dup2(source, target) >= 0;
 }
 
-static int child_input_fds_are_valid(const ls200_child_process_config *config) {
+static int child_input_fds_are_valid(const aula_child_process_config *config) {
   const int descriptors[] = {config->stdin_fd, config->stdout_fd, config->stderr_fd};
   size_t index;
   for (index = 0U; index < sizeof(descriptors) / sizeof(descriptors[0]); ++index) {
@@ -296,7 +296,7 @@ static int reset_child_signal_state(void) {
   return 1;
 }
 
-static int transition_child_identity(const ls200_child_process_config *config) {
+static int transition_child_identity(const aula_child_process_config *config) {
   if (config->require_expected_identity == 0) return 1;
   if (geteuid() == 0U) {
     if (setgroups(0, NULL) != 0) return 0;
@@ -316,12 +316,12 @@ static int transition_child_identity(const ls200_child_process_config *config) {
          getgid() == (gid_t)config->expected_gid && getegid() == (gid_t)config->expected_gid;
 }
 
-static int configured_identity_is_valid(const ls200_child_process_config *config) {
+static int configured_identity_is_valid(const aula_child_process_config *config) {
   return config != NULL && (uint32_t)(uid_t)config->expected_uid == config->expected_uid &&
          (uint32_t)(gid_t)config->expected_gid == config->expected_gid;
 }
 
-static int identity_transition_is_authorized(const ls200_child_process_config *config) {
+static int identity_transition_is_authorized(const aula_child_process_config *config) {
   if (config->require_expected_identity == 0) return 1;
   if (geteuid() == 0U) return 1;
   if (config->expected_uid != (uint32_t)geteuid() ||
@@ -329,13 +329,13 @@ static int identity_transition_is_authorized(const ls200_child_process_config *c
   return config->require_non_root_identity == 0 || getgroups(0, NULL) == 0;
 }
 
-static int required_non_root_identity_is_valid(const ls200_child_process_config *config) {
+static int required_non_root_identity_is_valid(const aula_child_process_config *config) {
   return config->require_non_root_identity == 0 ||
          (config->require_expected_identity != 0 && config->expected_uid != 0U &&
           config->expected_gid != 0U);
 }
 
-static int apply_no_new_privs(const ls200_child_process_config *config) {
+static int apply_no_new_privs(const aula_child_process_config *config) {
   if (config->require_no_new_privs == 0) return 1;
 #if defined(__linux__) && defined(PR_SET_NO_NEW_PRIVS)
   return prctl(PR_SET_NO_NEW_PRIVS, 1UL, 0UL, 0UL, 0UL) == 0;
@@ -351,7 +351,7 @@ static void report_child_failure(int error_fd) {
   do { written = write(error_fd, &saved_errno, sizeof(saved_errno)); } while (written < 0 && errno == EINTR);
 }
 
-static void execute_verified_child(int executable_fd, const ls200_child_process_config *config) {
+static void execute_verified_child(int executable_fd, const aula_child_process_config *config) {
 #if defined(__linux__)
   (void)fexecve(executable_fd, (char *const *)config->argv, (char *const *)config->environment);
 #else
@@ -365,14 +365,14 @@ static void execute_verified_child(int executable_fd, const ls200_child_process_
 #endif
 }
 
-static int child_policy_fields_are_valid(const ls200_child_process_config *config) {
+static int child_policy_fields_are_valid(const aula_child_process_config *config) {
   return config != NULL && config->executable_path != NULL &&
       config->require_expected_identity >= 0 && config->require_expected_identity <= 1 &&
       config->require_non_root_identity >= 0 && config->require_non_root_identity <= 1 &&
       config->close_unlisted_fds == 1 && config->require_no_new_privs >= 0 &&
       config->require_no_new_privs <= 1;
 }
-static int child_policy_dependencies_are_valid(const ls200_child_process_config *config) {
+static int child_policy_dependencies_are_valid(const aula_child_process_config *config) {
   return valid_vector(config->argv, 64U) && valid_environment(config->environment) &&
       strcmp(config->argv[0], config->executable_path) == 0 &&
       child_input_fds_are_valid(config) && fd_allowlist_is_valid(config) &&
@@ -380,14 +380,14 @@ static int child_policy_dependencies_are_valid(const ls200_child_process_config 
       required_non_root_identity_is_valid(config) &&
       (config->require_expected_identity == 0 || configured_identity_is_valid(config));
 }
-static int child_allowlist_fits_limits(const ls200_child_process_config *config) {
+static int child_allowlist_fits_limits(const aula_child_process_config *config) {
   size_t index;
   for (index = 0U; index < config->fd_allowlist_count; ++index) {
     if ((uint64_t)config->fd_allowlist[index] >= config->limits.open_files) return 0;
   }
   return 1;
 }
-static int child_policy_is_valid(const ls200_child_process_config *config) {
+static int child_policy_is_valid(const aula_child_process_config *config) {
   return child_policy_fields_are_valid(config) && child_policy_dependencies_are_valid(config) && child_allowlist_fits_limits(config);
 }
 
@@ -404,21 +404,21 @@ static void close_child_spawn_resources(child_spawn_resources *resources) {
   if (resources->error_pipe[1] >= 0) (void)close(resources->error_pipe[1]);
 }
 
-static ls200_status prepare_child_spawn_resources(const ls200_child_process_config *config,
+static aula_status prepare_child_spawn_resources(const aula_child_process_config *config,
                                                   child_spawn_resources *resources) {
   resources->executable_fd = open_verified_child_executable(config);
-  if (resources->executable_fd < 0) return LS200_STATUS_SECURITY_ERROR;
+  if (resources->executable_fd < 0) return AULA_STATUS_SECURITY_ERROR;
   resources->executable_fd = move_internal_fd_above_stdio(resources->executable_fd);
-  if (resources->executable_fd < 0) return LS200_STATUS_IO_ERROR;
+  if (resources->executable_fd < 0) return AULA_STATUS_IO_ERROR;
   resources->null_fd = open("/dev/null", O_RDWR | O_CLOEXEC);
-  if (resources->null_fd < 0) return LS200_STATUS_IO_ERROR;
+  if (resources->null_fd < 0) return AULA_STATUS_IO_ERROR;
   resources->null_fd = move_internal_fd_above_stdio(resources->null_fd);
-  if (resources->null_fd < 0) return LS200_STATUS_IO_ERROR;
-  if (pipe(resources->error_pipe) != 0 || !relocate_pipe_fds_above_stdio(resources->error_pipe)) return LS200_STATUS_IO_ERROR;
-  return LS200_STATUS_OK;
+  if (resources->null_fd < 0) return AULA_STATUS_IO_ERROR;
+  if (pipe(resources->error_pipe) != 0 || !relocate_pipe_fds_above_stdio(resources->error_pipe)) return AULA_STATUS_IO_ERROR;
+  return AULA_STATUS_OK;
 }
 
-static void run_child_process(const ls200_child_process_config *config,
+static void run_child_process(const aula_child_process_config *config,
                               const child_spawn_resources *resources) {
   (void)close(resources->error_pipe[0]);
   (void)umask(0077U);
@@ -430,44 +430,44 @@ static void run_child_process(const ls200_child_process_config *config,
   _exit(127);
 }
 
-static void discard_child_process(pid_t child_pid, ls200_child_process *child) {
+static void discard_child_process(pid_t child_pid, aula_child_process *child) {
   (void)kill(child_pid, SIGKILL);
   (void)waitpid(child_pid, NULL, 0);
   (void)memset(child, 0, sizeof(*child));
 }
 
-static ls200_status complete_child_spawn(const ls200_child_process_config *config,
-                                         pid_t child_pid, ls200_child_process *out_child) {
+static aula_status complete_child_spawn(const aula_child_process_config *config,
+                                         pid_t child_pid, aula_child_process *out_child) {
   out_child->pid = (int)child_pid;
   out_child->uid = config->require_expected_identity != 0 ? config->expected_uid : (uint32_t)geteuid();
   out_child->gid = config->require_expected_identity != 0 ? config->expected_gid : (uint32_t)getegid();
-  if (ls200_platform_process_birth_token(child_pid, &out_child->start_time_ns) != LS200_STATUS_OK) { discard_child_process(child_pid, out_child); return LS200_STATUS_IO_ERROR; }
-  if (ls200_platform_validate_child_identity(out_child) != LS200_STATUS_OK) { discard_child_process(child_pid, out_child); return LS200_STATUS_SECURITY_ERROR; }
-  return LS200_STATUS_OK;
+  if (aula_platform_process_birth_token(child_pid, &out_child->start_time_ns) != AULA_STATUS_OK) { discard_child_process(child_pid, out_child); return AULA_STATUS_IO_ERROR; }
+  if (aula_platform_validate_child_identity(out_child) != AULA_STATUS_OK) { discard_child_process(child_pid, out_child); return AULA_STATUS_SECURITY_ERROR; }
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_platform_spawn_child(const ls200_child_process_config *config,
-                                        ls200_child_process *out_child) {
+aula_status aula_platform_spawn_child(const aula_child_process_config *config,
+                                        aula_child_process *out_child) {
   child_spawn_resources resources = {-1, -1, {-1, -1}};
   pid_t child_pid;
   int child_error = 0;
   ssize_t received;
-  ls200_status status;
+  aula_status status;
   if (out_child == NULL || out_child->pid > 0 || !child_policy_is_valid(config)) {
-    return LS200_STATUS_INVALID_ARGUMENT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   }
-  if (!identity_transition_is_authorized(config)) return LS200_STATUS_PERMISSION_DENIED;
+  if (!identity_transition_is_authorized(config)) return AULA_STATUS_PERMISSION_DENIED;
 #if defined(__APPLE__)
   /* macOS has no fexecve(), and executing /dev/fd/N is denied. Falling back
    * to the pathname after verification would reintroduce a rename race. */
-  return LS200_STATUS_UNSUPPORTED;
+  return AULA_STATUS_UNSUPPORTED;
 #endif
   status = prepare_child_spawn_resources(config, &resources);
-  if (status != LS200_STATUS_OK) { close_child_spawn_resources(&resources); return status; }
+  if (status != AULA_STATUS_OK) { close_child_spawn_resources(&resources); return status; }
   child_pid = fork();
   if (child_pid < 0) {
     close_child_spawn_resources(&resources);
-    return LS200_STATUS_IO_ERROR;
+    return AULA_STATUS_IO_ERROR;
   }
   if (child_pid == 0) run_child_process(config, &resources);
   (void)close(resources.executable_fd); resources.executable_fd = -1;
@@ -476,7 +476,7 @@ ls200_status ls200_platform_spawn_child(const ls200_child_process_config *config
   do { received = read(resources.error_pipe[0], &child_error, sizeof(child_error)); } while (received < 0 && errno == EINTR);
   (void)close(resources.error_pipe[0]); resources.error_pipe[0] = -1;
   (void)child_error;
-  if (received > 0) { (void)waitpid(child_pid, NULL, 0); return LS200_STATUS_IO_ERROR; }
-  if (received < 0) { (void)kill(child_pid, SIGKILL); (void)waitpid(child_pid, NULL, 0); return LS200_STATUS_IO_ERROR; }
+  if (received > 0) { (void)waitpid(child_pid, NULL, 0); return AULA_STATUS_IO_ERROR; }
+  if (received < 0) { (void)kill(child_pid, SIGKILL); (void)waitpid(child_pid, NULL, 0); return AULA_STATUS_IO_ERROR; }
   return complete_child_spawn(config, child_pid, out_child);
 }

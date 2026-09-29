@@ -22,8 +22,8 @@ from source_provenance import source_digest as maintained_source_digest
 
 ROOT = Path(__file__).resolve().parents[2]
 BUILD_RECEIPT = ROOT / ".work/build/live/receipt.json"
-PAYLOAD = ROOT / ".work/dist/ls200-live/runtime"
-GATE_RECEIPT = ROOT / ".work/dist/ls200-live/local-gates.json"
+PAYLOAD = ROOT / ".work/dist/aula-ti8168-sip-endpoint-live/runtime"
+GATE_RECEIPT = ROOT / ".work/dist/aula-ti8168-sip-endpoint-live/local-gates.json"
 SAFE_ENV = {
     "LANG": "C",
     "LC_ALL": "C",
@@ -154,9 +154,9 @@ def _host_tool_environment(search_path: str) -> tuple[dict[str, str], dict[str, 
     environment = {
         **SAFE_ENV,
         "PATH": controlled_path,
-        "LS200_FUZZ_C_COMPILER": str(expected["clang"]),
-        "LS200_LLVM_PROFDATA": str(expected["llvm-profdata"]),
-        "LS200_LLVM_COV": str(expected["llvm-cov"]),
+        "AULA_FUZZ_C_COMPILER": str(expected["clang"]),
+        "AULA_LLVM_PROFDATA": str(expected["llvm-profdata"]),
+        "AULA_LLVM_COV": str(expected["llvm-cov"]),
     }
     return environment, tools
 
@@ -177,7 +177,7 @@ def build_receipt() -> dict[str, Any]:
         "schema", "artifacts", "input_manifest_sha256", "source_sha256",
     }:
         raise GateError("live-build receipt schema is inexact")
-    if value["schema"] != "ls200-live-build-receipt-v1":
+    if value["schema"] != "aula-ti8168-sip-endpoint-live-build-receipt-v1":
         raise GateError("live-build receipt is malformed")
     if not is_sha256(value["input_manifest_sha256"]):
         raise GateError("live-build input-manifest digest is malformed")
@@ -195,7 +195,7 @@ def build_receipt() -> dict[str, Any]:
 def package_digest(payload: Path) -> str:
     receipt = read_private_json(payload.parent / "package.json")
     if (not isinstance(receipt, dict) or set(receipt) != {"schema", "manifest_sha256"}
-            or receipt["schema"] != "ls200-live-package-v1"
+            or receipt["schema"] != "aula-ti8168-sip-endpoint-live-package-v1"
             or not is_sha256(receipt["manifest_sha256"])):
         raise GateError("independent package receipt is invalid")
     return receipt["manifest_sha256"]
@@ -208,7 +208,7 @@ def payload_digest() -> str:
         raise GateError("fresh physical payload is absent or unsafe")
     expected = package_digest(PAYLOAD)
     result = subprocess.run(
-        ["/bin/sh", str(ROOT / "deployment/targets/ls200/verify-payload.sh"),
+        ["/bin/sh", str(ROOT / "deployment/targets/ti8168/verify-payload.sh"),
          "--payload", str(PAYLOAD), "--manifest-sha256", expected],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=SAFE_ENV, check=False,
     )
@@ -255,7 +255,7 @@ def run_gates(entropy_helper: Path) -> None:
         cwd=ROOT, env=host_environment, check=False,
     )
     if qemu.returncode != 0:
-        raise GateError("two-slot QEMU acceptance failed; no live gate receipt was created")
+        raise GateError("QEMU product acceptance is unavailable or failed; no live gate receipt was created")
     _validate_host_tools(host_tools)
     if (source_digest() != initial_source or payload_digest() != manifest_sha256 or
             build_receipt() != receipt or digest(entropy_helper) != initial_entropy):
@@ -263,7 +263,7 @@ def run_gates(entropy_helper: Path) -> None:
     if GATE_RECEIPT.exists() or GATE_RECEIPT.is_symlink():
         raise GateError("local gate receipt already exists; a fresh campaign is required")
     result = {
-        "schema": "ls200-live-local-gates-v1",
+        "schema": "aula-ti8168-sip-endpoint-live-local-gates-v1",
         "payload_manifest_sha256": manifest_sha256,
         "build_input_manifest_sha256": receipt.get("input_manifest_sha256"),
         "source_sha256": initial_source,
@@ -297,7 +297,7 @@ def _validate_gate_receipt(value: Any) -> None:
         "schema", "payload_manifest_sha256", "build_input_manifest_sha256", "source_sha256",
         "entropy_helper_sha256", "host_tools", "completed_ns", "make_verify", "two_slot_qemu_acceptance",
     }
-    if not isinstance(value, dict) or set(value) != expected_keys or value["schema"] != "ls200-live-local-gates-v1":
+    if not isinstance(value, dict) or set(value) != expected_keys or value["schema"] != "aula-ti8168-sip-endpoint-live-local-gates-v1":
         raise GateError("local gate receipt schema is inexact")
     for key in (
         "payload_manifest_sha256", "build_input_manifest_sha256", "source_sha256",

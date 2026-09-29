@@ -1,26 +1,26 @@
 static int pjsip_copy_registration_challenge_text(
     const pjsip_digest_challenge *digest, char *realm, char *nonce,
     char *opaque, char *algorithm, char *qop) {
-  if (!pjsip_copy_text(realm, LS200_PJSIP_DIGEST_FIELD_BYTES, digest->realm))
+  if (!pjsip_copy_text(realm, AULA_PJSIP_DIGEST_FIELD_BYTES, digest->realm))
     return 0;
-  if (!pjsip_copy_text(nonce, LS200_PJSIP_DIGEST_FIELD_BYTES, digest->nonce))
+  if (!pjsip_copy_text(nonce, AULA_PJSIP_DIGEST_FIELD_BYTES, digest->nonce))
     return 0;
-  if (!pjsip_copy_text(algorithm, LS200_PJSIP_DIGEST_FIELD_BYTES,
+  if (!pjsip_copy_text(algorithm, AULA_PJSIP_DIGEST_FIELD_BYTES,
                        digest->algorithm))
     return 0;
-  if (!pjsip_copy_text(qop, LS200_PJSIP_DIGEST_FIELD_BYTES, digest->qop))
+  if (!pjsip_copy_text(qop, AULA_PJSIP_DIGEST_FIELD_BYTES, digest->qop))
     return 0;
   if (strcmp(algorithm, "SHA-256") != 0 || strcmp(qop, "auth") != 0)
     return 0;
   if (digest->opaque.slen != 0 &&
-      !pjsip_copy_text(opaque, LS200_PJSIP_DIGEST_FIELD_BYTES, digest->opaque))
+      !pjsip_copy_text(opaque, AULA_PJSIP_DIGEST_FIELD_BYTES, digest->opaque))
     return 0;
   if (digest->opaque.slen == 0) opaque[0] = '\0';
   return 1;
 }
 
 static int pjsip_registration_challenge(
-    const pjsip_rx_data *rdata, ls200_sip_digest_challenge *challenge,
+    const pjsip_rx_data *rdata, aula_sip_digest_challenge *challenge,
     char *realm, char *nonce, char *opaque, char *algorithm, char *qop) {
   pjsip_hdr_e type;
   pjsip_www_authenticate_hdr *header;
@@ -60,9 +60,9 @@ static void pjsip_clear_registration_credentials(pjsip_auth_clt_sess *session,
 }
 
 static int pjsip_registration_can_retry(
-    const ls200_pjsip_instance *instance,
+    const aula_pjsip_instance *instance,
     const pjsip_auth_clt_async_on_chal_param *parameters,
-    ls200_sip_digest_challenge *challenge, char *realm, char *nonce,
+    aula_sip_digest_challenge *challenge, char *realm, char *nonce,
     char *opaque, char *algorithm, char *qop) {
   return instance->registration_credential_provider != NULL &&
          instance->auth_username[0] != '\0' &&
@@ -72,14 +72,14 @@ static int pjsip_registration_can_retry(
 }
 
 static pj_status_t pjsip_registration_prepare_retry(
-    pjsip_auth_clt_sess *session, ls200_pjsip_instance *instance,
+    pjsip_auth_clt_sess *session, aula_pjsip_instance *instance,
     const pjsip_auth_clt_async_on_chal_param *parameters,
-    const ls200_sip_digest_challenge *challenge, const char *realm,
-    ls200_mutable_bytes *secret, pjsip_cred_info *credential,
+    const aula_sip_digest_challenge *challenge, const char *realm,
+    aula_mutable_bytes *secret, pjsip_cred_info *credential,
     pjsip_tx_data **retry) {
-  ls200_status credential_status = instance->registration_credential_provider(
+  aula_status credential_status = instance->registration_credential_provider(
       instance->registration_credential_context, challenge, secret);
-  if (credential_status != LS200_STATUS_OK || secret->length == 0U ||
+  if (credential_status != AULA_STATUS_OK || secret->length == 0U ||
       secret->length > secret->capacity)
     return PJ_EINVAL;
   ++instance->registration_digest_attempts;
@@ -97,7 +97,7 @@ static pj_status_t pjsip_registration_prepare_retry(
 }
 
 static pj_bool_t pjsip_abandon_registration_challenge(
-    pjsip_auth_clt_sess *session, void *token, ls200_pjsip_instance *instance,
+    pjsip_auth_clt_sess *session, void *token, aula_pjsip_instance *instance,
     const pjsip_auth_clt_async_on_chal_param *parameters, uint8_t *secret_data,
     size_t secret_data_size) {
   if (parameters->rdata != NULL && parameters->rdata->msg_info.msg != NULL) {
@@ -114,21 +114,21 @@ static pj_bool_t pjsip_abandon_registration_challenge(
 static pj_bool_t pjsip_on_registration_challenge(
     pjsip_auth_clt_sess *session, void *token,
     const pjsip_auth_clt_async_on_chal_param *parameters) {
-  ls200_pjsip_instance *instance;
+  aula_pjsip_instance *instance;
   uint8_t secret_data[512];
-  ls200_mutable_bytes secret = {secret_data, sizeof(secret_data), 0U};
-  ls200_sip_digest_challenge challenge;
+  aula_mutable_bytes secret = {secret_data, sizeof(secret_data), 0U};
+  aula_sip_digest_challenge challenge;
   pjsip_cred_info credential;
   pjsip_tx_data *retry = NULL;
-  char realm[LS200_PJSIP_DIGEST_FIELD_BYTES];
-  char nonce[LS200_PJSIP_DIGEST_FIELD_BYTES];
-  char opaque[LS200_PJSIP_DIGEST_FIELD_BYTES];
-  char algorithm[LS200_PJSIP_DIGEST_FIELD_BYTES];
-  char qop[LS200_PJSIP_DIGEST_FIELD_BYTES];
+  char realm[AULA_PJSIP_DIGEST_FIELD_BYTES];
+  char nonce[AULA_PJSIP_DIGEST_FIELD_BYTES];
+  char opaque[AULA_PJSIP_DIGEST_FIELD_BYTES];
+  char algorithm[AULA_PJSIP_DIGEST_FIELD_BYTES];
+  char qop[AULA_PJSIP_DIGEST_FIELD_BYTES];
   pj_status_t status = PJ_EINVAL;
   if (session == NULL || token == NULL || parameters == NULL ||
       parameters->user_data == NULL) return PJ_FALSE;
-  instance = (ls200_pjsip_instance *)parameters->user_data;
+  instance = (aula_pjsip_instance *)parameters->user_data;
   (void)memset(&challenge, 0, sizeof(challenge));
   (void)memset(&credential, 0, sizeof(credential));
   (void)memset(realm, 0, sizeof(realm));
@@ -153,9 +153,9 @@ static pj_bool_t pjsip_on_registration_challenge(
 }
 
 static void pjsip_on_registration_complete(struct pjsip_regc_cbparam *parameters) {
-  ls200_pjsip_instance *instance;
+  aula_pjsip_instance *instance;
   if (parameters == NULL || parameters->token == NULL) return;
-  instance = (ls200_pjsip_instance *)parameters->token;
+  instance = (aula_pjsip_instance *)parameters->token;
   instance->registration_status_code = parameters->code;
   instance->registration_active = parameters->status == PJ_SUCCESS &&
       parameters->code >= 200 && parameters->code < 300 &&
@@ -166,9 +166,9 @@ static void pjsip_on_registration_complete(struct pjsip_regc_cbparam *parameters
     instance->registration_digest_attempts = 0U;
 }
 
-static ls200_status pjsip_initialize_registration(
-    ls200_pjsip_instance *instance, const ls200_pjsip_context *settings,
-    const ls200_sip_endpoint_config *endpoint, pjsip_transport *transport) {
+static aula_status pjsip_initialize_registration(
+    aula_pjsip_instance *instance, const aula_pjsip_context *settings,
+    const aula_sip_endpoint_config *endpoint, pjsip_transport *transport) {
   pjsip_auth_clt_async_setting authentication;
   pjsip_tpselector selector;
   pjsip_tx_data *request = NULL;
@@ -203,36 +203,36 @@ static ls200_status pjsip_initialize_registration(
   return pjsip_status(status);
 }
 
-static ls200_status pjsip_register_proxy(ls200_pjsip_instance *instance,
-                                         const ls200_pjsip_context *settings,
-                                         const ls200_sip_endpoint_config *endpoint) {
-  ls200_sip_resolver_request request;
-  ls200_sip_resolver_result result;
+static aula_status pjsip_register_proxy(aula_pjsip_instance *instance,
+                                         const aula_pjsip_context *settings,
+                                         const aula_sip_endpoint_config *endpoint) {
+  aula_sip_resolver_request request;
+  aula_sip_resolver_result result;
   pjsip_transport *transport = NULL;
   pj_sockaddr remote;
   int remote_length;
-  ls200_status status;
-  if (settings->profile != LS200_ZOOM_PROFILE_PROXY_REGISTRATION)
-    return LS200_STATUS_OK;
+  aula_status status;
+  if (settings->profile != AULA_ZOOM_PROFILE_PROXY_REGISTRATION)
+    return AULA_STATUS_OK;
   if (instance == NULL || settings->registrar_uri[0] == '\0' || endpoint == NULL ||
       endpoint->credential_provider == NULL || endpoint->auth_username == NULL ||
-      endpoint->auth_username[0] == '\0') return LS200_STATUS_CONFIGURATION_ERROR;
+      endpoint->auth_username[0] == '\0') return AULA_STATUS_CONFIGURATION_ERROR;
   (void)memset(&request, 0, sizeof(request));
   (void)memset(&result, 0, sizeof(result));
   request.target_uri = settings->registrar_uri;
   request.preferred_transport = endpoint->preferred_transport;
   request.enable_tls = endpoint->enable_tls;
   status = pjsip_driver_resolve(NULL, instance, &request, &result);
-  if (status == LS200_STATUS_OK)
+  if (status == AULA_STATUS_OK)
     status = pjsip_reauthorize_transport(instance, &result.peer);
-  if (status == LS200_STATUS_OK)
+  if (status == AULA_STATUS_OK)
     status = pjsip_peer_to_sockaddr(&result.peer, &remote, &remote_length);
-  if (status == LS200_STATUS_OK &&
+  if (status == AULA_STATUS_OK &&
       pjsip_acquire_authorized_transport(instance, settings->registrar_uri,
                                          &result.peer, &remote, remote_length,
                                          &transport) != PJ_SUCCESS)
-    status = LS200_STATUS_IO_ERROR;
-  if (status != LS200_STATUS_OK) return status;
+    status = AULA_STATUS_IO_ERROR;
+  if (status != AULA_STATUS_OK) return status;
   instance->registration_credential_provider = endpoint->credential_provider;
   instance->registration_credential_context = endpoint->credential_context;
   instance->registration_digest_limit = endpoint->max_digest_retries == 0U

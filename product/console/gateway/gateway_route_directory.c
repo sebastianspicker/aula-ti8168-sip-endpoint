@@ -53,16 +53,16 @@ static int directory_meeting(const char *value) {
   return value != NULL && strlen(value) >= 9U && strlen(value) <= 11U && gateway_digits_only(value, 0);
 }
 
-static ls200_gateway_safe_reference *find_reference(ls200_gateway_safe_reference *entries, const char *id) {
+static aula_gateway_safe_reference *find_reference(aula_gateway_safe_reference *entries, const char *id) {
   size_t i;
-  for (i = 0U; i < LS200_GATEWAY_MAX_DIRECTORY_ENTRIES; ++i)
+  for (i = 0U; i < AULA_GATEWAY_MAX_DIRECTORY_ENTRIES; ++i)
     if (entries[i].used && strcmp(entries[i].id, id) == 0) return &entries[i];
   return NULL;
 }
 
-static int serialize_references(const ls200_gateway_safe_reference *entries, size_t count,
+static int serialize_references(const aula_gateway_safe_reference *entries, size_t count,
                                 unsigned int revision, const char *name,
-                                char output[LS200_GATEWAY_COLLECTION_RESPONSE_BYTES]) {
+                                char output[AULA_GATEWAY_COLLECTION_RESPONSE_BYTES]) {
   json_t *items = json_array();
   json_t *data;
   size_t i;
@@ -89,27 +89,27 @@ static int serialize_references(const ls200_gateway_safe_reference *entries, siz
   data = json_pack("{s:i,s:O}", "revision", (int)revision, name, items);
   json_decref(items);
   if (data == NULL) return 0;
-  valid = gateway_serialize_json(data, output, LS200_GATEWAY_COLLECTION_RESPONSE_BYTES);
+  valid = gateway_serialize_json(data, output, AULA_GATEWAY_COLLECTION_RESPONSE_BYTES);
   json_decref(data);
   return valid;
 }
 
-int gateway_write_directory(const ls200_gateway *gateway, ls200_gateway_response *response) {
-  char data[LS200_GATEWAY_COLLECTION_RESPONSE_BYTES];
-  if (!serialize_references(gateway->directory, LS200_GATEWAY_MAX_DIRECTORY_ENTRIES,
+int gateway_write_directory(const aula_gateway *gateway, aula_gateway_response *response) {
+  char data[AULA_GATEWAY_COLLECTION_RESPONSE_BYTES];
+  if (!serialize_references(gateway->directory, AULA_GATEWAY_MAX_DIRECTORY_ENTRIES,
                             gateway->directory_revision, "entries", data)) return 0;
   gateway_write_success(response, 200U, data);
   return 1;
 }
 
-int gateway_write_recents(const ls200_gateway *gateway, ls200_gateway_response *response) {
-  char data[LS200_GATEWAY_COLLECTION_RESPONSE_BYTES];
-  if (!serialize_references(gateway->recents, LS200_GATEWAY_MAX_RECENTS, 1U, "recents", data)) return 0;
+int gateway_write_recents(const aula_gateway *gateway, aula_gateway_response *response) {
+  char data[AULA_GATEWAY_COLLECTION_RESPONSE_BYTES];
+  if (!serialize_references(gateway->recents, AULA_GATEWAY_MAX_RECENTS, 1U, "recents", data)) return 0;
   gateway_write_success(response, 200U, data);
   return 1;
 }
 
-static int directory_mutation_schema(json_t *root, int deleting, ls200_gateway_safe_reference *value) {
+static int directory_mutation_schema(json_t *root, int deleting, aula_gateway_safe_reference *value) {
   const char *id, *name, *meeting, *profile, *layout;
   if (!json_is_object(root) || json_object_size(root) != (deleting ? 2U : 6U)) return 0;
   id = json_string_value(json_object_get(root, "id"));
@@ -133,22 +133,22 @@ static int directory_mutation_schema(json_t *root, int deleting, ls200_gateway_s
   return 1;
 }
 
-static int directory_revision_matches(const ls200_gateway *gateway, json_t *root) {
+static int directory_revision_matches(const aula_gateway *gateway, json_t *root) {
   json_t *revision = json_object_get(root, "revision");
   return json_is_integer(revision) && json_integer_value(revision) == (json_int_t)gateway->directory_revision;
 }
 
-static ls200_gateway_safe_reference *first_free_reference(ls200_gateway *gateway) {
+static aula_gateway_safe_reference *first_free_reference(aula_gateway *gateway) {
   size_t index;
-  for (index = 0U; index < LS200_GATEWAY_MAX_DIRECTORY_ENTRIES; ++index)
+  for (index = 0U; index < AULA_GATEWAY_MAX_DIRECTORY_ENTRIES; ++index)
     if (!gateway->directory[index].used) return &gateway->directory[index];
   return NULL;
 }
 
-static int directory_mutation_target(ls200_gateway *gateway, int deleting,
-                                     ls200_gateway_safe_reference *existing,
-                                     ls200_gateway_safe_reference **target,
-                                     ls200_gateway_response *response) {
+static int directory_mutation_target(aula_gateway *gateway, int deleting,
+                                     aula_gateway_safe_reference *existing,
+                                     aula_gateway_safe_reference **target,
+                                     aula_gateway_response *response) {
   if (deleting && existing == NULL) {
     gateway_write_error(response, 404U, "DIRECTORY_NOT_FOUND", "entry is not configured");
     return 0;
@@ -162,14 +162,14 @@ static int directory_mutation_target(ls200_gateway *gateway, int deleting,
   return 1;
 }
 
-int gateway_handle_directory_mutation(ls200_gateway *gateway, const ls200_gateway_request *request,
-                                      ls200_gateway_response *response) {
+int gateway_handle_directory_mutation(aula_gateway *gateway, const aula_gateway_request *request,
+                                      aula_gateway_response *response) {
   json_error_t error;
   json_t *root = gateway_parse_json(request->body, &error);
-  ls200_gateway_safe_reference value, *existing, *target;
-  ls200_gateway_safe_reference backup[LS200_GATEWAY_MAX_DIRECTORY_ENTRIES];
+  aula_gateway_safe_reference value, *existing, *target;
+  aula_gateway_safe_reference backup[AULA_GATEWAY_MAX_DIRECTORY_ENTRIES];
   unsigned int backup_revision = 0U;
-  ls200_gateway_store_result store_result = LS200_GATEWAY_STORE_DURABLE;
+  aula_gateway_store_result store_result = AULA_GATEWAY_STORE_DURABLE;
   int deleting = strcmp(request->method, "DELETE") == 0;
   char data[160];
   (void)memset(&value, 0, sizeof(value));
@@ -195,8 +195,8 @@ int gateway_handle_directory_mutation(ls200_gateway *gateway, const ls200_gatewa
   if (deleting) OPENSSL_cleanse(existing, sizeof(*existing));
   else *target = value;
   ++gateway->directory_revision;
-  if (gateway->config.account_store_path != NULL) store_result = ls200_gateway_store_account(gateway);
-  if (store_result == LS200_GATEWAY_STORE_NOT_COMMITTED) {
+  if (gateway->config.account_store_path != NULL) store_result = aula_gateway_store_account(gateway);
+  if (store_result == AULA_GATEWAY_STORE_NOT_COMMITTED) {
     (void)memcpy(gateway->directory, backup, sizeof(backup));
     gateway->directory_revision = backup_revision;
     OPENSSL_cleanse(backup, sizeof(backup));
@@ -204,7 +204,7 @@ int gateway_handle_directory_mutation(ls200_gateway *gateway, const ls200_gatewa
     return 1;
   }
   OPENSSL_cleanse(backup, sizeof(backup));
-  if (store_result == LS200_GATEWAY_STORE_DURABILITY_UNCERTAIN) {
+  if (store_result == AULA_GATEWAY_STORE_DURABILITY_UNCERTAIN) {
     gateway_write_error(response, 503U, "PERSISTENCE_UNCERTAIN",
                         "directory was committed but restart durability was not confirmed");
     return 2;
@@ -214,13 +214,13 @@ int gateway_handle_directory_mutation(ls200_gateway *gateway, const ls200_gatewa
   return 2;
 }
 
-int gateway_record_recent(ls200_gateway *gateway, const char *body) {
+int gateway_record_recent(aula_gateway *gateway, const char *body) {
   json_error_t error;
   json_t *root = json_loads(body, JSON_REJECT_DUPLICATES, &error);
-  ls200_gateway_safe_reference value;
+  aula_gateway_safe_reference value;
   uint8_t random[16];
-  ls200_gateway_safe_reference backup[LS200_GATEWAY_MAX_RECENTS];
-  ls200_gateway_store_result store_result = LS200_GATEWAY_STORE_DURABLE;
+  aula_gateway_safe_reference backup[AULA_GATEWAY_MAX_RECENTS];
+  aula_gateway_store_result store_result = AULA_GATEWAY_STORE_DURABLE;
   if (root == NULL) return 0;
   (void)memset(&value, 0, sizeof(value));
   if (!directory_meeting(json_string_value(json_object_get(root, "meeting_id"))) ||
@@ -247,12 +247,12 @@ int gateway_record_recent(ls200_gateway *gateway, const char *body) {
   (void)memmove(&gateway->recents[1], &gateway->recents[0],
                sizeof(gateway->recents) - sizeof(gateway->recents[0]));
   gateway->recents[0] = value;
-  if (gateway->config.account_store_path != NULL) store_result = ls200_gateway_store_account(gateway);
-  if (store_result == LS200_GATEWAY_STORE_NOT_COMMITTED) {
+  if (gateway->config.account_store_path != NULL) store_result = aula_gateway_store_account(gateway);
+  if (store_result == AULA_GATEWAY_STORE_NOT_COMMITTED) {
     (void)memcpy(gateway->recents, backup, sizeof(backup));
     OPENSSL_cleanse(backup, sizeof(backup));
     return 0;
   }
   OPENSSL_cleanse(backup, sizeof(backup));
-  return store_result == LS200_GATEWAY_STORE_DURABILITY_UNCERTAIN ? 2 : 1;
+  return store_result == AULA_GATEWAY_STORE_DURABILITY_UNCERTAIN ? 2 : 1;
 }

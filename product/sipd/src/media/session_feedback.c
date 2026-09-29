@@ -1,33 +1,33 @@
 #include "session_private.h"
 #include "../rtcp/feedback.h"
 #include "../rtp/retransmit_private.h"
-#include "ls200_sipd/platform.h"
+#include "aula_sipd/platform.h"
 
 typedef struct media_feedback_context {
-  ls200_media_session *session;
+  aula_media_session *session;
   uint32_t sender_ssrc;
   uint64_t now_ns;
 } media_feedback_context;
 
-ls200_status ls200_media_session_prepare_feedback_internal(
-    ls200_media_session *session, const ls200_sdp_negotiated_session *negotiated) {
-  session->video_feedback_mask = ls200_sdp_negotiated_video_feedback(negotiated);
+aula_status aula_media_session_prepare_feedback_internal(
+    aula_media_session *session, const aula_sdp_negotiated_session *negotiated) {
+  session->video_feedback_mask = aula_sdp_negotiated_video_feedback(negotiated);
   session->last_video_feedback_ns = 0U;
   session->video_feedback_requests = 0U;
   session->video_retransmitted_packets = 0U;
   session->requested_video_bitrate_bps = 0U;
   session->have_fir_sequence = 0;
-  return ls200_rtp_retransmit_enable(session->video.transport,
-      (session->video_feedback_mask & LS200_SDP_FEEDBACK_NACK) != 0U);
+  return aula_rtp_retransmit_enable(session->video.transport,
+      (session->video_feedback_mask & AULA_SDP_FEEDBACK_NACK) != 0U);
 }
 
-static void media_feedback_refresh(const ls200_rtcp_feedback_event *event,
+static void media_feedback_refresh(const aula_rtcp_feedback_event *event,
                                    media_feedback_context *context) {
-  ls200_media_session *session = context->session;
-  uint32_t required = event->kind == LS200_RTCP_FEEDBACK_PLI ?
-      LS200_SDP_FEEDBACK_PLI : LS200_SDP_FEEDBACK_FIR;
+  aula_media_session *session = context->session;
+  uint32_t required = event->kind == AULA_RTCP_FEEDBACK_PLI ?
+      AULA_SDP_FEEDBACK_PLI : AULA_SDP_FEEDBACK_FIR;
   if ((session->video_feedback_mask & required) == 0U) return;
-  if (event->kind == LS200_RTCP_FEEDBACK_FIR) {
+  if (event->kind == AULA_RTCP_FEEDBACK_FIR) {
     if (session->have_fir_sequence != 0 && session->last_fir_sender == event->sender_ssrc &&
         session->last_fir_sequence == event->fir_sequence) return;
     session->last_fir_sender = event->sender_ssrc;
@@ -37,15 +37,15 @@ static void media_feedback_refresh(const ls200_rtcp_feedback_event *event,
   if (session->last_video_feedback_ns != 0U &&
       (context->now_ns < session->last_video_feedback_ns ||
        context->now_ns - session->last_video_feedback_ns <
-           LS200_MEDIA_SESSION_FEEDBACK_MINIMUM_INTERVAL_MS * UINT64_C(1000000))) return;
+           AULA_MEDIA_SESSION_FEEDBACK_MINIMUM_INTERVAL_MS * UINT64_C(1000000))) return;
   session->last_video_feedback_ns = context->now_ns;
   session->video_feedback_requests++;
-  (void)ls200_media_session_request_keyframe_internal(session);
+  (void)aula_media_session_request_keyframe_internal(session);
 }
 
-static void media_feedback_visit(const ls200_rtcp_feedback_event *event, void *opaque) {
+static void media_feedback_visit(const aula_rtcp_feedback_event *event, void *opaque) {
   media_feedback_context *context = opaque;
-  ls200_media_session *session = context->session;
+  aula_media_session *session = context->session;
   /* Authentication and approved tuple checks precede this callback. A compound
    * cannot use its first sender to authorize feedback from another SSRC. */
   if (event->sender_ssrc != context->sender_ssrc ||
@@ -54,16 +54,16 @@ static void media_feedback_visit(const ls200_rtcp_feedback_event *event, void *o
     return;
   }
   switch (event->kind) {
-    case LS200_RTCP_FEEDBACK_NACK:
-      if ((session->video_feedback_mask & LS200_SDP_FEEDBACK_NACK) != 0U)
-        (void)ls200_rtp_retransmit_request(session->video.transport,
+    case AULA_RTCP_FEEDBACK_NACK:
+      if ((session->video_feedback_mask & AULA_SDP_FEEDBACK_NACK) != 0U)
+        (void)aula_rtp_retransmit_request(session->video.transport,
             event->media_ssrc, event->nack_pid, event->nack_blp);
       break;
-    case LS200_RTCP_FEEDBACK_PLI:
-    case LS200_RTCP_FEEDBACK_FIR:
+    case AULA_RTCP_FEEDBACK_PLI:
+    case AULA_RTCP_FEEDBACK_FIR:
       media_feedback_refresh(event, context);
       break;
-    case LS200_RTCP_FEEDBACK_TMMBR:
+    case AULA_RTCP_FEEDBACK_TMMBR:
       /* The OEM preset interface restarts capture. Until a live encoder control
        * is available, retain the request without advertising support or sending
        * a TMMBN that would falsely claim the cap was applied. */
@@ -72,27 +72,27 @@ static void media_feedback_visit(const ls200_rtcp_feedback_event *event, void *o
   }
 }
 
-ls200_status ls200_media_session_accept_feedback_internal(
-    ls200_media_session *session, ls200_media_session_stream *stream,
-    uint32_t sender_ssrc, ls200_bytes packet) {
+aula_status aula_media_session_accept_feedback_internal(
+    aula_media_session *session, aula_media_session_stream *stream,
+    uint32_t sender_ssrc, aula_bytes packet) {
   media_feedback_context context = {session, sender_ssrc, 0U};
-  ls200_status status;
-  if (stream != &session->video) return ls200_rtcp_visit_feedback(packet, NULL, NULL);
-  status = ls200_platform_monotonic_now(&context.now_ns);
-  if (status != LS200_STATUS_OK) return status;
-  return ls200_rtcp_visit_feedback(packet, media_feedback_visit, &context);
+  aula_status status;
+  if (stream != &session->video) return aula_rtcp_visit_feedback(packet, NULL, NULL);
+  status = aula_platform_monotonic_now(&context.now_ns);
+  if (status != AULA_STATUS_OK) return status;
+  return aula_rtcp_visit_feedback(packet, media_feedback_visit, &context);
 }
 
-ls200_status ls200_media_session_flush_repairs_internal(ls200_media_session *session) {
-  ls200_rtp_retransmit_delta delta;
+aula_status aula_media_session_flush_repairs_internal(aula_media_session *session) {
+  aula_rtp_retransmit_delta delta;
   uint64_t now_ns = 0U;
-  ls200_status status;
+  aula_status status;
   if (session->video_transmit_enabled == 0 ||
-      (session->video_feedback_mask & LS200_SDP_FEEDBACK_NACK) == 0U)
-    return LS200_STATUS_OK;
-  status = ls200_platform_monotonic_now(&now_ns);
-  if (status != LS200_STATUS_OK) return status;
-  status = ls200_rtp_retransmit_drain(session->video.transport, now_ns, &delta);
+      (session->video_feedback_mask & AULA_SDP_FEEDBACK_NACK) == 0U)
+    return AULA_STATUS_OK;
+  status = aula_platform_monotonic_now(&now_ns);
+  if (status != AULA_STATUS_OK) return status;
+  status = aula_rtp_retransmit_drain(session->video.transport, now_ns, &delta);
   session->video.sent_packets += delta.packets;
   session->video.sent_octets += delta.payload_bytes;
   session->video_retransmitted_packets += delta.packets;

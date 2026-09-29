@@ -3,38 +3,38 @@
 #include <stdio.h>
 #include <string.h>
 
-const char *endpoint_call_state_name(ls200_call_state state) {
+const char *endpoint_call_state_name(aula_call_state state) {
   static const char *const names[] = {
     "idle", "resolving", "inviting", "early", "establishing_media",
     "established", "terminating", "backing_off", "failed", "terminated",
     "stopped", "terminal_failure"
   };
-  return state >= LS200_CALL_IDLE && state <= LS200_CALL_TERMINAL_FAILURE
+  return state >= AULA_CALL_IDLE && state <= AULA_CALL_TERMINAL_FAILURE
       ? names[state] : "invalid";
 }
 
-void endpoint_log(ls200_endpoint *endpoint, ls200_log_level level,
+void endpoint_log(aula_endpoint *endpoint, aula_log_level level,
                   const char *event, const char *reason) {
-  ls200_log_event record;
+  aula_log_event record;
   if (endpoint == NULL || endpoint->logger == NULL) return;
   (void)memset(&record, 0, sizeof(record));
   record.level = level;
   record.component = "endpoint";
   record.event = event;
-  record.correlation_id = ls200_call_get_correlation_id(endpoint->call);
-  record.call_state = endpoint_call_state_name(ls200_call_get_state(endpoint->call));
+  record.correlation_id = aula_call_get_correlation_id(endpoint->call);
+  record.call_state = endpoint_call_state_name(aula_call_get_state(endpoint->call));
   record.reason_code = reason;
   record.rx_rendering = endpoint->status.rx_rendering;
-  (void)ls200_log_write(endpoint->logger, &record);
+  (void)aula_log_write(endpoint->logger, &record);
 }
 
-void endpoint_report_media_totals(ls200_media_session *session) {
-  ls200_media_session_status status;
-  if (session == NULL || ls200_media_session_get_status(session, &status) !=
-      LS200_STATUS_OK || status.state != LS200_MEDIA_SESSION_COMMITTED) return;
+void endpoint_report_media_totals(aula_media_session *session) {
+  aula_media_session_status status;
+  if (session == NULL || aula_media_session_get_status(session, &status) !=
+      AULA_STATUS_OK || status.state != AULA_MEDIA_SESSION_COMMITTED) return;
   /* Fixed labels and counters only: no media, peer identity or key material. */
   (void)fprintf(stderr,
-      "ls200-sipd: media-summary video_sent=%llu audio_sent=%llu "
+      "aula-sipd: media-summary video_sent=%llu audio_sent=%llu "
       "accepted=%llu rejected=%llu keyframes=%llu\n",
       (unsigned long long)status.video_packets_sent,
       (unsigned long long)status.audio_packets_sent,
@@ -43,11 +43,11 @@ void endpoint_report_media_totals(ls200_media_session *session) {
       (unsigned long long)status.keyframe_requests);
 }
 
-void endpoint_refresh_status(ls200_endpoint *endpoint) {
-  ls200_call_backoff backoff;
+void endpoint_refresh_status(aula_endpoint *endpoint) {
+  aula_call_backoff backoff;
   if (endpoint == NULL) return;
   (void)memset(&endpoint->status, 0, sizeof(endpoint->status));
-  endpoint->status.call_state = ls200_call_get_state(endpoint->call);
+  endpoint->status.call_state = aula_call_get_state(endpoint->call);
   if (endpoint->event_state_initialized == 0 ||
       endpoint->event_call_state != endpoint->status.call_state) {
     if (endpoint->event_revision != UINT64_MAX) ++endpoint->event_revision;
@@ -56,17 +56,17 @@ void endpoint_refresh_status(ls200_endpoint *endpoint) {
   }
   endpoint->status.sip_profile = endpoint->sip_config.profile;
   endpoint->status.sip_transport = endpoint->sip_config.preferred_transport;
-  if (ls200_sip_adapter_get_registration_status(
-          endpoint->adapter, &endpoint->status.registration) != LS200_STATUS_OK) {
+  if (aula_sip_adapter_get_registration_status(
+          endpoint->adapter, &endpoint->status.registration) != AULA_STATUS_OK) {
     endpoint->status.registration.state =
-        endpoint->sip_config.profile == LS200_ZOOM_PROFILE_PROXY_REGISTRATION
-            ? LS200_SIP_REGISTRATION_FAILED
-            : LS200_SIP_REGISTRATION_DISABLED;
+        endpoint->sip_config.profile == AULA_ZOOM_PROFILE_PROXY_REGISTRATION
+            ? AULA_SIP_REGISTRATION_FAILED
+            : AULA_SIP_REGISTRATION_DISABLED;
   }
   endpoint->status.rx_rendering = 0;
   if (endpoint->media != NULL) {
-    ls200_media_session_status media;
-    if (ls200_media_session_get_status(endpoint->media, &media) == LS200_STATUS_OK) {
+    aula_media_session_status media;
+    if (aula_media_session_get_status(endpoint->media, &media) == AULA_STATUS_OK) {
       endpoint->status.media_session_present = 1;
       endpoint->status.rx_rendering = media.rx_rendering;
       endpoint->status.media_session_state = media.state;
@@ -108,10 +108,10 @@ void endpoint_refresh_status(ls200_endpoint *endpoint) {
       endpoint->status.last_error = media.last_error;
     }
   }
-  if (endpoint->last_endpoint_error != LS200_STATUS_OK)
+  if (endpoint->last_endpoint_error != AULA_STATUS_OK)
     endpoint->status.last_error = endpoint->last_endpoint_error;
-  if (ls200_call_get_backoff(endpoint->call, &backoff) == LS200_STATUS_OK)
+  if (aula_call_get_backoff(endpoint->call, &backoff) == AULA_STATUS_OK)
     endpoint->status.reconnect_attempts = backoff.attempt;
   if (endpoint->control != NULL)
-    (void)ls200_control_server_publish_status(endpoint->control, &endpoint->status);
+    (void)aula_control_server_publish_status(endpoint->control, &endpoint->status);
 }

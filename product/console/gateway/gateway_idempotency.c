@@ -7,12 +7,12 @@
 #include <stdio.h>
 #include <string.h>
 
-ls200_gateway_idempotency *gateway_find_idempotency(ls200_gateway *gateway,
-                                                     const ls200_gateway_session *session,
+aula_gateway_idempotency *gateway_find_idempotency(aula_gateway *gateway,
+                                                     const aula_gateway_session *session,
                                                      const char *key, const char *route) {
   size_t index;
   for (index = 0U; index < sizeof(gateway->idempotency) / sizeof(gateway->idempotency[0]); ++index) {
-    ls200_gateway_idempotency *entry = &gateway->idempotency[index];
+    aula_gateway_idempotency *entry = &gateway->idempotency[index];
     if (entry->used && strcmp(entry->key, key) == 0 && strcmp(entry->route, route) == 0 &&
         gateway_secure_equal(entry->session_hash, session->session_id, sizeof(entry->session_hash)))
       return entry;
@@ -20,8 +20,8 @@ ls200_gateway_idempotency *gateway_find_idempotency(ls200_gateway *gateway,
   return NULL;
 }
 
-int gateway_idempotency_request_hash(const ls200_gateway_request *request,
-                                     uint8_t output[LS200_GATEWAY_HASH_BYTES]) {
+int gateway_idempotency_request_hash(const aula_gateway_request *request,
+                                     uint8_t output[AULA_GATEWAY_HASH_BYTES]) {
   const char *body;
   json_error_t error;
   json_t *root;
@@ -46,18 +46,18 @@ int gateway_idempotency_request_hash(const ls200_gateway_request *request,
       EVP_DigestUpdate(context, &separator, sizeof(separator)) == 1 &&
       EVP_DigestUpdate(context, canonical, canonical_length) == 1 &&
       EVP_DigestFinal_ex(context, output, &output_length) == 1 &&
-      output_length == LS200_GATEWAY_HASH_BYTES;
+      output_length == AULA_GATEWAY_HASH_BYTES;
   EVP_MD_CTX_free(context);
   gateway_secure_json_free(canonical);
-  if (!valid) OPENSSL_cleanse(output, LS200_GATEWAY_HASH_BYTES);
+  if (!valid) OPENSSL_cleanse(output, AULA_GATEWAY_HASH_BYTES);
   return valid;
 }
 
-void gateway_save_idempotency(ls200_gateway *gateway, const ls200_gateway_session *session,
+void gateway_save_idempotency(aula_gateway *gateway, const aula_gateway_session *session,
                               const char *key, const char *route,
-                              const uint8_t request_hash[LS200_GATEWAY_HASH_BYTES],
-                              const ls200_gateway_response *response) {
-  ls200_gateway_idempotency *entry =
+                              const uint8_t request_hash[AULA_GATEWAY_HASH_BYTES],
+                              const aula_gateway_response *response) {
+  aula_gateway_idempotency *entry =
       &gateway->idempotency[gateway->next_idempotency++ %
           (sizeof(gateway->idempotency) / sizeof(gateway->idempotency[0]))];
   (void)memset(entry, 0, sizeof(*entry));

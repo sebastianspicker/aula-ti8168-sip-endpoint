@@ -1,15 +1,15 @@
-#include "ls200_sipd/sip.h"
+#include "aula_sipd/sip.h"
 
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 
-#define LS200_SIP_MAX_URI_BYTES 512U
+#define AULA_SIP_MAX_URI_BYTES 512U
 
 static int text_is_safe(const char *text) {
   size_t index;
   if (text == NULL || text[0] == '\0' ||
-      strlen(text) >= LS200_SIP_MAX_URI_BYTES)
+      strlen(text) >= AULA_SIP_MAX_URI_BYTES)
     return 0;
   for (index = 0U; text[index] != '\0'; ++index) {
     unsigned char character = (unsigned char)text[index];
@@ -130,7 +130,7 @@ static int validate_uri(const char *uri) {
 }
 
 static void classify_user(const char *begin, const char *end,
-                          ls200_sip_dial_target *target) {
+                          aula_sip_dial_target *target) {
   const char *cursor;
   uint32_t components = 1U;
   int numeric = 1;
@@ -146,21 +146,21 @@ static void classify_user(const char *begin, const char *end,
       numeric = 0;
     }
   }
-  target->kind = numeric ? (compound ? LS200_SIP_DIAL_NUMERIC_COMPOUND
-                                     : LS200_SIP_DIAL_NUMERIC)
-                         : LS200_SIP_DIAL_GENERIC;
+  target->kind = numeric ? (compound ? AULA_SIP_DIAL_NUMERIC_COMPOUND
+                                     : AULA_SIP_DIAL_NUMERIC)
+                         : AULA_SIP_DIAL_GENERIC;
   target->numeric_component_count = numeric ? components : 0U;
 }
 
-ls200_status ls200_sip_parse_dial_target(const char *uri,
-                                         ls200_sip_dial_target *out_target) {
+aula_status aula_sip_parse_dial_target(const char *uri,
+                                         aula_sip_dial_target *out_target) {
   const char *at;
   const char *host_end;
   const char *cursor;
   unsigned long port;
-  if (out_target == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+  if (out_target == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   (void)memset(out_target, 0, sizeof(*out_target));
-  if (!validate_uri(uri)) return LS200_STATUS_INVALID_DATA;
+  if (!validate_uri(uri)) return AULA_STATUS_INVALID_DATA;
   at = strchr(uri + 4U, '@');
   classify_user(uri + 4U, at, out_target);
   host_end = at + 1U;
@@ -169,36 +169,36 @@ ls200_status ls200_sip_parse_dial_target(const char *uri,
   out_target->has_explicit_port = *cursor == ':';
   (void)parse_port(&cursor, &port);
   out_target->transport = strstr(cursor, "transport=tcp") == NULL
-                              ? LS200_TRANSPORT_UDP
-                              : LS200_TRANSPORT_TCP;
+                              ? AULA_TRANSPORT_UDP
+                              : AULA_TRANSPORT_TCP;
   out_target->port = (uint16_t)port;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_sip_format_redacted_dial_target(
-    const ls200_sip_dial_target *target, ls200_mutable_bytes *output) {
+aula_status aula_sip_format_redacted_dial_target(
+    const aula_sip_dial_target *target, aula_mutable_bytes *output) {
   const char *kind;
   const char *transport;
   int needed;
   if (target == NULL || output == NULL || output->data == NULL ||
-      output->capacity == 0U || target->kind < LS200_SIP_DIAL_GENERIC ||
-      target->kind > LS200_SIP_DIAL_NUMERIC_COMPOUND ||
-      (target->transport != LS200_TRANSPORT_UDP &&
-       target->transport != LS200_TRANSPORT_TCP))
-    return LS200_STATUS_INVALID_ARGUMENT;
-  kind = target->kind == LS200_SIP_DIAL_NUMERIC
+      output->capacity == 0U || target->kind < AULA_SIP_DIAL_GENERIC ||
+      target->kind > AULA_SIP_DIAL_NUMERIC_COMPOUND ||
+      (target->transport != AULA_TRANSPORT_UDP &&
+       target->transport != AULA_TRANSPORT_TCP))
+    return AULA_STATUS_INVALID_ARGUMENT;
+  kind = target->kind == AULA_SIP_DIAL_NUMERIC
              ? "numeric"
-             : (target->kind == LS200_SIP_DIAL_NUMERIC_COMPOUND
+             : (target->kind == AULA_SIP_DIAL_NUMERIC_COMPOUND
                     ? "numeric_compound"
                     : "generic");
-  transport = target->transport == LS200_TRANSPORT_TCP ? "tcp" : "udp";
+  transport = target->transport == AULA_TRANSPORT_TCP ? "tcp" : "udp";
   needed = snprintf((char *)output->data, output->capacity,
                     "sip_target kind=%s transport=%s identity=redacted",
                     kind, transport);
   if (needed < 0 || (size_t)needed >= output->capacity) {
     output->length = 0U;
-    return LS200_STATUS_LIMIT_EXCEEDED;
+    return AULA_STATUS_LIMIT_EXCEEDED;
   }
   output->length = (size_t)needed;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }

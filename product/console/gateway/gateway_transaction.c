@@ -23,7 +23,7 @@ static int copy_request_field(const char *source, char *destination, size_t capa
   return 1;
 }
 
-static int copy_gateway_request(gateway_request_storage *storage, const ls200_gateway_request *request) {
+static int copy_gateway_request(gateway_request_storage *storage, const aula_gateway_request *request) {
   storage->request = *request;
   return copy_request_field(request->method, storage->method, sizeof(storage->method), &storage->request.method) &&
       copy_request_field(request->path, storage->path, sizeof(storage->path), &storage->request.path) &&
@@ -44,7 +44,7 @@ static int copy_gateway_request(gateway_request_storage *storage, const ls200_ga
       copy_request_field(request->body, storage->body, sizeof(storage->body), &storage->request.body);
 }
 
-static void copy_gateway_principal(gateway_transaction *transaction, const ls200_gateway_session *session) {
+static void copy_gateway_principal(gateway_transaction *transaction, const aula_gateway_session *session) {
   transaction->principal.used = 1;
   transaction->principal.role = session->role;
   (void)memcpy(transaction->principal.session_id, session->session_id,
@@ -66,26 +66,26 @@ static int advance_transaction_time(gateway_transaction *transaction) {
   return 1;
 }
 
-static ls200_gateway_session *find_principal_session(ls200_gateway *gateway,
+static aula_gateway_session *find_principal_session(aula_gateway *gateway,
                                                       const gateway_transaction *transaction) {
   size_t index;
   for (index = 0U; index < gateway->config.max_sessions; ++index) {
-    ls200_gateway_session *session = &gateway->sessions[index];
+    aula_gateway_session *session = &gateway->sessions[index];
     if (session->used && gateway_secure_equal(session->session_id, transaction->principal.session_id,
                                               sizeof(session->session_id))) return session;
   }
   return NULL;
 }
 
-static int transaction_session_is_expired(const ls200_gateway_session *session, uint64_t now) {
+static int transaction_session_is_expired(const aula_gateway_session *session, uint64_t now) {
   return now < session->created_at ||
-      now - session->created_at > LS200_GATEWAY_SESSION_ABSOLUTE_SECONDS ||
-      (now >= session->last_seen_at && now - session->last_seen_at > LS200_GATEWAY_SESSION_IDLE_SECONDS);
+      now - session->created_at > AULA_GATEWAY_SESSION_ABSOLUTE_SECONDS ||
+      (now >= session->last_seen_at && now - session->last_seen_at > AULA_GATEWAY_SESSION_IDLE_SECONDS);
 }
 
-static int transaction_credentials_are_valid(ls200_gateway *gateway, const gateway_transaction *transaction,
-                                             const ls200_gateway_session *session) {
-  uint8_t token_hash[LS200_GATEWAY_HASH_BYTES] = {0};
+static int transaction_credentials_are_valid(aula_gateway *gateway, const gateway_transaction *transaction,
+                                             const aula_gateway_session *session) {
+  uint8_t token_hash[AULA_GATEWAY_HASH_BYTES] = {0};
   int used_grace = 0;
   int valid = gateway_request_token_hash(transaction->request, token_hash) &&
       gateway_find_session_by_token(gateway, token_hash, transaction->request->now, &used_grace) == session;
@@ -95,12 +95,12 @@ static int transaction_credentials_are_valid(ls200_gateway *gateway, const gatew
   return valid;
 }
 
-static ls200_gateway_session *validated_principal_session(ls200_gateway *gateway,
+static aula_gateway_session *validated_principal_session(aula_gateway *gateway,
                                                            const gateway_transaction *transaction) {
-  ls200_gateway_session *session = find_principal_session(gateway, transaction);
-  const ls200_gateway_account *account;
+  aula_gateway_session *session = find_principal_session(gateway, transaction);
+  const aula_gateway_account *account;
   if (session == NULL) return NULL;
-  account = ls200_gateway_find_account(gateway, transaction->principal.username);
+  account = aula_gateway_find_account(gateway, transaction->principal.username);
   if (transaction_session_is_expired(session, transaction->request->now) ||
       strcmp(session->username, transaction->principal.username) != 0 ||
       session->role != transaction->principal.role || account == NULL ||
@@ -111,10 +111,10 @@ static ls200_gateway_session *validated_principal_session(ls200_gateway *gateway
   return transaction_credentials_are_valid(gateway, transaction, session) ? session : NULL;
 }
 
-static enum gateway_prepare_result prepare_gateway_transaction(ls200_gateway *gateway,
+static enum gateway_prepare_result prepare_gateway_transaction(aula_gateway *gateway,
                                                                 gateway_transaction *transaction,
-                                                                ls200_gateway_response *response) {
-  ls200_gateway_session *session;
+                                                                aula_gateway_response *response) {
+  aula_gateway_session *session;
   int route;
   if (gateway_dispatch_auth(gateway, transaction->request, response)) return GATEWAY_PREPARE_COMPLETE;
   route = gateway_dispatch_route(transaction->request, response, &transaction->plan);
@@ -141,9 +141,9 @@ static enum gateway_prepare_result prepare_gateway_transaction(ls200_gateway *ga
   return GATEWAY_PREPARE_CONTROL;
 }
 
-static int revalidate_gateway_transaction(ls200_gateway *gateway, gateway_transaction *transaction,
-                                          ls200_gateway_response *response) {
-  ls200_gateway_session *session;
+static int revalidate_gateway_transaction(aula_gateway *gateway, gateway_transaction *transaction,
+                                          aula_gateway_response *response) {
+  aula_gateway_session *session;
   if (!advance_transaction_time(transaction)) {
     response->set_cookie[0] = '\0';
     gateway_write_error(response, 500U, "INTERNAL", "request clock is unavailable");
@@ -167,10 +167,10 @@ static int transaction_requires_live_session(const gateway_transaction *transact
       (transaction->plan.flags & (R_EXPORT | R_DEVICE)) != 0U;
 }
 
-static void finish_gateway_transaction(ls200_gateway *gateway, gateway_transaction *transaction,
+static void finish_gateway_transaction(aula_gateway *gateway, gateway_transaction *transaction,
                                        int control_result, const char *backend,
-                                       ls200_gateway_response *response) {
-  ls200_gateway_session *session;
+                                       aula_gateway_response *response) {
+  aula_gateway_session *session;
   session = advance_transaction_time(transaction) ? validated_principal_session(gateway, transaction) : NULL;
   if (session == NULL) {
     response->set_cookie[0] = '\0';
@@ -191,9 +191,9 @@ static void finish_gateway_transaction(ls200_gateway *gateway, gateway_transacti
       &transaction->plan, control_result, backend, response);
 }
 
-static int execute_gateway_transaction(ls200_gateway *gateway, gateway_transaction *transaction,
-                                       ls200_gateway_control_fn control, void *context,
-                                       ls200_gateway_response *response) {
+static int execute_gateway_transaction(aula_gateway *gateway, gateway_transaction *transaction,
+                                       aula_gateway_control_fn control, void *context,
+                                       aula_gateway_response *response) {
   char backend[1024] = {0};
   int control_result;
   pthread_mutex_t *control_lane = (transaction->plan.flags & R_MUTATION) != 0U ?
@@ -224,8 +224,8 @@ static int execute_gateway_transaction(ls200_gateway *gateway, gateway_transacti
   return 1;
 }
 
-int ls200_gateway_handle(ls200_gateway *gateway, const ls200_gateway_request *request,
-                         ls200_gateway_control_fn control, void *context, ls200_gateway_response *response) {
+int aula_gateway_handle(aula_gateway *gateway, const aula_gateway_request *request,
+                         aula_gateway_control_fn control, void *context, aula_gateway_response *response) {
   gateway_transaction transaction;
   enum gateway_prepare_result prepared;
   int result = 1;
@@ -233,7 +233,7 @@ int ls200_gateway_handle(ls200_gateway *gateway, const ls200_gateway_request *re
   (void)memset(response, 0, sizeof(*response));
   (void)memset(&transaction, 0, sizeof(transaction));
   transaction.plan.payload = "{}";
-  transaction.plan.role = LS200_GATEWAY_ROLE_VIEWER;
+  transaction.plan.role = AULA_GATEWAY_ROLE_VIEWER;
   if (!copy_gateway_request(&transaction.storage, request)) {
     gateway_write_error(response, 400U, "REQUEST_INVALID", "request fields exceed their bounds");
     goto cleanup;

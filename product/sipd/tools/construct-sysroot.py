@@ -16,7 +16,7 @@ import stat
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[1]
-EVIDENCE_ROOT = PROJECT.parents[1] / "evidence/firmware-analysis/extracted/rootfs/401900477/rootfs"
+EVIDENCE_ROOT = PROJECT.parents[1] / "evidence"
 
 
 def die(message: str) -> None:
@@ -34,6 +34,8 @@ def inside(path: Path, parent: Path) -> bool:
 def regular(path: Path) -> bytes:
     if path.is_symlink() or not path.is_file() or path.resolve() != path.absolute():
         die(f"source must be a regular non-symlink file: {path}")
+    if inside(path.resolve(), EVIDENCE_ROOT.resolve(strict=False)):
+        die("sysroot inputs must not come from the protected evidence tree")
     return path.read_bytes()
 
 
@@ -55,7 +57,7 @@ def checked_output(value: Path) -> Path:
         die("output must be a new directory below an existing non-symlink parent")
     output = value.parent.resolve() / value.name
     if inside(output, EVIDENCE_ROOT.resolve(strict=False)):
-        die("refusing to write inside immutable recovered evidence")
+        die("refusing to write inside protected evidence tree")
     return output
 
 
@@ -65,7 +67,7 @@ def checked_manifest(path: Path) -> tuple[dict[str, object], list[object], str]:
         document = json.loads(raw)
     except (OSError, json.JSONDecodeError) as error:
         die(f"invalid manifest: {error}")
-    if not isinstance(document, dict) or document.get("format") != "ls200-sipd-sysroot-v1":
+    if not isinstance(document, dict) or document.get("format") != "aula-sipd-sysroot-v1":
         die("unsupported manifest format")
     files = document.get("files")
     if not isinstance(files, list) or not files:
@@ -95,8 +97,8 @@ def populate_sysroot(output: Path, files: list[object], manifest_digest: str) ->
                 stream.write(value)
             os.chmod(target, int(str(item.get("mode", "0644")), 8))
             inventory.append({"target": str(target.relative_to(output)), "sha256": expected, "mode": f"{stat.S_IMODE(target.stat().st_mode):04o}", "size": len(value)})
-        metadata = {"format": "ls200-sipd-sysroot-lock-v1", "source_manifest_sha256": manifest_digest, "files": sorted(inventory, key=lambda entry: str(entry["target"]))}
-        (output / ".ls200-sipd-sysroot-lock.json").write_text(json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+        metadata = {"format": "aula-sipd-sysroot-lock-v1", "source_manifest_sha256": manifest_digest, "files": sorted(inventory, key=lambda entry: str(entry["target"]))}
+        (output / ".aula-sipd-sysroot-lock.json").write_text(json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
     except BaseException:
         shutil.rmtree(output)
         raise

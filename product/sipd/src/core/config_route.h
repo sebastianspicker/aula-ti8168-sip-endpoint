@@ -1,8 +1,8 @@
-#ifndef LS200_SIPD_CONFIG_ROUTE_H
-#define LS200_SIPD_CONFIG_ROUTE_H
+#ifndef AULA_SIPD_CONFIG_ROUTE_H
+#define AULA_SIPD_CONFIG_ROUTE_H
 
-#include "ls200_sipd/config.h"
+#include "aula_sipd/config.h"
 
-const char *ls200_config_crc_address(const ls200_config *config);
+const char *aula_config_crc_address(const aula_config *config);
 
 #endif

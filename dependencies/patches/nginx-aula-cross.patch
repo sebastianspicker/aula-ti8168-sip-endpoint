@@ -1,0 +1,166 @@
+--- a/configure
++++ b/configure
+@@ -43,8 +43,10 @@
+ 
+ else
+     echo "building for $NGX_PLATFORM"
+-    NGX_SYSTEM=$NGX_PLATFORM
+-    NGX_MACHINE=i386
++    NGX_SYSTEM=${NGX_PLATFORM%%:*}
++    ngx_cross_tail=${NGX_PLATFORM#*:}
++    NGX_RELEASE=${ngx_cross_tail%%:*}
++    NGX_MACHINE=${ngx_cross_tail#*:}
+ fi
+ 
+ . auto/cc/conf
+--- a/auto/cc/name
++++ b/auto/cc/name
+@@ -7,7 +7,7 @@
+ 
+     ngx_feature="C compiler"
+     ngx_feature_name=
+-    ngx_feature_run=yes
++    ngx_feature_run=no
+     ngx_feature_incs=
+     ngx_feature_path=
+     ngx_feature_libs=
+--- a/auto/feature
++++ b/auto/feature
+@@ -52,8 +52,16 @@
+     case "$ngx_feature_run" in
+ 
+         yes)
++            if [ "$NGX_PLATFORM" = "Linux:2.6.37:arm" ]; then
++                echo " found (cross compile/link)"
++                ngx_found=yes
++
++                if test -n "$ngx_feature_name"; then
++                    have=$ngx_have_feature . auto/have
++                fi
++
+             # /bin/sh is used to intercept "Killed" or "Abort trap" messages
+-            if /bin/sh -c $NGX_AUTOTEST >> $NGX_AUTOCONF_ERR 2>&1; then
++            elif /bin/sh -c $NGX_AUTOTEST >> $NGX_AUTOCONF_ERR 2>&1; then
+                 echo " found"
+                 ngx_found=yes
+ 
+@@ -67,8 +75,20 @@
+         ;;
+ 
+         value)
++            if [ "$NGX_PLATFORM" = "Linux:2.6.37:arm" ] &&
++               [ "$ngx_feature_name" = "NGX_SYS_NERR" ]; then
++                echo " found (135, target profile)"
++                ngx_found=yes
++
++                cat << END >> $NGX_AUTO_CONFIG_H
++
++#ifndef $ngx_feature_name
++#define $ngx_feature_name  135
++#endif
++
++END
+             # /bin/sh is used to intercept "Killed" or "Abort trap" messages
+-            if /bin/sh -c $NGX_AUTOTEST >> $NGX_AUTOCONF_ERR 2>&1; then
++            elif /bin/sh -c $NGX_AUTOTEST >> $NGX_AUTOCONF_ERR 2>&1; then
+                 echo " found"
+                 ngx_found=yes
+ 
+--- a/auto/types/sizeof
++++ b/auto/types/sizeof
+@@ -14,6 +14,17 @@
+ 
+ ngx_size=
+ 
++if [ "$NGX_PLATFORM" = "Linux:2.6.37:arm" ]; then
++    case "$ngx_type" in
++        "long long"|off_t) ngx_size=8 ;;
++        int|long|"void *"|sig_atomic_t|size_t|time_t) ngx_size=4 ;;
++        *)
++            echo "$0: error: unknown Aula cross-build type size: $ngx_type" >&2
++            exit 1
++            ;;
++    esac
++fi
++
+ cat << END > $NGX_AUTOTEST.c
+ 
+ #include <sys/types.h>
+@@ -36,10 +47,14 @@
+ ngx_test="$CC $CC_TEST_FLAGS $CC_AUX_FLAGS \
+           -o $NGX_AUTOTEST $NGX_AUTOTEST.c $NGX_LD_OPT $ngx_feature_libs"
+ 
+-eval "$ngx_test >> $NGX_AUTOCONF_ERR 2>&1"
++if [ -z "$ngx_size" ]; then
++    eval "$ngx_test >> $NGX_AUTOCONF_ERR 2>&1"
++fi
+ 
+ 
+-if [ -x $NGX_AUTOTEST ]; then
++if [ -n "$ngx_size" ]; then
++    echo " $ngx_size bytes (target profile)"
++elif [ -x $NGX_AUTOTEST ]; then
+     ngx_size=`$NGX_AUTOTEST`
+     echo " $ngx_size bytes"
+ fi
+--- a/auto/endianness
++++ b/auto/endianness
+@@ -31,7 +31,11 @@
+ 
+ eval "$ngx_test >> $NGX_AUTOCONF_ERR 2>&1"
+ 
+-if [ -x $NGX_AUTOTEST ]; then
++if [ "$NGX_PLATFORM" = "Linux:2.6.37:arm" ]; then
++    echo " little endian (target profile)"
++    have=NGX_HAVE_LITTLE_ENDIAN . auto/have
++    rm -rf $NGX_AUTOTEST*
++elif [ -x $NGX_AUTOTEST ]; then
+     if $NGX_AUTOTEST >/dev/null 2>&1; then
+         echo " little endian"
+         have=NGX_HAVE_LITTLE_ENDIAN . auto/have
+--- a/auto/os/linux
++++ b/auto/os/linux
+@@ -18,7 +18,13 @@
+ 
+ # Linux kernel version
+ 
+-version=$((`uname -r \
++if [ "$NGX_PLATFORM" = "Linux:2.6.37:arm" ]; then
++    ngx_kernel_release=$NGX_RELEASE
++else
++    ngx_kernel_release=`uname -r`
++fi
++
++version=$((`printf '%s\n' "$ngx_kernel_release" \
+     | sed -n -e 's/^\([0-9][0-9]*\)\.\([0-9][0-9]*\)\.\([0-9][0-9]*\).*/ \
+                                                  \1*256*256+\2*256+\3/p' \
+              -e 's/^\([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1*256*256+\2*256/p'`))
+--- a/auto/unix
++++ b/auto/unix
+@@ -534,14 +534,19 @@
+ . auto/feature
+ 
+ 
+-ngx_feature="accept4()"
+-ngx_feature_name="NGX_HAVE_ACCEPT4"
+-ngx_feature_run=no
+-ngx_feature_incs="#include <sys/socket.h>"
+-ngx_feature_path=
+-ngx_feature_libs=
+-ngx_feature_test="accept4(0, NULL, NULL, SOCK_NONBLOCK)"
+-. auto/feature
++if [ "$NGX_PLATFORM" = "Linux:2.6.37:arm" ]; then
++    # Conservative target profile: use accept() until runtime accept4() support is verified.
++    have=NGX_HAVE_ACCEPT4 . auto/nohave
++else
++    ngx_feature="accept4()"
++    ngx_feature_name="NGX_HAVE_ACCEPT4"
++    ngx_feature_run=no
++    ngx_feature_incs="#include <sys/socket.h>"
++    ngx_feature_path=
++    ngx_feature_libs=
++    ngx_feature_test="accept4(0, NULL, NULL, SOCK_NONBLOCK)"
++    . auto/feature
++fi
+ 
+ if [ $NGX_FILE_AIO = YES ]; then

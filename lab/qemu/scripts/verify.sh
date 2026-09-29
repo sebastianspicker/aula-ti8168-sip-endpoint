@@ -1,5 +1,5 @@
 #!/bin/sh
-# Verify the development-facing LS-200 QEMU patch stack and machine.
+# Verify the synthetic TI8168 QEMU patch stack and machine.
 set -eu
 
 SCRIPT_DIR=$(CDPATH='' cd "$(dirname "$0")" && pwd)
@@ -32,8 +32,6 @@ for script in "$SCRIPT_DIR"/*.sh; do
     sh -n "$script" || die "shell syntax failed: $script"
 done
 python3 -m py_compile "$SCRIPT_DIR"/probe_*.py
-sh "$PROTO_DIR/tests/test_web_boot.sh"
-python3 -B "$PROTO_DIR/fixtures/fixture_services.py" --self-test
 
 if command -v shellcheck >/dev/null 2>&1; then
     shellcheck -x -P "$SCRIPT_DIR" -s sh "$SCRIPT_DIR"/*.sh
@@ -42,7 +40,7 @@ else
 fi
 
 verify_patch_stack() {
-    stack_root=$(mktemp -d "${TMPDIR:-/tmp}/ls200-patch-stack.XXXXXX") ||
+    stack_root=$(mktemp -d "${TMPDIR:-/tmp}/aula-patch-stack.XXXXXX") ||
         die "cannot create temporary patch-stack directory"
     stack_source="$stack_root/qemu"
     cleanup_stack() {
@@ -57,9 +55,9 @@ verify_patch_stack() {
         die "ordered QEMU patch stack does not apply cleanly"
     git -C "$stack_source" diff --check ||
         die "ordered QEMU patch stack has whitespace errors"
-    for unit in ti8168_ls200.c ti8168_intc.c ti8168_timer.c ti8168_nand.c \
+    for unit in ti8168_mediaboard.c ti8168_intc.c ti8168_timer.c ti8168_nand.c \
         ti8168_gpmc.c ti8168_bootstrap.c ti8168_probe_regs.c ti8168_emac.c \
-        ti8168_ls200.h
+        ti8168_mediaboard.h
     do
         [ -s "$stack_source/hw/arm/$unit" ] ||
             die "modular QEMU source is missing: hw/arm/$unit"
@@ -81,13 +79,12 @@ fi
 
 if [ -n "${QEMU_BINARY:-}" ]; then
     [ -x "$QEMU_BINARY" ] || die "QEMU binary is not executable: $QEMU_BINARY"
-    "$QEMU_BINARY" -machine help | grep -Eq '^ti8168-ls200[[:space:]]' ||
-        die "ti8168-ls200 is absent from QEMU machine list"
+    "$QEMU_BINARY" -machine help | grep -Eq '^ti8168-mediaboard[[:space:]]' ||
+        die "ti8168-mediaboard is absent from QEMU machine list"
     python3 -B "$SCRIPT_DIR/probe_synthetic_machine.py" "$QEMU_BINARY"
-    python3 -B "$PROTO_DIR/tests/test_boot_matrix_qemu.py" "$QEMU_BINARY"
-    printf '%s\n' "Built LS-200 machine and qtests verified: $QEMU_BINARY"
+    printf '%s\n' "Built synthetic TI8168 machine verified: $QEMU_BINARY"
 else
     printf '%s\n' 'QEMU_BINARY not supplied; built-machine qtests skipped.'
 fi
 
-printf '%s\n' 'LS-200 QEMU development checks passed.'
+printf '%s\n' 'Synthetic TI8168 QEMU checks passed.'

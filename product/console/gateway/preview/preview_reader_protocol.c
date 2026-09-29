@@ -13,27 +13,27 @@ typedef struct preview_video_selection {
   int selected;
 } preview_video_selection;
 
-ls200_status ls200_preview_render_request(
-    ls200_preview_reader *reader, const char *method, const char *uri,
-    const char *extra_headers, ls200_preview_reader_state next_state,
-    ls200_mutable_bytes *output) {
+aula_status aula_preview_render_request(
+    aula_preview_reader *reader, const char *method, const char *uri,
+    const char *extra_headers, aula_preview_reader_state next_state,
+    aula_mutable_bytes *output) {
   int written;
   if (reader == NULL || method == NULL || uri == NULL || extra_headers == NULL ||
-      !ls200_preview_output_is_valid(output)) {
-    return LS200_STATUS_INVALID_ARGUMENT;
+      !aula_preview_output_is_valid(output)) {
+    return AULA_STATUS_INVALID_ARGUMENT;
   }
   written = snprintf((char *)output->data, output->capacity,
                      "%s %s RTSP/1.0\r\nCSeq: %u\r\n"
-                     "User-Agent: ls200-console-preview/1\r\n%s\r\n",
+                     "User-Agent: aula-console-preview/1\r\n%s\r\n",
                      method, uri, reader->next_cseq, extra_headers);
   if (written < 0 || (size_t)written >= output->capacity) {
     output->length = 0U;
-    return LS200_STATUS_LIMIT_EXCEEDED;
+    return AULA_STATUS_LIMIT_EXCEEDED;
   }
   output->length = (size_t)written;
   reader->next_cseq++;
   reader->state = next_state;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
 static int line_prefix_is(const uint8_t *line, size_t length,
@@ -42,7 +42,7 @@ static int line_prefix_is(const uint8_t *line, size_t length,
   return length >= prefix_length && memcmp(line, prefix, prefix_length) == 0;
 }
 
-static int next_sdp_line(ls200_bytes body, size_t *cursor,
+static int next_sdp_line(aula_bytes body, size_t *cursor,
                          const uint8_t **out_line, size_t *out_length) {
   const uint8_t *newline;
   size_t remaining;
@@ -116,69 +116,69 @@ static int parse_h264_rtpmap(const uint8_t *value, size_t length,
   return 1;
 }
 
-static ls200_status finish_video_selection(ls200_preview_reader *reader,
+static aula_status finish_video_selection(aula_preview_reader *reader,
                                            preview_video_selection *selection) {
   int written;
-  if (selection->in_video == 0) return LS200_STATUS_AGAIN;
+  if (selection->in_video == 0) return AULA_STATUS_AGAIN;
   if (selection->h264_found == 0 && selection->control_found == 0) {
-    return LS200_STATUS_AGAIN;
+    return AULA_STATUS_AGAIN;
   }
   if (selection->h264_found == 0 || selection->control_found == 0) {
-    return LS200_STATUS_UNSUPPORTED;
+    return AULA_STATUS_UNSUPPORTED;
   }
   if (selection->selected != 0 ||
       !control_is_safe(selection->control, selection->control_length)) {
-    return LS200_STATUS_INVALID_DATA;
+    return AULA_STATUS_INVALID_DATA;
   }
   reader->payload_type = selection->payload_type;
   written = snprintf(reader->setup_uri, sizeof(reader->setup_uri), "%s/%.*s",
                      reader->aggregate_uri, (int)selection->control_length,
                      (const char *)selection->control);
   if (written < 0 || (size_t)written >= sizeof(reader->setup_uri)) {
-    return LS200_STATUS_LIMIT_EXCEEDED;
+    return AULA_STATUS_LIMIT_EXCEEDED;
   }
   selection->selected = 1;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status collect_video_line(preview_video_selection *selection,
+static aula_status collect_video_line(preview_video_selection *selection,
                                        const uint8_t *line,
                                        size_t line_length) {
   static const char control_prefix[] = "a=control:";
   static const char rtpmap_prefix[] = "a=rtpmap:";
   uint8_t candidate;
-  if (selection->in_video == 0) return LS200_STATUS_OK;
+  if (selection->in_video == 0) return AULA_STATUS_OK;
   if (line_prefix_is(line, line_length, rtpmap_prefix) &&
       parse_h264_rtpmap(line + sizeof(rtpmap_prefix) - 1U,
                         line_length - (sizeof(rtpmap_prefix) - 1U),
                         &candidate)) {
-    if (selection->h264_found != 0) return LS200_STATUS_INVALID_DATA;
+    if (selection->h264_found != 0) return AULA_STATUS_INVALID_DATA;
     selection->payload_type = candidate;
     selection->h264_found = 1;
   } else if (line_prefix_is(line, line_length, control_prefix)) {
-    if (selection->control_found != 0) return LS200_STATUS_INVALID_DATA;
+    if (selection->control_found != 0) return AULA_STATUS_INVALID_DATA;
     selection->control = line + sizeof(control_prefix) - 1U;
     selection->control_length = line_length - (sizeof(control_prefix) - 1U);
     selection->control_found = 1;
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status select_video_track(ls200_preview_reader *reader,
-                                       ls200_bytes sdp) {
+static aula_status select_video_track(aula_preview_reader *reader,
+                                       aula_bytes sdp) {
   preview_video_selection selection;
   const uint8_t *line;
   size_t cursor = 0U;
   size_t line_length;
-  ls200_status status;
+  aula_status status;
   if (reader == NULL || sdp.data == NULL || sdp.length == 0U) {
-    return LS200_STATUS_INVALID_ARGUMENT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   }
   (void)memset(&selection, 0, sizeof(selection));
   while (next_sdp_line(sdp, &cursor, &line, &line_length) != 0) {
     if (line_prefix_is(line, line_length, "m=")) {
       status = finish_video_selection(reader, &selection);
-      if (status != LS200_STATUS_OK && status != LS200_STATUS_AGAIN) return status;
+      if (status != AULA_STATUS_OK && status != AULA_STATUS_AGAIN) return status;
       selection.in_video = line_prefix_is(line, line_length, "m=video ");
       selection.h264_found = 0;
       selection.control_found = 0;
@@ -186,52 +186,52 @@ static ls200_status select_video_track(ls200_preview_reader *reader,
       selection.control_length = 0U;
     } else {
       status = collect_video_line(&selection, line, line_length);
-      if (status != LS200_STATUS_OK) return status;
+      if (status != AULA_STATUS_OK) return status;
     }
   }
   status = finish_video_selection(reader, &selection);
-  if (status != LS200_STATUS_OK && status != LS200_STATUS_AGAIN) return status;
-  return selection.selected != 0 ? LS200_STATUS_OK : LS200_STATUS_UNSUPPORTED;
+  if (status != AULA_STATUS_OK && status != AULA_STATUS_AGAIN) return status;
+  return selection.selected != 0 ? AULA_STATUS_OK : AULA_STATUS_UNSUPPORTED;
 }
 
-ls200_status ls200_preview_consume_response(
-    ls200_preview_reader *reader, const ls200_rtsp_message *message,
-    ls200_mutable_bytes *out_request) {
-  ls200_status status;
+aula_status aula_preview_consume_response(
+    aula_preview_reader *reader, const aula_rtsp_message *message,
+    aula_mutable_bytes *out_request) {
+  aula_status status;
   if (message->cseq + 1U != reader->next_cseq || message->status_code < 200U ||
       message->status_code > 299U) {
-    return LS200_STATUS_INVALID_DATA;
+    return AULA_STATUS_INVALID_DATA;
   }
-  if (reader->state == LS200_PREVIEW_READER_OPTIONS) {
-    return ls200_preview_render_request(
+  if (reader->state == AULA_PREVIEW_READER_OPTIONS) {
+    return aula_preview_render_request(
         reader, "DESCRIBE", reader->aggregate_uri,
-        "Accept: application/sdp\r\n", LS200_PREVIEW_READER_DESCRIBE,
+        "Accept: application/sdp\r\n", AULA_PREVIEW_READER_DESCRIBE,
         out_request);
   }
-  if (reader->state == LS200_PREVIEW_READER_DESCRIBE) {
+  if (reader->state == AULA_PREVIEW_READER_DESCRIBE) {
     status = select_video_track(reader, message->body);
-    if (status != LS200_STATUS_OK) return status;
-    return ls200_preview_render_request(
+    if (status != AULA_STATUS_OK) return status;
+    return aula_preview_render_request(
         reader, "SETUP", reader->setup_uri,
         "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n",
-        LS200_PREVIEW_READER_SETUP, out_request);
+        AULA_PREVIEW_READER_SETUP, out_request);
   }
-  if (reader->state == LS200_PREVIEW_READER_SETUP) {
+  if (reader->state == AULA_PREVIEW_READER_SETUP) {
     char session_header[160];
     int written;
-    if (message->session_id[0] == '\0') return LS200_STATUS_INVALID_DATA;
+    if (message->session_id[0] == '\0') return AULA_STATUS_INVALID_DATA;
     written = snprintf(session_header, sizeof(session_header),
                        "Session: %s\r\n", message->session_id);
     if (written < 0 || (size_t)written >= sizeof(session_header)) {
-      return LS200_STATUS_LIMIT_EXCEEDED;
+      return AULA_STATUS_LIMIT_EXCEEDED;
     }
-    return ls200_preview_render_request(
+    return aula_preview_render_request(
         reader, "PLAY", reader->aggregate_uri, session_header,
-        LS200_PREVIEW_READER_PLAY, out_request);
+        AULA_PREVIEW_READER_PLAY, out_request);
   }
-  if (reader->state == LS200_PREVIEW_READER_PLAY) {
-    reader->state = LS200_PREVIEW_READER_STREAMING;
-    return LS200_STATUS_AGAIN;
+  if (reader->state == AULA_PREVIEW_READER_PLAY) {
+    reader->state = AULA_PREVIEW_READER_STREAMING;
+    return AULA_STATUS_AGAIN;
   }
-  return LS200_STATUS_STATE_ERROR;
+  return AULA_STATUS_STATE_ERROR;
 }

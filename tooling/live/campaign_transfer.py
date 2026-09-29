@@ -190,7 +190,7 @@ def _tar_transfer(
     session: LiveSession, known: Path, control: Path, paths: list[Path], remote: str,
     *, expected_payload_digest: str | None = None,
 ) -> None:
-    if not re.fullmatch(r"/run/\.ls200-live-[A-Za-z0-9._-]+(?:-[ab])?", remote):
+    if not re.fullmatch(r"/run/\.aula-ti8168-sip-endpoint-live-[A-Za-z0-9._-]+(?:-[ab])?", remote):
         raise CampaignError("remote transfer path is unsafe")
     if expected_payload_digest is not None and not re.fullmatch(r"[0-9a-f]{64}", expected_payload_digest):
         raise CampaignError("expected payload digest is unsafe")
@@ -199,7 +199,7 @@ def _tar_transfer(
     expected_check = ""
     if expected_payload_digest is not None:
         expected_check = (
-            f"[ \"$(sha256sum {remote}/.work/dist/ls200-live/runtime/payload-manifest.tsv | awk '{{print $1}}')\" = {expected_payload_digest} ]; "
+            f"[ \"$(sha256sum {remote}/.work/dist/aula-ti8168-sip-endpoint-live/runtime/payload-manifest.tsv | awk '{{print $1}}')\" = {expected_payload_digest} ]; "
         )
     tab = "\t"
     command = (

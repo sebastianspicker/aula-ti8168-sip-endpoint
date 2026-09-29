@@ -1,5 +1,5 @@
 {
-  "format": "ls200-sipd-linux-2.6.37-interface-policy-v1",
+  "format": "aula-sipd-linux-2.6.37-interface-policy-v1",
   "kernel_ceiling": "2.6.37",
   "glibc_max": "2.12",
   "direct_syscall_markers": [

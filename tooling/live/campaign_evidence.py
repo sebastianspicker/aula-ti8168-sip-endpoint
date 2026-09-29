@@ -136,7 +136,7 @@ class PhaseEvidence:
 
     def sanitized(self, session: LiveSession) -> dict[str, Any]:
         return {
-            "schema": "ls200-live-sanitized-phase-v1",
+            "schema": "aula-ti8168-sip-endpoint-live-sanitized-phase-v1",
             "session_id_sha256": hashlib.sha256(session.session_id.encode()).hexdigest(),
             "action": self.action,
             "passed": bool(self.checks) and all(type(value) is bool and value for value in self.checks.values()),
@@ -170,7 +170,7 @@ def _record_journal(session: LiveSession, action: str, state: str, *, failure_ty
     if state not in {"started", "completed", "failed", "interrupted"}:
         raise CampaignError("campaign journal state is invalid")
     record: dict[str, Any] = {
-        "schema": "ls200-live-campaign-journal-v1",
+        "schema": "aula-ti8168-sip-endpoint-live-campaign-journal-v1",
         "action": action,
         "state": state,
         "recorded_ns": time.time_ns(),
@@ -186,7 +186,7 @@ def _valid_journal_schema(value: Any, allowed: set[str], has_failure: bool) -> b
     return (
         isinstance(value, dict)
         and set(value) == allowed
-        and value.get("schema") == "ls200-live-campaign-journal-v1"
+        and value.get("schema") == "aula-ti8168-sip-endpoint-live-campaign-journal-v1"
         and isinstance(value.get("action"), str)
         and value.get("state") in {"started", "completed", "failed", "interrupted"}
         and type(value.get("recorded_ns")) is int

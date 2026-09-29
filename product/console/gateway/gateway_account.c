@@ -24,9 +24,9 @@ static int client_identity_is_safe(const char *identity) {
   return 1;
 }
 
-static ls200_gateway_auth_bucket *find_auth_bucket(ls200_gateway_auth_bucket *buckets,
+static aula_gateway_auth_bucket *find_auth_bucket(aula_gateway_auth_bucket *buckets,
                                                     size_t bucket_count, const char *key) {
-  ls200_gateway_auth_bucket *bucket = NULL;
+  aula_gateway_auth_bucket *bucket = NULL;
   size_t index;
   for (index = 0U; index < bucket_count; ++index) {
     if (buckets[index].used && strcmp(buckets[index].key, key) == 0) { bucket = &buckets[index]; break; }
@@ -35,7 +35,7 @@ static ls200_gateway_auth_bucket *find_auth_bucket(ls200_gateway_auth_bucket *bu
   return bucket == NULL ? &buckets[0] : bucket;
 }
 
-static void initialize_auth_bucket(ls200_gateway_auth_bucket *bucket, const char *key,
+static void initialize_auth_bucket(aula_gateway_auth_bucket *bucket, const char *key,
                                    unsigned int capacity, uint64_t now) {
   if (!bucket->used || strcmp(bucket->key, key) != 0) {
     (void)memset(bucket, 0, sizeof(*bucket));
@@ -46,7 +46,7 @@ static void initialize_auth_bucket(ls200_gateway_auth_bucket *bucket, const char
   }
 }
 
-static void refill_auth_bucket(ls200_gateway_auth_bucket *bucket, unsigned int capacity, uint64_t now) {
+static void refill_auth_bucket(aula_gateway_auth_bucket *bucket, unsigned int capacity, uint64_t now) {
   if (now >= bucket->last_refill_at) {
     uint64_t refill = (now - bucket->last_refill_at) / AUTH_REFILL_SECONDS;
     if (refill > 0U) {
@@ -57,10 +57,10 @@ static void refill_auth_bucket(ls200_gateway_auth_bucket *bucket, unsigned int c
   }
 }
 
-static int auth_bucket_take(ls200_gateway_auth_bucket *buckets, size_t bucket_count,
+static int auth_bucket_take(aula_gateway_auth_bucket *buckets, size_t bucket_count,
                             const char *key, unsigned int capacity, uint64_t now,
                             unsigned int *retry_after) {
-  ls200_gateway_auth_bucket *bucket;
+  aula_gateway_auth_bucket *bucket;
   if (now == 0U || key == NULL || strlen(key) >= sizeof(buckets[0].key)) return 0;
   bucket = find_auth_bucket(buckets, bucket_count, key);
   initialize_auth_bucket(bucket, key, capacity, now);
@@ -73,20 +73,20 @@ static int auth_bucket_take(ls200_gateway_auth_bucket *buckets, size_t bucket_co
   return 1;
 }
 
-int gateway_auth_budget_take(ls200_gateway *gateway, const char *account_key,
-                             const ls200_gateway_request *request, unsigned int *retry_after) {
+int gateway_auth_budget_take(aula_gateway *gateway, const char *account_key,
+                             const aula_gateway_request *request, unsigned int *retry_after) {
   static const char global_key[] = "global";
   if (gateway == NULL || request == NULL || !client_identity_is_safe(request->client_identity)) return 0;
-  if (!auth_bucket_take(gateway->account_buckets, LS200_GATEWAY_AUTH_BUCKETS, account_key,
+  if (!auth_bucket_take(gateway->account_buckets, AULA_GATEWAY_AUTH_BUCKETS, account_key,
                         AUTH_BUCKET_CAPACITY, request->now, retry_after) ||
-      !auth_bucket_take(gateway->source_buckets, LS200_GATEWAY_AUTH_BUCKETS, request->client_identity,
+      !auth_bucket_take(gateway->source_buckets, AULA_GATEWAY_AUTH_BUCKETS, request->client_identity,
                         AUTH_BUCKET_CAPACITY, request->now, retry_after) ||
       !auth_bucket_take(&gateway->global_bucket, 1U, global_key, AUTH_GLOBAL_CAPACITY, request->now,
                         retry_after)) return 0;
   return 1;
 }
 
-void ls200_gateway_init(ls200_gateway *gateway, const ls200_gateway_config *config) {
+void aula_gateway_init(aula_gateway *gateway, const aula_gateway_config *config) {
   if (gateway == NULL) return;
   gateway_install_secure_json_allocator();
   (void)memset(gateway, 0, sizeof(*gateway));
@@ -101,9 +101,9 @@ void ls200_gateway_init(ls200_gateway *gateway, const ls200_gateway_config *conf
     gateway->config.bootstrap_code = NULL;
   }
   if (gateway->config.control_timeout_milliseconds == 0U)
-    gateway->config.control_timeout_milliseconds = LS200_GATEWAY_CONTROL_TIMEOUT_MILLISECONDS;
-  if (gateway->config.max_sessions == 0U || gateway->config.max_sessions > LS200_GATEWAY_MAX_SESSIONS)
-    gateway->config.max_sessions = LS200_GATEWAY_MAX_SESSIONS;
+    gateway->config.control_timeout_milliseconds = AULA_GATEWAY_CONTROL_TIMEOUT_MILLISECONDS;
+  if (gateway->config.max_sessions == 0U || gateway->config.max_sessions > AULA_GATEWAY_MAX_SESSIONS)
+    gateway->config.max_sessions = AULA_GATEWAY_MAX_SESSIONS;
   if (pthread_mutex_init(&gateway->state_mutex, NULL) != 0) return;
   if (pthread_mutex_init(&gateway->read_control_mutex, NULL) != 0) {
     (void)pthread_mutex_destroy(&gateway->state_mutex);
@@ -117,7 +117,7 @@ void ls200_gateway_init(ls200_gateway *gateway, const ls200_gateway_config *conf
   gateway->synchronization_ready = 1;
 }
 
-void gateway_disable_bootstrap_code(ls200_gateway *gateway) {
+void gateway_disable_bootstrap_code(aula_gateway *gateway) {
   if (gateway == NULL) return;
   OPENSSL_cleanse(gateway->policy_bootstrap_code, sizeof(gateway->policy_bootstrap_code));
   gateway->config.bootstrap_code = NULL;
@@ -189,7 +189,7 @@ static int static_policy_origin_is_valid(const char *origin) {
       (port == NULL || policy_origin_port_is_valid(port));
 }
 
-static int load_policy_origin(ls200_gateway *gateway, json_t *root) {
+static int load_policy_origin(aula_gateway *gateway, json_t *root) {
   json_t *value = json_object_get(root, "allowed_origin");
   const char *origin;
   if (!json_is_string(value)) return 0;
@@ -209,7 +209,7 @@ static int load_policy_path(json_t *root, const char *key, char *destination, si
   return 1;
 }
 
-static int load_policy_uid(ls200_gateway *gateway, json_t *root) {
+static int load_policy_uid(aula_gateway *gateway, json_t *root) {
   json_t *value = json_object_get(root, "expected_sipd_uid");
   if (!json_is_integer(value) || json_integer_value(value) < 0 ||
       (uint64_t)json_integer_value(value) > UINT32_MAX) return 0;
@@ -217,18 +217,18 @@ static int load_policy_uid(ls200_gateway *gateway, json_t *root) {
   return 1;
 }
 
-static int load_policy_control_timeout(ls200_gateway *gateway, json_t *root, int *present) {
+static int load_policy_control_timeout(aula_gateway *gateway, json_t *root, int *present) {
   json_t *value = json_object_get(root, "control_timeout_milliseconds");
   *present = value != NULL;
   if (value == NULL) return 1;
   if (!json_is_integer(value) || json_integer_value(value) <= 0 ||
-      (uint64_t)json_integer_value(value) > LS200_GATEWAY_CONTROL_TIMEOUT_MILLISECONDS)
+      (uint64_t)json_integer_value(value) > AULA_GATEWAY_CONTROL_TIMEOUT_MILLISECONDS)
     return 0;
   gateway->config.control_timeout_milliseconds = (unsigned int)json_integer_value(value);
   return 1;
 }
 
-static int load_policy_bootstrap(ls200_gateway *gateway, json_t *root, int *present) {
+static int load_policy_bootstrap(aula_gateway *gateway, json_t *root, int *present) {
   json_t *value = json_object_get(root, "bootstrap_code");
   *present = value != NULL;
   if (value == NULL) return 1;
@@ -249,7 +249,7 @@ static int preview_ipv4_is_private(const char *value) {
       (host >> 20U) == UINT32_C(0x0ac1) || (host >> 16U) == UINT32_C(0xc0a8);
 }
 
-static int load_policy_preview(ls200_gateway *gateway, json_t *root) {
+static int load_policy_preview(aula_gateway *gateway, json_t *root) {
   json_t *enabled = json_object_get(root, "preview_enabled");
   json_t *ipv4 = json_object_get(root, "preview_rtsp_ipv4");
   json_t *port = json_object_get(root, "preview_rtsp_port");
@@ -265,7 +265,7 @@ static int load_policy_preview(ls200_gateway *gateway, json_t *root) {
   return 1;
 }
 
-static int load_policy_fields(ls200_gateway *gateway, json_t *root,
+static int load_policy_fields(aula_gateway *gateway, json_t *root,
                               int *bootstrap_present, int *timeout_present) {
   return load_policy_origin(gateway, root) &&
       load_policy_path(root, "control_socket_path", gateway->policy_control_socket,
@@ -279,7 +279,7 @@ static int load_policy_fields(ls200_gateway *gateway, json_t *root,
       json_object_size(root) == 7U + (*bootstrap_present ? 1U : 0U) + (*timeout_present ? 1U : 0U);
 }
 
-int ls200_gateway_load_policy(ls200_gateway *gateway) {
+int aula_gateway_load_policy(aula_gateway *gateway) {
   json_error_t error;
   json_t *root;
   int descriptor;
@@ -313,16 +313,16 @@ int ls200_gateway_load_policy(ls200_gateway *gateway) {
   return 1;
 }
 
-int ls200_gateway_set_account(ls200_gateway *gateway, const char *username, const char *password,
-                              ls200_gateway_role role, const uint8_t salt[LS200_GATEWAY_SALT_BYTES]) {
-  ls200_gateway_account account = {0};
+int aula_gateway_set_account(aula_gateway *gateway, const char *username, const char *password,
+                              aula_gateway_role role, const uint8_t salt[AULA_GATEWAY_SALT_BYTES]) {
+  aula_gateway_account account = {0};
   int result = 0;
   if (gateway == NULL || !gateway_is_safe_username(username) || salt == NULL ||
-      role < LS200_GATEWAY_ROLE_VIEWER || role > LS200_GATEWAY_ROLE_ADMIN) return 0;
+      role < AULA_GATEWAY_ROLE_VIEWER || role > AULA_GATEWAY_ROLE_ADMIN) return 0;
   if (!gateway_password_hash(password, salt, account.password_hash)) goto cleanup;
   account.configured = 1;
   account.role = role;
-  (void)memcpy(account.salt, salt, LS200_GATEWAY_SALT_BYTES);
+  (void)memcpy(account.salt, salt, AULA_GATEWAY_SALT_BYTES);
   (void)snprintf(account.username, sizeof(account.username), "%s", username);
   (void)memset(gateway->accounts, 0, sizeof(gateway->accounts));
   gateway->accounts[0] = account;
@@ -334,68 +334,68 @@ cleanup:
   return result;
 }
 
-void gateway_sync_legacy_account(ls200_gateway *gateway) {
+void gateway_sync_legacy_account(aula_gateway *gateway) {
   size_t index;
   (void)memset(&gateway->account, 0, sizeof(gateway->account));
-  for (index = 0U; index < LS200_GATEWAY_MAX_ACCOUNTS; ++index)
+  for (index = 0U; index < AULA_GATEWAY_MAX_ACCOUNTS; ++index)
     if (gateway->accounts[index].configured) {
       gateway->account = gateway->accounts[index];
       return;
     }
 }
 
-const ls200_gateway_account *ls200_gateway_find_account(const ls200_gateway *gateway, const char *username) {
+const aula_gateway_account *aula_gateway_find_account(const aula_gateway *gateway, const char *username) {
   size_t index;
   if (gateway == NULL || !gateway_is_safe_username(username)) return NULL;
-  for (index = 0U; index < LS200_GATEWAY_MAX_ACCOUNTS; ++index)
+  for (index = 0U; index < AULA_GATEWAY_MAX_ACCOUNTS; ++index)
     if (gateway->accounts[index].configured && strcmp(gateway->accounts[index].username, username) == 0)
       return &gateway->accounts[index];
   return NULL;
 }
 
-static ls200_gateway_account *find_account_mutable(ls200_gateway *gateway, const char *username) {
+static aula_gateway_account *find_account_mutable(aula_gateway *gateway, const char *username) {
   size_t index;
   if (gateway == NULL || !gateway_is_safe_username(username)) return NULL;
-  for (index = 0U; index < LS200_GATEWAY_MAX_ACCOUNTS; ++index)
+  for (index = 0U; index < AULA_GATEWAY_MAX_ACCOUNTS; ++index)
     if (gateway->accounts[index].configured && strcmp(gateway->accounts[index].username, username) == 0)
       return &gateway->accounts[index];
   return NULL;
 }
 
-unsigned int ls200_gateway_account_count(const ls200_gateway *gateway) {
+unsigned int aula_gateway_account_count(const aula_gateway *gateway) {
   unsigned int count = 0U;
   size_t index;
   if (gateway == NULL) return 0U;
-  for (index = 0U; index < LS200_GATEWAY_MAX_ACCOUNTS; ++index)
+  for (index = 0U; index < AULA_GATEWAY_MAX_ACCOUNTS; ++index)
     if (gateway->accounts[index].configured) ++count;
   return count;
 }
 
-unsigned int ls200_gateway_admin_count(const ls200_gateway *gateway) {
+unsigned int aula_gateway_admin_count(const aula_gateway *gateway) {
   unsigned int count = 0U;
   size_t index;
   if (gateway == NULL) return 0U;
-  for (index = 0U; index < LS200_GATEWAY_MAX_ACCOUNTS; ++index)
-    if (gateway->accounts[index].configured && gateway->accounts[index].role == LS200_GATEWAY_ROLE_ADMIN)
+  for (index = 0U; index < AULA_GATEWAY_MAX_ACCOUNTS; ++index)
+    if (gateway->accounts[index].configured && gateway->accounts[index].role == AULA_GATEWAY_ROLE_ADMIN)
       ++count;
   return count;
 }
 
-int ls200_gateway_upsert_account(ls200_gateway *gateway, const char *username,
-                                 const char *password, ls200_gateway_role role) {
-  ls200_gateway_account *account;
-  ls200_gateway_account replacement = {0};
+int aula_gateway_upsert_account(aula_gateway *gateway, const char *username,
+                                 const char *password, aula_gateway_role role) {
+  aula_gateway_account *account;
+  aula_gateway_account replacement = {0};
   size_t index;
-  uint8_t salt[LS200_GATEWAY_SALT_BYTES] = {0};
+  uint8_t salt[AULA_GATEWAY_SALT_BYTES] = {0};
   int result = 0;
   if (gateway == NULL || !gateway_is_safe_username(username) ||
-      role < LS200_GATEWAY_ROLE_VIEWER || role > LS200_GATEWAY_ROLE_ADMIN)
+      role < AULA_GATEWAY_ROLE_VIEWER || role > AULA_GATEWAY_ROLE_ADMIN)
     goto cleanup;
   if (RAND_bytes(salt, sizeof(salt)) != 1 ||
       !gateway_password_hash(password, salt, replacement.password_hash)) goto cleanup;
   account = find_account_mutable(gateway, username);
   if (account == NULL) {
-    for (index = 0U; index < LS200_GATEWAY_MAX_ACCOUNTS; ++index)
+    for (index = 0U; index < AULA_GATEWAY_MAX_ACCOUNTS; ++index)
       if (!gateway->accounts[index].configured) { account = &gateway->accounts[index]; break; }
   }
   if (account == NULL) goto cleanup;
@@ -412,15 +412,15 @@ cleanup:
   return result;
 }
 
-int ls200_gateway_delete_account(ls200_gateway *gateway, const char *username) {
-  ls200_gateway_account *account = find_account_mutable(gateway, username);
+int aula_gateway_delete_account(aula_gateway *gateway, const char *username) {
+  aula_gateway_account *account = find_account_mutable(gateway, username);
   if (account == NULL) return 0;
   OPENSSL_cleanse(account, sizeof(*account));
   gateway_sync_legacy_account(gateway);
   return 1;
 }
 
-void ls200_gateway_revoke_account_sessions(ls200_gateway *gateway, const char *username) {
+void aula_gateway_revoke_account_sessions(aula_gateway *gateway, const char *username) {
   size_t index;
   if (gateway == NULL || username == NULL) return;
   for (index = 0U; index < gateway->config.max_sessions; ++index)

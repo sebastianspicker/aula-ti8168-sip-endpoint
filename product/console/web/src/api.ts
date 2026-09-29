@@ -59,8 +59,6 @@ export class ConsoleApi {
     }
     return { ...result, data: data as OemCredentialsStatus }
   }
-  saveOemCredentials = (username: string, password: string, revision: number) =>
-    this.request<OemCredentialsStatus>('/device/credentials', { method: 'PUT', body: { username, password, revision } })
   schedule = (signal?: AbortSignal) => this.request<JsonRecord>('/schedule', { signal })
   deviceSettings = (signal?: AbortSignal) => this.request<JsonRecord>('/device/settings', { signal })
 

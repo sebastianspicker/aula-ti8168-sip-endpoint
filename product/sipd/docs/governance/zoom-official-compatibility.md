@@ -1,15 +1,16 @@
 # Official Zoom compatibility boundary
 
-The LS200 endpoint uses Zoom Cloud Room Connector as a standards-based SIP
+The TI8168 endpoint uses Zoom Cloud Room Connector as a standards-based SIP
 peer. It does not embed the Meeting SDK, Video SDK, Zoom Rooms Controller SDK,
 or their proprietary runtime libraries. Those products create or control Zoom
 clients on newer 64-bit or mobile platforms and do not provide a CRC SIP,
-RTP, or SRTP implementation for the LS200 ARM EABI5 target.
+RTP, or SRTP implementation for the TI8168 ARM EABI5 target.
 
 A review of the official Zoom GitHub organization on 2026-08-27 found no
 official CRC endpoint, SIP transaction stack, RTP implementation, or reusable
 CRC wire fixture. The Linux Meeting and Video SDK packages support modern
-x86-64 and ARM64 environments, not the LS200 32-bit ARM EABI5/Linux 2.6 target.
+x86-64 and ARM64 environments, not the TI8168 32-bit ARM EABI5/Linux 2.6
+target.
 Their MIT-licensed samples are wrappers around separately distributed
 proprietary SDK binaries and expose raw PCM/I420 callbacks rather than encoded
 H.264/G.711 SIP media. They remain external references, not dependencies.

@@ -81,19 +81,19 @@ int gateway_serialize_json(json_t *value, char *output, size_t capacity) {
   return 1;
 }
 
-int ls200_gateway_backend_response_normalize(uint8_t opcode, const char *input, char *output, size_t capacity) {
+int aula_gateway_backend_response_normalize(uint8_t opcode, const char *input, char *output, size_t capacity) {
   json_error_t error;
   json_t *root;
   int valid;
   if (input == NULL || output == NULL || capacity == 0U || opcode < 1U ||
-      opcode > LS200_CONTROL_OPCODE_METRICS || strlen(input) > GATEWAY_LSZ1_MAX_PAYLOAD) return 0;
+      opcode > AULA_CONTROL_OPCODE_METRICS || strlen(input) > GATEWAY_LSZ1_MAX_PAYLOAD) return 0;
   root = json_loads(input, JSON_REJECT_DUPLICATES, &error);
   if (root == NULL) return 0;
-  valid = opcode == LS200_CONTROL_OPCODE_STATUS ? gateway_status_backend_valid(root) :
-      opcode == LS200_CONTROL_OPCODE_DIAGNOSTICS ? diagnostics_backend_valid(root) :
-      opcode == LS200_CONTROL_OPCODE_SUBSCRIBE ? gateway_event_snapshot_backend_valid(root) :
-      opcode == LS200_CONTROL_OPCODE_SETTINGS ? gateway_settings_backend_valid(root) :
-      opcode == LS200_CONTROL_OPCODE_METRICS ? gateway_metrics_backend_valid(root) :
+  valid = opcode == AULA_CONTROL_OPCODE_STATUS ? gateway_status_backend_valid(root) :
+      opcode == AULA_CONTROL_OPCODE_DIAGNOSTICS ? diagnostics_backend_valid(root) :
+      opcode == AULA_CONTROL_OPCODE_SUBSCRIBE ? gateway_event_snapshot_backend_valid(root) :
+      opcode == AULA_CONTROL_OPCODE_SETTINGS ? gateway_settings_backend_valid(root) :
+      opcode == AULA_CONTROL_OPCODE_METRICS ? gateway_metrics_backend_valid(root) :
       operation_backend_valid(root);
   if (valid) valid = gateway_serialize_json(root, output, capacity);
   json_decref(root);
@@ -122,7 +122,7 @@ static json_t *collection_status_data(const char *path) {
   return NULL;
 }
 
-static json_t *route_status_data(const ls200_gateway *gateway, const char *path, json_t *status) {
+static json_t *route_status_data(const aula_gateway *gateway, const char *path, json_t *status) {
   json_t *data = collection_status_data(path);
   if (data != NULL) return data;
   if (strcmp(path, "/zoom/api/v1/media/preview") == 0) return gateway_preview_status_data(gateway);
@@ -137,7 +137,7 @@ static json_t *route_status_data(const ls200_gateway *gateway, const char *path,
   return NULL;
 }
 
-int gateway_shape_status_route(const ls200_gateway *gateway, const char *path,
+int gateway_shape_status_route(const aula_gateway *gateway, const char *path,
                                const char *input, char *output, size_t capacity) {
   json_error_t error;
   json_t *status, *data;

@@ -3,7 +3,7 @@
 #include <string.h>
 
 typedef struct media_control_reader {
-  ls200_bytes input;
+  aula_bytes input;
   size_t offset;
 } media_control_reader;
 
@@ -72,10 +72,10 @@ static int control_picture(media_control_reader *reader) {
       control_tag(reader, "</picture_fast_update");
 }
 
-int ls200_sip_media_control_is_picture_update(ls200_bytes body) {
+int aula_sip_media_control_is_picture_update(aula_bytes body) {
   media_control_reader reader = {body, 0U};
   if (body.data == NULL || body.length == 0U ||
-      body.length > LS200_SIPD_MAX_SIP_MESSAGE_BYTES) return 0;
+      body.length > AULA_SIPD_MAX_SIP_MESSAGE_BYTES) return 0;
   (void)control_take(&reader, "\xef\xbb\xbf");
   (void)control_space(&reader);
   if (!control_declaration(&reader) ||

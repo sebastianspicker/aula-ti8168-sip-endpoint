@@ -1,9 +1,9 @@
 /* Deferred response and native-terminal queues share pjsip.c's private
  * types and static helpers; keep this fragment included before callbacks. */
-static void pjsip_remove_terminal_event(ls200_pjsip_instance *instance,
-                                        ls200_pjsip_dialog *dialog) {
-  ls200_pjsip_dialog *previous = NULL;
-  ls200_pjsip_dialog *cursor;
+static void pjsip_remove_terminal_event(aula_pjsip_instance *instance,
+                                        aula_pjsip_dialog *dialog) {
+  aula_pjsip_dialog *previous = NULL;
+  aula_pjsip_dialog *cursor;
   if (instance == NULL || dialog == NULL || dialog->terminal_queued == 0)
     return;
   cursor = instance->terminal_head;
@@ -25,8 +25,8 @@ static void pjsip_remove_terminal_event(ls200_pjsip_instance *instance,
   cursor->terminal_next = NULL;
 }
 
-static void pjsip_queue_terminal_event(ls200_pjsip_instance *instance,
-                                       ls200_pjsip_dialog *dialog,
+static void pjsip_queue_terminal_event(aula_pjsip_instance *instance,
+                                       aula_pjsip_dialog *dialog,
                                        int status_code) {
   if (instance == NULL || dialog == NULL || dialog->terminal_queued != 0)
     return;
@@ -40,15 +40,15 @@ static void pjsip_queue_terminal_event(ls200_pjsip_instance *instance,
   instance->terminal_tail = dialog;
 }
 
-static ls200_status pjsip_drain_terminal_events(
-    ls200_pjsip_instance *instance) {
+static aula_status pjsip_drain_terminal_events(
+    aula_pjsip_instance *instance) {
   while (instance != NULL && instance->terminal_head != NULL) {
-    ls200_pjsip_dialog *dialog = instance->terminal_head;
-    ls200_sip_event event;
+    aula_pjsip_dialog *dialog = instance->terminal_head;
+    aula_sip_event event;
     int status_code = dialog->native_status_code;
     pjsip_remove_terminal_event(instance, dialog);
     (void)memset(&event, 0, sizeof(event));
-    event.kind = LS200_SIP_EVENT_SESSION_TERMINATED;
+    event.kind = AULA_SIP_EVENT_SESSION_TERMINATED;
     event.transport = dialog->peer;
     event.reason_code = status_code == PJSIP_SC_REQUEST_TIMEOUT ?
         "session_timer_expired" : "native_session_terminated";
@@ -56,11 +56,11 @@ static ls200_status pjsip_drain_terminal_events(
      * operation involving this queue entry. */
     return pjsip_emit_event(instance, dialog, &event);
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static void pjsip_detach_dialog_binding(ls200_pjsip_instance *instance,
-                                         ls200_pjsip_dialog *dialog) {
+static void pjsip_detach_dialog_binding(aula_pjsip_instance *instance,
+                                         aula_pjsip_dialog *dialog) {
   if (instance == NULL || dialog == NULL || dialog->dialog == NULL ||
       instance->callback_module.id < 0)
     return;
@@ -76,13 +76,13 @@ static void pjsip_detach_dialog_binding(ls200_pjsip_instance *instance,
  * therefore re-enters a transaction that is still in NULL state. Queue the
  * already validated response and drain it after handle_events() returns, when
  * PJSIP has advanced the transaction to TRYING. */
-static ls200_status pjsip_queue_pending_response(
-    ls200_pjsip_instance *instance, ls200_pjsip_dialog *dialog) {
+static aula_status pjsip_queue_pending_response(
+    aula_pjsip_instance *instance, aula_pjsip_dialog *dialog) {
   if (instance == NULL || dialog == NULL || dialog->pending_response == NULL ||
       dialog->pending_request_transaction == NULL)
-    return LS200_STATUS_INVALID_ARGUMENT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   if (dialog->pending_response_queued != 0)
-    return LS200_STATUS_STATE_ERROR;
+    return AULA_STATUS_STATE_ERROR;
   dialog->pending_response_queued = 1;
   dialog->pending_response_next = NULL;
   if (instance->pending_response_tail == NULL)
@@ -90,17 +90,17 @@ static ls200_status pjsip_queue_pending_response(
   else
     instance->pending_response_tail->pending_response_next = dialog;
   instance->pending_response_tail = dialog;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status pjsip_create_queued_response(
-    ls200_pjsip_instance *instance, ls200_pjsip_dialog *dialog,
+static aula_status pjsip_create_queued_response(
+    aula_pjsip_instance *instance, aula_pjsip_dialog *dialog,
     pjsip_transaction *transaction, pjsip_rx_data *rdata, int status_code,
-    const ls200_sip_event *event_after_send) {
+    const aula_sip_event *event_after_send) {
   pj_status_t status;
   if (instance == NULL || dialog == NULL || transaction == NULL || rdata == NULL ||
       status_code < 200 || status_code > 699 || dialog->pending_response != NULL)
-    return LS200_STATUS_INVALID_ARGUMENT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   status = pjsip_dlg_create_response(dialog->dialog, rdata, status_code, NULL,
                                      &dialog->pending_response);
   if (status != PJ_SUCCESS) return pjsip_status(status);
@@ -112,14 +112,14 @@ static ls200_status pjsip_create_queued_response(
   return pjsip_queue_pending_response(instance, dialog);
 }
 
-static ls200_status pjsip_replace_and_queue_pending_response(
-    ls200_pjsip_instance *instance, ls200_pjsip_dialog *dialog,
+static aula_status pjsip_replace_and_queue_pending_response(
+    aula_pjsip_instance *instance, aula_pjsip_dialog *dialog,
     int status_code) {
   pj_status_t status;
   if (instance == NULL || dialog == NULL || dialog->pending_response == NULL ||
       dialog->pending_request_transaction == NULL || status_code < 300 ||
       status_code > 699)
-    return LS200_STATUS_INVALID_ARGUMENT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   status = pjsip_dlg_modify_response(dialog->dialog, dialog->pending_response,
                                      status_code, NULL);
   if (status != PJ_SUCCESS) return pjsip_status(status);
@@ -129,9 +129,9 @@ static ls200_status pjsip_replace_and_queue_pending_response(
 }
 
 static void pjsip_remove_pending_response(
-    ls200_pjsip_instance *instance, ls200_pjsip_dialog *dialog) {
-  ls200_pjsip_dialog *previous = NULL;
-  ls200_pjsip_dialog *cursor;
+    aula_pjsip_instance *instance, aula_pjsip_dialog *dialog) {
+  aula_pjsip_dialog *previous = NULL;
+  aula_pjsip_dialog *cursor;
   if (instance == NULL || dialog == NULL || dialog->pending_response_queued == 0)
     return;
   cursor = instance->pending_response_head;
@@ -154,13 +154,13 @@ static void pjsip_remove_pending_response(
   cursor->pending_response_next = NULL;
 }
 
-static ls200_status pjsip_drain_pending_responses(
-    ls200_pjsip_instance *instance) {
+static aula_status pjsip_drain_pending_responses(
+    aula_pjsip_instance *instance) {
   while (instance != NULL && instance->pending_response_head != NULL) {
-    ls200_pjsip_dialog *dialog = instance->pending_response_head;
+    aula_pjsip_dialog *dialog = instance->pending_response_head;
     pjsip_tx_data *response = dialog->pending_response;
     pjsip_transaction *transaction = dialog->pending_request_transaction;
-    ls200_sip_event event_after_send = dialog->pending_response_event;
+    aula_sip_event event_after_send = dialog->pending_response_event;
     int emit_event = dialog->pending_response_has_event;
     int invite_response = dialog->pending_response_is_invite;
     pj_status_t status;
@@ -176,7 +176,7 @@ static ls200_status pjsip_drain_pending_responses(
                  sizeof(dialog->pending_response_event));
     if (response == NULL || transaction == NULL) {
       if (response != NULL) (void)pjsip_tx_data_dec_ref(response);
-      return LS200_STATUS_STATE_ERROR;
+      return AULA_STATUS_STATE_ERROR;
     }
     /* Both native response send paths consume the response reference. */
     if (invite_response != 0) {
@@ -194,5 +194,5 @@ static ls200_status pjsip_drain_pending_responses(
     if (emit_event != 0)
       return pjsip_emit_event(instance, dialog, &event_after_send);
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }

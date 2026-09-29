@@ -1,19 +1,19 @@
 #!/bin/sh
-# Atomically select an already installed immutable LS-200 Zoom release.
+# Atomically select an already installed immutable Aula Zoom release.
 set -eu
 
 SCRIPT_DIR=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 TRUSTED_VERIFIER=$SCRIPT_DIR/verify-payload.sh
 if [ ! -e "$TRUSTED_VERIFIER" ] && [ ! -L "$TRUSTED_VERIFIER" ]; then
-    TRUSTED_VERIFIER=$SCRIPT_DIR/../targets/ls200/verify-payload.sh
+    TRUSTED_VERIFIER=$SCRIPT_DIR/../targets/ti8168/verify-payload.sh
 fi
-ROOT=${LS200_ZOOM_ROOT:-/}
+ROOT=${AULA_ZOOM_ROOT:-/}
 VERSION=${1:-}
 case $ROOT in /) ;; /*) ROOT=${ROOT%/} ;; *) printf '%s\n' 'error: root must be absolute' >&2; exit 1 ;; esac
 case $VERSION in ''|.|..|*[!A-Za-z0-9._-]*) printf '%s\n' 'error: provide an installed version' >&2; exit 1 ;; esac
 
-PREFIX=$ROOT/opt/ls200-zoom
-STATE=$ROOT/var/lib/cbox/ls200-zoom
+PREFIX=$ROOT/opt/aula-ti8168-sip-endpoint
+STATE=$ROOT/var/lib/cbox/aula-ti8168-sip-endpoint
 JOURNAL=$STATE/owned-files
 die() { printf '%s\n' "error: $*" >&2; exit 1; }
 [ -d "$STATE" ] && [ ! -L "$STATE" ] && [ -O "$STATE" ] || die 'unsafe rollback state directory'
@@ -34,11 +34,11 @@ RELEASE=$PREFIX/releases/$VERSION
 find "$TRUSTED_VERIFIER" -prune \( -perm -020 -o -perm -002 \) | grep -q . && die 'rollback verifier is writable by others'
 sh "$TRUSTED_VERIFIER" --payload "$RELEASE" --manifest-sha256 "$MANIFEST_SHA256" >/dev/null
 ln -s "releases/$VERSION" "$PREFIX/.rollback-$VERSION-$$"
-"$RELEASE/bin/ls200-atomic-replace" \
+"$RELEASE/bin/aula-atomic-replace" \
     "$PREFIX/.rollback-$VERSION-$$" "$PREFIX/current" || {
     printf '%s\n' 'error: atomic rollback activation failed' >&2
     exit 1
 }
 sh "$TRUSTED_VERIFIER" --payload "$RELEASE" --manifest-sha256 "$MANIFEST_SHA256" >/dev/null
 printf '%s\n' "$VERSION" > "$STATE/active-version"
-printf '%s\n' "rolled back LS-200 Zoom to $VERSION"
+printf '%s\n' "rolled back Aula Zoom to $VERSION"

@@ -13,7 +13,6 @@ import secrets
 import socket
 import ssl
 import stat
-import struct
 import subprocess
 import sys
 import tempfile
@@ -24,8 +23,8 @@ from typing import Any, Callable, Iterator, Sequence
 
 from campaign_evidence import _private_root, _secure_directory
 from campaign_types import (
-    BOOT_ID_COMMAND as _BOOT_ID_COMMAND, BOOT_ID_PATTERN, CONTROL_IDENTITY_REQUEST,
-    CONTROL_IDENTITY_RESPONSE, CampaignError, ROOT, SAFE_ENV, SECRET_PATTERN,
+    BOOT_ID_COMMAND as _BOOT_ID_COMMAND, BOOT_ID_PATTERN, CampaignError, ROOT,
+    SAFE_ENV, SECRET_PATTERN,
 )
 from session import LiveSession
 
@@ -134,57 +133,11 @@ def _ssh(session: LiveSession, known: Path, control: Path, command: str,
 
 
 def _control_identity(session: LiveSession) -> None:
-    if sys.platform != "darwin":
-        raise CampaignError("control identity binding is supported only on macOS")
-    connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        interface_index = socket.if_nametoindex(session.interface)
-        if interface_index <= 0:
-            raise CampaignError("the authorized interface has no valid index")
-        connection.setsockopt(socket.IPPROTO_IP, 25, struct.pack("I", interface_index))
-        connection.settimeout(3.0)
-        connection.connect((session.target_ipv4, 5080))
-        connection.sendall(CONTROL_IDENTITY_REQUEST)
-        response = bytearray()
-        while len(response) < 3:
-            chunk = connection.recv(3 - len(response))
-            if not chunk:
-                raise CampaignError("the LS-200 control identity response was truncated")
-            response.extend(chunk)
-        frame_size = 4 + response[2]
-        if frame_size != len(CONTROL_IDENTITY_RESPONSE):
-            raise CampaignError("the LS-200 control identity frame size was inexact")
-        while len(response) < frame_size:
-            chunk = connection.recv(frame_size - len(response))
-            if not chunk:
-                raise CampaignError("the LS-200 control identity response was truncated")
-            response.extend(chunk)
-    except OSError as error:
-        raise CampaignError("the interface-bound LS-200 control identity probe failed") from error
-    finally:
-        connection.close()
-    if bytes(response) != CONTROL_IDENTITY_RESPONSE:
-        raise CampaignError("the target did not return the exact GM LS-200 identity")
+    raise CampaignError("physical identity provider unavailable in maintained source")
 
 
 def _verify_identity(session: LiveSession, known: Path, control: Path) -> None:
     _control_identity(session)
-    output = _ssh(
-        session, known, control,
-        "set -eu; [ \"$(id -u)\" = 0 ]; "
-        "[ -f /etc/os-release ] && [ ! -L /etc/os-release ]; "
-        "[ \"$(ls -nd /etc/os-release | awk '{print $3}')\" = 0 ]; "
-        "! find /etc/os-release -prune \\( -perm -020 -o -perm -002 \\) | grep -q .; "
-        "manufacturer=$(awk -F= '$1 == \"MANUFACTURER\" {print $2; exit}' /etc/os-release); "
-        "name=$(awk -F= '$1 == \"NAME\" {print $2; exit}' /etc/os-release); "
-        "product=$(awk -F= '$1 == \"ID\" {print $2; exit}' /etc/os-release); "
-        "firmware=$(awk -F= '$1 == \"VERSION\" {print $2; exit}' /etc/os-release); "
-        "[ \"$manufacturer\" = 'AREC Inc.' ]; [ \"$name\" = LS-200 ]; "
-        "[ \"$product\" = LS-200VA1 ]; [ \"$firmware\" = v2.11.26.80 ]; "
-        "printf 'manufacturer=AREC Inc.\\nname=LS-200\\nproduct=LS-200VA1\\nfirmware=v2.11.26.80\\n'",
-    )
-    if output != b"manufacturer=AREC Inc.\nname=LS-200\nproduct=LS-200VA1\nfirmware=v2.11.26.80\n":
-        raise CampaignError("the authenticated target did not provide the exact LS-200 identity proof")
 
 
 def _authenticated_boot_id(
@@ -225,7 +178,7 @@ verify_installed_release \"{version}\""""
 
 def _reboot_pending_absence_contract() -> str:
     """Return an explicit absence check that is not weakened by shell `set -e` rules."""
-    return """for pending in \"$base/rollback-transaction\" \"$base/autostart-transaction\" \"$base/cron-transaction\" /var/run/ls200-zoom-operation.lock; do
+    return """for pending in \"$base/rollback-transaction\" \"$base/autostart-transaction\" \"$base/cron-transaction\" /var/run/aula-ti8168-sip-endpoint-operation.lock; do
     if [ -e \"$pending\" ] || [ -L \"$pending\" ]; then
         exit 1
     fi
@@ -239,7 +192,7 @@ def _reboot_preflight_command(version: str) -> str:
     return f"""set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
-base=/var/lib/cbox/ls200-zoom
+base=/var/lib/cbox/aula-ti8168-sip-endpoint
 current=$base/current
 marker=$base/autostart-enabled
 journal=$base/live-owned-files
@@ -259,11 +212,11 @@ def _reboot_postboot_command(version: str) -> str:
     return f"""set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
-base=/var/lib/cbox/ls200-zoom
+base=/var/lib/cbox/aula-ti8168-sip-endpoint
 current=$base/current
 marker=$base/autostart-enabled
 journal=$base/live-owned-files
-sentinel=/var/run/ls200-zoom-autostart.ok
+sentinel=/var/run/aula-ti8168-sip-endpoint-autostart.ok
 [ \"$(id -u)\" = 0 ]
 {_reboot_persistent_contract(version)}
 sentinel_wait=75
@@ -292,9 +245,6 @@ def _remote_baseline(
         "printf 'passwd_meta=%s\\n' \"$(ls -ln /etc/passwd | awk '{print $3 \"_\" $4 \"_\" $1}')\"; "
         "printf 'group_meta=%s\\n' \"$(ls -ln /etc/group | awk '{print $3 \"_\" $4 \"_\" $1}')\"; "
         "printf 'shadow_meta=%s\\n' \"$(ls -ln /etc/shadow | awk '{print $3 \"_\" $4 \"_\" $1}')\"; "
-        "printf 'firmware=%s\\n' \"$(awk -F= '$1 == \"VERSION\" {print $2; exit}' /etc/os-release)\"; "
-        "printf 'product_id=%s\\n' \"$(awk -F= '$1 == \"ID\" {print $2; exit}' /etc/os-release)\"; "
-        "printf 'os_release=%s\\n' \"$(sha256sum /etc/os-release | awk '{print $1}')\"; "
         "printf 'cpu_ticks=%s\\n' \"$(awk '/^cpu / {total=0; for (i=2;i<=NF;i++) total+=$i; print total; exit}' /proc/stat)\"; "
         "printf 'fd_total=%s\\n' \"$(find /proc/[0-9]*/fd -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')\"; "
         "printf 'sockets=%s\\n' \"$(cat /proc/net/tcp /proc/net/tcp6 /proc/net/udp /proc/net/udp6 2>/dev/null | sha256sum | awk '{print $1}')\"; "
@@ -308,7 +258,6 @@ def _remote_baseline(
         "/proc/meminfo)\"; "
         "printf 'free_kib=%s\\n' \"$(df -k /var/lib/cbox | awk 'END {print $4}')\"; "
         "printf 'jffs_kib=%s\\n' \"$(du -sk /var/lib/cbox | awk '{print $1}')\"; "
-        "printf 'vendor_media=%s\\n' \"$([ -x /usr/share/media/wait_media_ready ] && echo ready || echo absent)\"; "
         "passwd_root=$(awk '$5 == \"/etc/passwd\" {count++; root=$4} END {if (count == 1) print root}' /proc/self/mountinfo); "
         "root_ssh=absent; case $passwd_root in /root-ssh-provision/account-overlays/*/passwd) "
         "account=${passwd_root#/root-ssh-provision/account-overlays/}; account=${account%/passwd}; "
@@ -327,7 +276,7 @@ def _remote_baseline(
         "grep -Fx \"passwd_source='$overlay/passwd'\" \"$overlay/apply.sh\" >/dev/null && "
         "cmp -s \"$overlay/passwd\" /etc/passwd; then root_ssh=ready; fi ;; esac ;; *) : ;; esac; "
         "printf 'root_ssh=%s\\n' \"$root_ssh\"; "
-        "printf 'profile=%s\\n' \"$([ ! -e /var/lib/cbox/ls200-zoom ] && echo absent || echo present)\""
+        "printf 'profile=%s\\n' \"$([ ! -e /var/lib/cbox/aula-ti8168-sip-endpoint ] && echo absent || echo present)\""
     )
     output = ssh(session, known, control, command).decode("ascii", "strict")
     values: dict[str, str] = {}
@@ -340,9 +289,9 @@ def _remote_baseline(
         values[key] = value
     expected = {
         "mounts", "crontab", "passwd", "group", "shadow", "passwd_meta", "group_meta",
-        "shadow_meta", "firmware", "product_id", "os_release", "cpu_ticks",
+        "shadow_meta", "cpu_ticks",
         "fd_total", "sockets", "diskstats", "persistent_paths", "mem_available_kib",
-        "free_kib", "jffs_kib", "vendor_media", "root_ssh", "profile",
+        "free_kib", "jffs_kib", "root_ssh", "profile",
     }
     if set(values) != expected:
         raise CampaignError("target baseline output was incomplete")
@@ -446,10 +395,10 @@ def _validated_response(response: http.client.HTTPResponse) -> tuple[dict[str, A
         raise CampaignError("console returned a malformed data object")
     set_cookie = response.getheader("Set-Cookie")
     if set_cookie is not None:
-        match = re.search(r"(?:^|;\s*)ls200_session=([0-9a-f]{64})(?:;|$)", set_cookie)
+        match = re.search(r"(?:^|;\s*)aula_session=([0-9a-f]{64})(?:;|$)", set_cookie)
         if match is None:
             raise CampaignError("console returned an ambiguous session cookie")
-        set_cookie = "ls200_session=" + match.group(1)
+        set_cookie = "aula_session=" + match.group(1)
     return data, set_cookie
 
 
@@ -530,7 +479,7 @@ def _establish_console(
     api: Callable[..., tuple[dict[str, Any], str | None]] = _api,
 ) -> tuple[str, str]:
     bootstrap = bytearray(
-        ssh(session, known, control, "cat /var/lib/cbox/ls200-zoom/bootstrap-token", timeout=20.0).strip()
+        ssh(session, known, control, "cat /var/lib/cbox/aula-ti8168-sip-endpoint/bootstrap-token", timeout=20.0).strip()
     )
     if not re.fullmatch(rb"[0-9a-f]{32}", bootstrap):
         raise CampaignError("bootstrap token was absent or malformed")
@@ -543,11 +492,11 @@ def _establish_console(
         except CampaignError:
             ssh(
                 session, known, control,
-                "set -eu; account=/var/lib/cbox/ls200-zoom/gateway/account.json; "
+                "set -eu; account=/var/lib/cbox/aula-ti8168-sip-endpoint/gateway/account.json; "
                 "[ -f \"$account\" ] && [ ! -L \"$account\" ]; sync; "
-                "/var/lib/cbox/ls200-zoom/live-start.sh stop; "
-                "/var/lib/cbox/ls200-zoom/live-start.sh start; "
-                "/var/lib/cbox/ls200-zoom/live-start.sh health",
+                "/var/lib/cbox/aula-ti8168-sip-endpoint/live-start.sh stop; "
+                "/var/lib/cbox/aula-ti8168-sip-endpoint/live-start.sh start; "
+                "/var/lib/cbox/aula-ti8168-sip-endpoint/live-start.sh health",
                 capture=False, timeout=180.0,
             )
             return _login_console(session, certificate, password, api=api)

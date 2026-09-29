@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package one fresh, manifest-verified physical LS-200 runtime."""
+"""Package one fresh, manifest-verified TI8168 media-board runtime."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from source_provenance import source_digest as maintained_source_digest
 
 ROOT = Path(__file__).resolve().parents[2]
 RECEIPT = ROOT / ".work/build/live/receipt.json"
-OUTPUT = ROOT / ".work/dist/ls200-live/runtime"
+OUTPUT = ROOT / ".work/dist/aula-ti8168-sip-endpoint-live/runtime"
 
 digest = receipts.digest
 
@@ -157,7 +157,7 @@ def _verified_artifacts(receipt: Any) -> dict[str, Path]:
         "schema", "artifacts", "input_manifest_sha256", "source_sha256",
     }:
         raise SystemExit("live-package: build receipt schema is inexact")
-    if receipt["schema"] != "ls200-live-build-receipt-v1":
+    if receipt["schema"] != "aula-ti8168-sip-endpoint-live-build-receipt-v1":
         raise SystemExit("live-package: build receipt schema is unsupported")
     _verify_receipt_source(receipt)
     artifacts = receipt["artifacts"]
@@ -175,8 +175,8 @@ def _verified_artifacts(receipt: Any) -> dict[str, Path]:
 
 def _verify_packaged_artifacts(receipt: dict[str, Any]) -> None:
     leaves = {
-        "sipd": "bin/ls200-sipd", "gateway": "bin/ls200-gateway-fcgi", "device": "bin/ls200-device-control",
-        "nginx": "bin/nginx", "atomic_replace": "bin/ls200-atomic-replace",
+        "sipd": "bin/aula-sipd", "gateway": "bin/aula-gateway-fcgi", "device": "bin/aula-device-control",
+        "nginx": "bin/nginx", "atomic_replace": "bin/aula-atomic-replace",
         "mime_types": "etc/nginx/mime.types", "fastcgi_params": "etc/nginx/fastcgi_params",
     }
     for name, leaf in leaves.items():
@@ -207,9 +207,9 @@ def _build_payload(paths: dict[str, Path]) -> None:
         "--ui-dist", str(paths["ui_dist"]),
         "--nginx-config", str(ROOT / "product/console/nginx/nginx.conf"),
         "--mime-types", str(paths["mime_types"]), "--fastcgi-params", str(paths["fastcgi_params"]),
-        "--sip-config", str(ROOT / "product/sipd/config/ls200-sipd.example.conf"),
-        "--gateway-config", str(ROOT / "product/console/gateway/config/ls200-console.example.conf"),
-        "--install-prefix", "/run/ls200-zoom-state", "--output", str(OUTPUT),
+        "--sip-config", str(ROOT / "product/sipd/config/aula-sipd.example.conf"),
+        "--gateway-config", str(ROOT / "product/console/gateway/config/aula-console.example.conf"),
+        "--install-prefix", "/run/aula-state", "--output", str(OUTPUT),
     ]
     completed = subprocess.run(command, env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C", "LC_ALL": "C"}, check=False)
     if completed.returncode != 0:
@@ -222,7 +222,7 @@ def _verify_payload() -> str:
     except (OSError, ValueError) as error:
         raise SystemExit(f"live-package: independent digest receipt is unavailable: {error}") from error
     verified = subprocess.run(
-        ["/bin/sh", str(ROOT / "deployment/targets/ls200/verify-payload.sh"),
+        ["/bin/sh", str(ROOT / "deployment/targets/ti8168/verify-payload.sh"),
          "--payload", str(OUTPUT), "--manifest-sha256", expected],
         env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C", "LC_ALL": "C"}, check=False,
     )
@@ -240,7 +240,7 @@ def main() -> int:
     _verify_packaged_artifacts(receipt)
     expected = _verify_payload()
     metadata = OUTPUT.parent / "package.json"
-    _write_package_receipt(metadata, {"schema": "ls200-live-package-v1", "manifest_sha256": expected})
+    _write_package_receipt(metadata, {"schema": "aula-ti8168-sip-endpoint-live-package-v1", "manifest_sha256": expected})
     print(OUTPUT)
     return 0
 

@@ -1,14 +1,14 @@
-#include "ls200_sipd/zoom.h"
+#include "aula_sipd/zoom.h"
 
-#include "ls200_sipd/sip.h"
+#include "aula_sipd/sip.h"
 
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 
-static int zoom_profile_is_valid(ls200_zoom_profile profile) {
-  return profile >= LS200_ZOOM_PROFILE_DIRECT_CRC &&
-         profile <= LS200_ZOOM_PROFILE_PRIVATE_LAB;
+static int zoom_profile_is_valid(aula_zoom_profile profile) {
+  return profile >= AULA_ZOOM_PROFILE_DIRECT_CRC &&
+         profile <= AULA_ZOOM_PROFILE_PRIVATE_LAB;
 }
 
 static int zoom_digits(const char *value, size_t maximum, int optional) {
@@ -28,7 +28,7 @@ static int zoom_dial_code_is_valid(const char *value) {
   size_t length;
   if (value == NULL || value[0] == '\0') return 1;
   length = strlen(value);
-  if (length >= LS200_ZOOM_MAX_DIAL_CODE_BYTES) return 0;
+  if (length >= AULA_ZOOM_MAX_DIAL_CODE_BYTES) return 0;
   for (index = 0U; index < length; ++index) {
     if (!isalnum((unsigned char)value[index])) return 0;
   }
@@ -59,21 +59,21 @@ static int zoom_domain_is_valid(const char *value) {
 
 static int zoom_uri_has_crc_domain(const char *domain) {
   size_t length = strcspn(domain, ":;");
-  return length == strlen(LS200_ZOOM_CRC_DOMAIN) &&
-         strncmp(domain, LS200_ZOOM_CRC_DOMAIN, length) == 0;
+  return length == strlen(AULA_ZOOM_CRC_DOMAIN) &&
+         strncmp(domain, AULA_ZOOM_CRC_DOMAIN, length) == 0;
 }
 
-static const char *zoom_layout_command(ls200_zoom_layout layout) {
+static const char *zoom_layout_command(aula_zoom_layout layout) {
   switch (layout) {
-    case LS200_ZOOM_LAYOUT_GALLERY: return "";
-    case LS200_ZOOM_LAYOUT_FULL_SCREEN: return "11";
-    case LS200_ZOOM_LAYOUT_DUAL_VIDEO: return "308";
+    case AULA_ZOOM_LAYOUT_GALLERY: return "";
+    case AULA_ZOOM_LAYOUT_FULL_SCREEN: return "11";
+    case AULA_ZOOM_LAYOUT_DUAL_VIDEO: return "308";
     default: return NULL;
   }
 }
 
-static ls200_status zoom_output_error(ls200_mutable_bytes *output,
-                                      ls200_status status) {
+static aula_status zoom_output_error(aula_mutable_bytes *output,
+                                      aula_status status) {
   if (output != NULL && output->data != NULL) {
     (void)memset(output->data, 0, output->capacity);
     output->length = 0U;
@@ -81,32 +81,32 @@ static ls200_status zoom_output_error(ls200_mutable_bytes *output,
   return status;
 }
 
-static int zoom_request_fields_are_valid(const ls200_zoom_dial_request *request) {
-  return zoom_digits(request->meeting_id, LS200_ZOOM_MAX_MEETING_ID_BYTES, 0) &&
-         zoom_digits(request->passcode, LS200_ZOOM_MAX_PASSCODE_BYTES, 1) &&
-         zoom_digits(request->host_key, LS200_ZOOM_MAX_HOST_KEY_BYTES, 1) &&
+static int zoom_request_fields_are_valid(const aula_zoom_dial_request *request) {
+  return zoom_digits(request->meeting_id, AULA_ZOOM_MAX_MEETING_ID_BYTES, 0) &&
+         zoom_digits(request->passcode, AULA_ZOOM_MAX_PASSCODE_BYTES, 1) &&
+         zoom_digits(request->host_key, AULA_ZOOM_MAX_HOST_KEY_BYTES, 1) &&
          zoom_dial_code_is_valid(request->dial_code) &&
          zoom_layout_command(request->layout) != NULL;
 }
 
-static int zoom_request_port_is_valid(const ls200_zoom_dial_request *request) {
+static int zoom_request_port_is_valid(const aula_zoom_dial_request *request) {
   return (request->has_target_port != 0 && request->target_port != 0U) ||
          (request->has_target_port == 0 && request->target_port == 0U);
 }
 
-static int zoom_request_domain_is_valid(const ls200_zoom_dial_request *request,
+static int zoom_request_domain_is_valid(const aula_zoom_dial_request *request,
                                         const char **out_domain) {
   const char *domain = request->target_domain;
-  if (request->profile == LS200_ZOOM_PROFILE_DIRECT_CRC) {
-    if (domain != NULL && strcmp(domain, LS200_ZOOM_CRC_DOMAIN) != 0) return 0;
-    domain = LS200_ZOOM_CRC_DOMAIN;
+  if (request->profile == AULA_ZOOM_PROFILE_DIRECT_CRC) {
+    if (domain != NULL && strcmp(domain, AULA_ZOOM_CRC_DOMAIN) != 0) return 0;
+    domain = AULA_ZOOM_CRC_DOMAIN;
   }
   if (!zoom_domain_is_valid(domain)) return 0;
   *out_domain = domain;
   return 1;
 }
 
-static int zoom_request_is_valid(const ls200_zoom_dial_request *request,
+static int zoom_request_is_valid(const aula_zoom_dial_request *request,
                                  const char **out_domain) {
   return request != NULL && out_domain != NULL &&
          zoom_profile_is_valid(request->profile) &&
@@ -121,7 +121,7 @@ static size_t zoom_last_dial_field(const char *const fields[6]) {
   return fields[1][0] != '\0' ? 1U : 0U;
 }
 
-static void zoom_dial_fields(const ls200_zoom_dial_request *request,
+static void zoom_dial_fields(const aula_zoom_dial_request *request,
                              const char *fields[6], size_t *last_field) {
   fields[0] = request->meeting_id;
   fields[1] = request->passcode == NULL ? "" : request->passcode;
@@ -132,31 +132,31 @@ static void zoom_dial_fields(const ls200_zoom_dial_request *request,
   *last_field = zoom_last_dial_field(fields);
 }
 
-static ls200_status zoom_append_field(ls200_mutable_bytes *output, size_t *used,
+static aula_status zoom_append_field(aula_mutable_bytes *output, size_t *used,
                                       const char *field, int add_separator) {
   size_t field_length = strlen(field);
   if (add_separator != 0) {
-    if (*used + 1U >= output->capacity) return LS200_STATUS_LIMIT_EXCEEDED;
+    if (*used + 1U >= output->capacity) return AULA_STATUS_LIMIT_EXCEEDED;
     output->data[(*used)++] = (uint8_t)'.';
   }
-  if (field_length >= output->capacity - *used) return LS200_STATUS_LIMIT_EXCEEDED;
+  if (field_length >= output->capacity - *used) return AULA_STATUS_LIMIT_EXCEEDED;
   (void)memcpy(output->data + *used, field, field_length);
   *used += field_length;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status zoom_append_fields(ls200_mutable_bytes *output, size_t *used,
+static aula_status zoom_append_fields(aula_mutable_bytes *output, size_t *used,
                                        const char *const fields[6], size_t last_field) {
   size_t index;
   for (index = 0U; index <= last_field; ++index) {
-    ls200_status status = zoom_append_field(output, used, fields[index], index != 0U);
-    if (status != LS200_STATUS_OK) return status;
+    aula_status status = zoom_append_field(output, used, fields[index], index != 0U);
+    if (status != AULA_STATUS_OK) return status;
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status zoom_append_domain(ls200_mutable_bytes *output, size_t *used,
-                                       const ls200_zoom_dial_request *request,
+static aula_status zoom_append_domain(aula_mutable_bytes *output, size_t *used,
+                                       const aula_zoom_dial_request *request,
                                        const char *domain) {
   int written = request->has_target_port != 0
       ? snprintf((char *)output->data + *used, output->capacity - *used,
@@ -164,78 +164,78 @@ static ls200_status zoom_append_domain(ls200_mutable_bytes *output, size_t *used
       : snprintf((char *)output->data + *used, output->capacity - *used,
                  "@%s", domain);
   if (written < 0 || (size_t)written >= output->capacity - *used)
-    return LS200_STATUS_LIMIT_EXCEEDED;
+    return AULA_STATUS_LIMIT_EXCEEDED;
   *used += (size_t)written;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_zoom_build_dial_target(
-    const ls200_zoom_dial_request *request, ls200_mutable_bytes *output) {
+aula_status aula_zoom_build_dial_target(
+    const aula_zoom_dial_request *request, aula_mutable_bytes *output) {
   const char *fields[6];
   const char *domain;
   size_t last_field;
   size_t used = 0U;
   int written;
-  ls200_status status;
+  aula_status status;
   if (output == NULL || output->data == NULL || output->capacity == 0U) {
-    return LS200_STATUS_INVALID_ARGUMENT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   }
   (void)memset(output->data, 0, output->capacity);
   output->length = 0U;
   if (!zoom_request_is_valid(request, &domain))
-    return zoom_output_error(output, LS200_STATUS_INVALID_DATA);
+    return zoom_output_error(output, AULA_STATUS_INVALID_DATA);
   zoom_dial_fields(request, fields, &last_field);
   written = snprintf((char *)output->data, output->capacity, "sip:");
   if (written < 0 || (size_t)written >= output->capacity)
-    return zoom_output_error(output, LS200_STATUS_LIMIT_EXCEEDED);
+    return zoom_output_error(output, AULA_STATUS_LIMIT_EXCEEDED);
   used = (size_t)written;
   status = zoom_append_fields(output, &used, fields, last_field);
-  if (status != LS200_STATUS_OK) return zoom_output_error(output, status);
+  if (status != AULA_STATUS_OK) return zoom_output_error(output, status);
   status = zoom_append_domain(output, &used, request, domain);
-  if (status != LS200_STATUS_OK) return zoom_output_error(output, status);
+  if (status != AULA_STATUS_OK) return zoom_output_error(output, status);
   output->length = used;
-  return ls200_sip_parse_dial_target((const char *)output->data, &(ls200_sip_dial_target){0}) ==
-                 LS200_STATUS_OK
-             ? LS200_STATUS_OK
-             : zoom_output_error(output, LS200_STATUS_INTERNAL_ERROR);
+  return aula_sip_parse_dial_target((const char *)output->data, &(aula_sip_dial_target){0}) ==
+                 AULA_STATUS_OK
+             ? AULA_STATUS_OK
+             : zoom_output_error(output, AULA_STATUS_INTERNAL_ERROR);
 }
 
-ls200_status ls200_zoom_classify_dial_target(
-    const char *target_uri, ls200_zoom_dial_target *out_target) {
-  ls200_sip_dial_target target;
+aula_status aula_zoom_classify_dial_target(
+    const char *target_uri, aula_zoom_dial_target *out_target) {
+  aula_sip_dial_target target;
   const char *domain;
-  if (target_uri == NULL || out_target == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+  if (target_uri == NULL || out_target == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   if (strstr(target_uri, "http:") != NULL || strstr(target_uri, "https:") != NULL ||
-      ls200_sip_parse_dial_target(target_uri, &target) != LS200_STATUS_OK)
-    return LS200_STATUS_INVALID_DATA;
+      aula_sip_parse_dial_target(target_uri, &target) != AULA_STATUS_OK)
+    return AULA_STATUS_INVALID_DATA;
   domain = strchr(target_uri + 4U, '@');
-  if (domain == NULL || domain[1] == '\0') return LS200_STATUS_INVALID_DATA;
+  if (domain == NULL || domain[1] == '\0') return AULA_STATUS_INVALID_DATA;
   ++domain;
   (void)memset(out_target, 0, sizeof(*out_target));
   out_target->profile = zoom_uri_has_crc_domain(domain)
-                            ? LS200_ZOOM_PROFILE_DIRECT_CRC
-                            : LS200_ZOOM_PROFILE_PRIVATE_LAB;
+                            ? AULA_ZOOM_PROFILE_DIRECT_CRC
+                            : AULA_ZOOM_PROFILE_PRIVATE_LAB;
   out_target->transport = target.transport;
   out_target->port = target.port;
   out_target->has_explicit_port = target.has_explicit_port;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_zoom_format_redacted_profile(
-    ls200_zoom_profile profile, ls200_mutable_bytes *output) {
+aula_status aula_zoom_format_redacted_profile(
+    aula_zoom_profile profile, aula_mutable_bytes *output) {
   const char *name;
   int written;
   if (output == NULL || output->data == NULL || output->capacity == 0U ||
-      !zoom_profile_is_valid(profile)) return LS200_STATUS_INVALID_ARGUMENT;
-  name = profile == LS200_ZOOM_PROFILE_DIRECT_CRC ? "direct_crc" :
-         profile == LS200_ZOOM_PROFILE_PROXY_REGISTRATION ? "proxy_registration" :
+      !zoom_profile_is_valid(profile)) return AULA_STATUS_INVALID_ARGUMENT;
+  name = profile == AULA_ZOOM_PROFILE_DIRECT_CRC ? "direct_crc" :
+         profile == AULA_ZOOM_PROFILE_PROXY_REGISTRATION ? "proxy_registration" :
          "private_lab";
   written = snprintf((char *)output->data, output->capacity,
                      "zoom_profile=%s target=redacted", name);
   if (written < 0 || (size_t)written >= output->capacity) {
     output->length = 0U;
-    return LS200_STATUS_LIMIT_EXCEEDED;
+    return AULA_STATUS_LIMIT_EXCEEDED;
   }
   output->length = (size_t)written;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }

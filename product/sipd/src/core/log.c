@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "ls200_sipd/log.h"
+#include "aula_sipd/log.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,11 +8,11 @@
 #include <syslog.h>
 #include <time.h>
 
-#define LS200_LOG_LINE_BYTES 1024U
-#define LS200_LOG_FIELD_BYTES 96U
+#define AULA_LOG_LINE_BYTES 1024U
+#define AULA_LOG_FIELD_BYTES 96U
 
-struct ls200_logger {
-  ls200_log_config config;
+struct aula_logger {
+  aula_log_config config;
   uint64_t interval_start_ns;
   uint32_t emitted;
   uint32_t suppressed;
@@ -28,7 +28,7 @@ static uint64_t logger_now_ns(void) {
 static int contains_sensitive_marker(const char *value) {
   static const char *const markers[] = {"pass", "password", "meeting", "hostkey", "digest", "authorization", "token", "cookie", "call-id", "callid", "secret", "bearer", "sip"};
   size_t marker_index;
-  char folded[LS200_LOG_FIELD_BYTES];
+  char folded[AULA_LOG_FIELD_BYTES];
   size_t length = 0U;
   while (value[length] != '\0' && length + 1U < sizeof(folded)) {
     unsigned char character = (unsigned char)value[length];
@@ -56,7 +56,7 @@ static int is_long_numeric_field(const char *value, size_t length) {
   return 1;
 }
 
-static const char *level_name(ls200_log_level level);
+static const char *level_name(aula_log_level level);
 
 static int is_safe_field(const char *value, int required) {
   const char *start = value;
@@ -66,7 +66,7 @@ static int is_safe_field(const char *value, int required) {
     unsigned char character = (unsigned char)*value;
     if (!is_field_character(character)) return 0;
     ++length;
-    if (length >= LS200_LOG_FIELD_BYTES) return 0;
+    if (length >= AULA_LOG_FIELD_BYTES) return 0;
     ++value;
   }
   if (is_long_numeric_field(start, length)) return 0;
@@ -74,7 +74,7 @@ static int is_safe_field(const char *value, int required) {
   return required ? (length != 0U) : 1;
 }
 
-static int format_event_line(char *line, size_t capacity, const ls200_log_event *event,
+static int format_event_line(char *line, size_t capacity, const aula_log_event *event,
                              uint64_t now, const char *field_key,
                              const char *field_value) {
   const char *correlation = event->correlation_id == NULL ? "-" : event->correlation_id;
@@ -111,67 +111,67 @@ static int is_correlation_id(const char *value) {
   return 1;
 }
 
-static const char *level_name(ls200_log_level level) {
+static const char *level_name(aula_log_level level) {
   switch (level) {
-    case LS200_LOG_DEBUG: return "debug";
-    case LS200_LOG_INFO: return "info";
-    case LS200_LOG_NOTICE: return "notice";
-    case LS200_LOG_WARNING: return "warning";
-    case LS200_LOG_ERROR: return "error";
+    case AULA_LOG_DEBUG: return "debug";
+    case AULA_LOG_INFO: return "info";
+    case AULA_LOG_NOTICE: return "notice";
+    case AULA_LOG_WARNING: return "warning";
+    case AULA_LOG_ERROR: return "error";
   }
   return "invalid";
 }
 
-static int syslog_priority(ls200_log_level level) {
+static int syslog_priority(aula_log_level level) {
   switch (level) {
-    case LS200_LOG_DEBUG: return LOG_DEBUG;
-    case LS200_LOG_INFO: return LOG_INFO;
-    case LS200_LOG_NOTICE: return LOG_NOTICE;
-    case LS200_LOG_WARNING: return LOG_WARNING;
-    case LS200_LOG_ERROR: return LOG_ERR;
+    case AULA_LOG_DEBUG: return LOG_DEBUG;
+    case AULA_LOG_INFO: return LOG_INFO;
+    case AULA_LOG_NOTICE: return LOG_NOTICE;
+    case AULA_LOG_WARNING: return LOG_WARNING;
+    case AULA_LOG_ERROR: return LOG_ERR;
   }
   return LOG_ERR;
 }
 
-static ls200_status emit_line(ls200_logger *logger, const char *line, ls200_log_level level) {
-  if (logger->config.sink == LS200_LOG_SINK_SYSLOG) {
+static aula_status emit_line(aula_logger *logger, const char *line, aula_log_level level) {
+  if (logger->config.sink == AULA_LOG_SINK_SYSLOG) {
     syslog(syslog_priority(level), "%s", line);
   } else if (fputs(line, stderr) < 0 || fputc('\n', stderr) == EOF) {
-    return LS200_STATUS_IO_ERROR;
+    return AULA_STATUS_IO_ERROR;
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status emit_summary(ls200_logger *logger) {
-  char line[LS200_LOG_LINE_BYTES];
+static aula_status emit_summary(aula_logger *logger) {
+  char line[AULA_LOG_LINE_BYTES];
   int written;
-  if (logger->suppressed == 0U) return LS200_STATUS_OK;
+  if (logger->suppressed == 0U) return AULA_STATUS_OK;
   written = snprintf(line, sizeof(line),
                      "{\"level\":\"notice\",\"component\":\"logger\",\"event\":\"rate_summary\",\"suppressed\":%u,\"rx_rendering\":false}",
                      logger->suppressed);
-  if (written < 0 || (size_t)written >= sizeof(line)) return LS200_STATUS_INTERNAL_ERROR;
+  if (written < 0 || (size_t)written >= sizeof(line)) return AULA_STATUS_INTERNAL_ERROR;
   logger->suppressed = 0U;
-  return emit_line(logger, line, LS200_LOG_NOTICE);
+  return emit_line(logger, line, AULA_LOG_NOTICE);
 }
 
-static ls200_status prepare_interval(ls200_logger *logger, uint64_t now) {
+static aula_status prepare_interval(aula_logger *logger, uint64_t now) {
   uint64_t duration;
-  if (now == 0U) return LS200_STATUS_IO_ERROR;
+  if (now == 0U) return AULA_STATUS_IO_ERROR;
   duration = (uint64_t)logger->config.interval_seconds * UINT64_C(1000000000);
   if (logger->interval_start_ns == 0U) {
     logger->interval_start_ns = now;
-    return LS200_STATUS_OK;
+    return AULA_STATUS_OK;
   }
   if (now - logger->interval_start_ns >= duration) {
-    ls200_status status = emit_summary(logger);
+    aula_status status = emit_summary(logger);
     logger->interval_start_ns = now;
     logger->emitted = 0U;
     return status;
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status validate_event(const ls200_log_event *event) {
+static aula_status validate_event(const aula_log_event *event) {
   static const char *const components[] = {"core", "endpoint", "logger", "sip", "sdp",
     "rtp", "rtcp", "media", "backend", "platform", "control"};
   static const char *const events[] = {"state", "created", "destroyed", "event_failure",
@@ -184,67 +184,67 @@ static ls200_status validate_event(const ls200_log_event *event) {
     "sdp_negotiation_failed", "missing_sdp_answer", "media_prepare_failed",
     "media_commit_failed", "sip_peer_not_pinned", "external_policy_rejected",
     "sip_peer_address_mismatch"};
-  if (event == NULL || event->level < LS200_LOG_DEBUG || event->level > LS200_LOG_ERROR || event->rx_rendering != 0 ||
+  if (event == NULL || event->level < AULA_LOG_DEBUG || event->level > AULA_LOG_ERROR || event->rx_rendering != 0 ||
       !is_one_of(event->component, components, sizeof(components) / sizeof(components[0]), 1) ||
       !is_one_of(event->event, events, sizeof(events) / sizeof(events[0]), 1) ||
       !is_correlation_id(event->correlation_id) ||
       !is_one_of(event->call_state, states, sizeof(states) / sizeof(states[0]), 0) ||
       !is_one_of(event->reason_code, reasons, sizeof(reasons) / sizeof(reasons[0]), 0))
-    return LS200_STATUS_SECURITY_ERROR;
-  return LS200_STATUS_OK;
+    return AULA_STATUS_SECURITY_ERROR;
+  return AULA_STATUS_OK;
 }
 
-ls200_status ls200_log_create(const ls200_log_config *config, ls200_logger **out_logger) {
-  ls200_logger *logger;
+aula_status aula_log_create(const aula_log_config *config, aula_logger **out_logger) {
+  aula_logger *logger;
   if (config == NULL || out_logger == NULL || *out_logger != NULL ||
-      (config->sink != LS200_LOG_SINK_STDERR && config->sink != LS200_LOG_SINK_SYSLOG) ||
-      config->minimum_level < LS200_LOG_DEBUG || config->minimum_level > LS200_LOG_ERROR ||
+      (config->sink != AULA_LOG_SINK_STDERR && config->sink != AULA_LOG_SINK_SYSLOG) ||
+      config->minimum_level < AULA_LOG_DEBUG || config->minimum_level > AULA_LOG_ERROR ||
       config->maximum_events_per_interval == 0U || config->maximum_events_per_interval > 10000U ||
-      config->interval_seconds == 0U || config->interval_seconds > 86400U) return LS200_STATUS_INVALID_ARGUMENT;
-  logger = (ls200_logger *)calloc(1U, sizeof(*logger));
-  if (logger == NULL) return LS200_STATUS_INTERNAL_ERROR;
+      config->interval_seconds == 0U || config->interval_seconds > 86400U) return AULA_STATUS_INVALID_ARGUMENT;
+  logger = (aula_logger *)calloc(1U, sizeof(*logger));
+  if (logger == NULL) return AULA_STATUS_INTERNAL_ERROR;
   logger->config = *config;
-  if (config->sink == LS200_LOG_SINK_SYSLOG) { openlog("ls200-sipd", LOG_PID | LOG_NDELAY, LOG_DAEMON); logger->syslog_open = 1; }
+  if (config->sink == AULA_LOG_SINK_SYSLOG) { openlog("aula-sipd", LOG_PID | LOG_NDELAY, LOG_DAEMON); logger->syslog_open = 1; }
   *out_logger = logger;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status log_write_internal(ls200_logger *logger, const ls200_log_event *event,
+static aula_status log_write_internal(aula_logger *logger, const aula_log_event *event,
                                        const char *field_key, const char *field_value) {
-  char line[LS200_LOG_LINE_BYTES];
+  char line[AULA_LOG_LINE_BYTES];
   uint64_t now;
   int written;
-  ls200_status status;
-  if (logger == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+  aula_status status;
+  if (logger == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   status = validate_event(event);
-  if (status != LS200_STATUS_OK) return status;
-  if (event->level < logger->config.minimum_level) return LS200_STATUS_OK;
+  if (status != AULA_STATUS_OK) return status;
+  if (event->level < logger->config.minimum_level) return AULA_STATUS_OK;
   now = event->monotonic_ns == 0U ? logger_now_ns() : event->monotonic_ns;
   status = prepare_interval(logger, now);
-  if (status != LS200_STATUS_OK) return status;
-  if (logger->emitted >= logger->config.maximum_events_per_interval) { ++logger->suppressed; return LS200_STATUS_AGAIN; }
+  if (status != AULA_STATUS_OK) return status;
+  if (logger->emitted >= logger->config.maximum_events_per_interval) { ++logger->suppressed; return AULA_STATUS_AGAIN; }
   written = format_event_line(line, sizeof(line), event, now, field_key, field_value);
-  if (written < 0 || (size_t)written >= sizeof(line)) return LS200_STATUS_LIMIT_EXCEEDED;
+  if (written < 0 || (size_t)written >= sizeof(line)) return AULA_STATUS_LIMIT_EXCEEDED;
   ++logger->emitted;
   return emit_line(logger, line, event->level);
 }
 
-ls200_status ls200_log_write(ls200_logger *logger, const ls200_log_event *event) {
+aula_status aula_log_write(aula_logger *logger, const aula_log_event *event) {
   return log_write_internal(logger, event, NULL, NULL);
 }
 
-ls200_status ls200_log_write_field(ls200_logger *logger, const ls200_log_event *event,
+aula_status aula_log_write_field(aula_logger *logger, const aula_log_event *event,
                                    const char *key, const char *redacted_value) {
   static const char *const redacted_tokens[] = {"redacted", "present", "absent",
     "enabled", "disabled", "accepted", "rejected", "unknown"};
   if (logger == NULL || event == NULL || !is_safe_field(key, 1) ||
       !is_one_of(redacted_value, redacted_tokens,
                  sizeof(redacted_tokens) / sizeof(redacted_tokens[0]), 1))
-    return LS200_STATUS_SECURITY_ERROR;
+    return AULA_STATUS_SECURITY_ERROR;
   return log_write_internal(logger, event, key, redacted_value);
 }
 
-void ls200_log_destroy(ls200_logger *logger) {
+void aula_log_destroy(aula_logger *logger) {
   if (logger != NULL) {
     (void)emit_summary(logger);
     if (logger->syslog_open) closelog();

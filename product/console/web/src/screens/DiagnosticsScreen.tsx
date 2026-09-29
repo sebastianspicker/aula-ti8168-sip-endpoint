@@ -44,7 +44,7 @@ export function DiagnosticsScreen({ onConnection }: { onConnection: (state: 'liv
       ], { type: 'application/json' }))
       const link = document.createElement('a')
       link.href = url
-      link.download = `ls200-diagnostics-${exportId}.json`
+      link.download = `aula-diagnostics-${exportId}.json`
       link.click()
       URL.revokeObjectURL(url)
       setMessage('Redacted export downloaded.')

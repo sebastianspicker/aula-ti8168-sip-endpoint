@@ -44,7 +44,7 @@ test: $(BUILD)/test_device $(BUILD)/test_jobs $(BUILD)/test_queries $(BUILD)/tes
 # device protocol the unprivileged gateway links: transport, wire framing,
 # the client exchange, the recorder projection, and credential *schema*
 # validation (never the credential store). DEVICE_SERVER (serving loop and
-# the persistent credential store) links only into ls200-device-control and
+# the persistent credential store) links only into aula-device-control and
 # its tests.
 DEVICE_SERVER := device/server.c device/credentials_store.c
 DEVICE_CLIENT_OBJECTS := $(patsubst %.c,$(BUILD)/obj/%.o,$(DEVICE_CLIENT_SOURCES))
@@ -67,27 +67,27 @@ $(BUILD)/obj/%.o: %.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -pthread -MMD -MP -c $< -o $@
 
 # Deliberately opt-in; consumes a locally provisioned FastCGI installation.
-fastcgi: check-fcgi-prefix $(BUILD)/ls200-gateway-fcgi
+fastcgi: check-fcgi-prefix $(BUILD)/aula-gateway-fcgi
 
 test-fastcgi: fastcgi
-	python3 -B tests/runtime/test_fastcgi_runtime.py --binary $(BUILD)/ls200-gateway-fcgi
+	python3 -B tests/runtime/test_fastcgi_runtime.py --binary $(BUILD)/aula-gateway-fcgi
 
 .PHONY: check-fcgi-prefix
 check-fcgi-prefix:
 	@test -n "$(FCGI_PREFIX)" || (echo "Set FCGI_PREFIX to a vetted FastCGI 2.4.7 installation"; exit 2)
 
-$(BUILD)/ls200-gateway-fcgi: $(FCGI_OBJECTS)
+$(BUILD)/aula-gateway-fcgi: $(FCGI_OBJECTS)
 	$(CC) $(CFLAGS) -pthread $^ $(LDLIBS) -L$(FCGI_PREFIX)/lib -lfcgi -o $@
 
 $(BUILD)/fcgi/%.o: %.c | check-fcgi-prefix
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) $(PREVIEW_CPPFLAGS) $(CFLAGS) -pthread -MMD -MP \
-		-DLS200_GATEWAY_WITH_FCGI -I$(FCGI_PREFIX)/include -c $< -o $@
+		-DAULA_GATEWAY_WITH_FCGI -I$(FCGI_PREFIX)/include -c $< -o $@
 
 $(BUILD)/fcgi/sipd/%.o: ../sipd/%.c | check-fcgi-prefix
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) $(PREVIEW_CPPFLAGS) $(CFLAGS) -pthread -MMD -MP \
-		-DLS200_GATEWAY_WITH_FCGI -I$(FCGI_PREFIX)/include -c $< -o $@
+		-DAULA_GATEWAY_WITH_FCGI -I$(FCGI_PREFIX)/include -c $< -o $@
 
 -include $(TEST_GATEWAY_OBJECTS:.o=.d) $(REQUEST_TEST_OBJECTS:.o=.d) $(FCGI_OBJECTS:.o=.d)
 
@@ -106,9 +106,9 @@ clean:
 	sh $(DEPENDENCY_RUNNER) --clean
 
 .PHONY: device-control
-device-control: $(BUILD)/ls200-device-control
+device-control: $(BUILD)/aula-device-control
 
-$(BUILD)/ls200-device-control: $(DEVICE_COMPANION_OBJECTS) $(BUILD)/obj/device/oem.o $(BUILD)/obj/device/oem_http.o $(BUILD)/obj/device/main.o $(BUILD)/obj/device/jobs.o $(BUILD)/obj/device/launcher.o $(BUILD)/obj/device/commands.o
+$(BUILD)/aula-device-control: $(DEVICE_COMPANION_OBJECTS) $(BUILD)/obj/device/main.o $(BUILD)/obj/device/jobs.o $(BUILD)/obj/device/launcher.o $(BUILD)/obj/device/commands.o
 	$(CC) $(CFLAGS) $^ $(LDLIBS) -o $@
 
 $(BUILD)/test_device: $(DEVICE_COMPANION_OBJECTS) $(BUILD)/obj/tests/device/test_device.o
@@ -123,10 +123,9 @@ $(BUILD)/test_queries: $(DEVICE_COMPANION_OBJECTS) $(BUILD)/obj/tests/device/tes
 	$(CC) $(CFLAGS) $^ $(LDLIBS) -o $@
 
 -include $(BUILD)/obj/tests/device/test_queries.d
--include $(BUILD)/obj/device/oem_http.d
 -include $(BUILD)/obj/device/launcher.d
 
-$(BUILD)/test_credentials: $(DEVICE_COMPANION_OBJECTS) $(BUILD)/obj/device/oem_http.o $(BUILD)/obj/device/commands.o $(BUILD)/obj/tests/device/test_credentials.o
+$(BUILD)/test_credentials: $(DEVICE_COMPANION_OBJECTS) $(BUILD)/obj/device/commands.o $(BUILD)/obj/tests/device/test_credentials.o
 	$(CC) $(CFLAGS) $^ $(LDLIBS) -o $@
 
 -include $(BUILD)/obj/tests/device/test_credentials.d

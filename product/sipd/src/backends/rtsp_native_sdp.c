@@ -17,8 +17,8 @@ typedef struct native_sdp_media {
   uint8_t payload_type;
   uint32_t clock_rate;
   uint8_t channels;
-  ls200_aac_config aac;
-  ls200_rtsp_h264_capability h264;
+  aula_aac_config aac;
+  aula_rtsp_h264_capability h264;
   uint8_t declared_payload_types[128];
   uint8_t fmtp_payload_type;
   int control_seen;
@@ -67,7 +67,7 @@ static int native_sdp_declared_payloads(native_sdp_media *media,
   return count != 0U;
 }
 
-static int native_sdp_line_next(ls200_bytes sdp, size_t *cursor,
+static int native_sdp_line_next(aula_bytes sdp, size_t *cursor,
                                 const uint8_t **out_line, size_t *out_length) {
   size_t start;
   size_t end;
@@ -126,7 +126,7 @@ static int native_sdp_control_safe(const uint8_t *value, size_t length) {
   size_t component_start = 0U;
   if (value == NULL || length == 0U || value[0] == '/' || value[0] == '.') return 0;
   for (index = 0U; index < length; ++index) {
-    if (!ls200_rtsp_path_character(value[index])) return 0;
+    if (!aula_rtsp_path_character(value[index])) return 0;
     if (value[index] == '/') {
       if (!native_sdp_path_component_safe(value, component_start, index)) return 0;
       component_start = index + 1U;
@@ -135,26 +135,26 @@ static int native_sdp_control_safe(const uint8_t *value, size_t length) {
   return native_sdp_path_component_safe(value, component_start, length);
 }
 
-static ls200_status native_sdp_track_uri(const ls200_rtsp_uri *aggregate_uri,
+static aula_status native_sdp_track_uri(const aula_rtsp_uri *aggregate_uri,
                                          const uint8_t *control,
                                          size_t control_length,
-                                         ls200_rtsp_uri *out_uri) {
+                                         aula_rtsp_uri *out_uri) {
   size_t aggregate_length;
   int written;
   if (aggregate_uri == NULL || out_uri == NULL ||
-      !native_sdp_control_safe(control, control_length)) return LS200_STATUS_INVALID_DATA;
+      !native_sdp_control_safe(control, control_length)) return AULA_STATUS_INVALID_DATA;
   aggregate_length = strlen(aggregate_uri->text);
-  if (aggregate_length == 0U) return LS200_STATUS_STATE_ERROR;
+  if (aggregate_length == 0U) return AULA_STATUS_STATE_ERROR;
   written = snprintf(out_uri->text, sizeof(out_uri->text), "%s%s%.*s",
                      aggregate_uri->text,
                      aggregate_uri->text[aggregate_length - 1U] == '/' ? "" : "/",
                      (int)control_length, (const char *)control);
   if (written < 0 || (size_t)written >= sizeof(out_uri->text)) {
-    return LS200_STATUS_LIMIT_EXCEEDED;
+    return AULA_STATUS_LIMIT_EXCEEDED;
   }
   (void)memcpy(out_uri->address, aggregate_uri->address, sizeof(out_uri->address));
   out_uri->port = aggregate_uri->port;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
 static int native_sdp_codec(const uint8_t *line, size_t length, size_t cursor,
@@ -180,44 +180,44 @@ static int native_sdp_codec(const uint8_t *line, size_t length, size_t cursor,
   return 1;
 }
 
-static ls200_status native_sdp_select_video_codec(native_sdp_media *media,
+static aula_status native_sdp_select_video_codec(native_sdp_media *media,
                                                     uint32_t payload_type,
                                                     uint32_t rate,
                                                     uint8_t channels) {
   if (media->codec_seen != 0 ||
       media->declared_payload_types[payload_type] == 0U ||
-      rate != 90000U || channels != 1U) return LS200_STATUS_INVALID_DATA;
+      rate != 90000U || channels != 1U) return AULA_STATUS_INVALID_DATA;
   media->payload_type = (uint8_t)payload_type;
   media->clock_rate = rate;
   media->codec_seen = 1;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status native_sdp_select_audio_codec(native_sdp_media *media,
+static aula_status native_sdp_select_audio_codec(native_sdp_media *media,
                                                     uint32_t payload_type,
                                                     uint32_t rate,
                                                     uint8_t channels) {
   if (media->codec_seen != 0 ||
       media->declared_payload_types[payload_type] == 0U) {
-    return LS200_STATUS_INVALID_DATA;
+    return AULA_STATUS_INVALID_DATA;
   }
   media->payload_type = (uint8_t)payload_type;
   media->clock_rate = rate;
   media->channels = channels;
   media->codec_seen = 1;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status native_sdp_rtpmap(native_sdp_media *media,
+static aula_status native_sdp_rtpmap(native_sdp_media *media,
                                       const uint8_t *line, size_t length) {
   static const char prefix[] = "a=rtpmap:";
   uint32_t payload_type;
   uint32_t rate;
   uint8_t channels;
   size_t cursor = sizeof(prefix) - 1U;
-  if (media == NULL || !native_sdp_prefix(line, length, prefix)) return LS200_STATUS_OK;
+  if (media == NULL || !native_sdp_prefix(line, length, prefix)) return AULA_STATUS_OK;
   if (!native_sdp_decimal(line, length, &cursor, 127U, &payload_type) ||
-      cursor >= length || line[cursor] != ' ') return LS200_STATUS_INVALID_DATA;
+      cursor >= length || line[cursor] != ' ') return AULA_STATUS_INVALID_DATA;
   cursor++;
   if (media->kind == NATIVE_SDP_VIDEO &&
       native_sdp_codec(line, length, cursor, "H264", &rate, &channels)) {
@@ -226,7 +226,7 @@ static ls200_status native_sdp_rtpmap(native_sdp_media *media,
              native_sdp_codec(line, length, cursor, "MPEG4-GENERIC", &rate, &channels)) {
     return native_sdp_select_audio_codec(media, payload_type, rate, channels);
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
 static int native_sdp_hex_nibble(uint8_t value, uint8_t *out_nibble) {
@@ -236,44 +236,44 @@ static int native_sdp_hex_nibble(uint8_t value, uint8_t *out_nibble) {
   return 0;
 }
 
-static ls200_status native_sdp_parse_asc_hex(const uint8_t *value,
+static aula_status native_sdp_parse_asc_hex(const uint8_t *value,
                                               size_t length,
                                               uint8_t out_asc[2]) {
   uint8_t nibbles[4];
   size_t index;
   if (value == NULL || out_asc == NULL || length != sizeof(nibbles)) {
-    return LS200_STATUS_INVALID_DATA;
+    return AULA_STATUS_INVALID_DATA;
   }
   for (index = 0U; index < sizeof(nibbles); ++index) {
     if (!native_sdp_hex_nibble(value[index], &nibbles[index])) {
-      return LS200_STATUS_INVALID_DATA;
+      return AULA_STATUS_INVALID_DATA;
     }
   }
   out_asc[0] = (uint8_t)((nibbles[0] << 4U) | nibbles[1]);
   out_asc[1] = (uint8_t)((nibbles[2] << 4U) | nibbles[3]);
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status native_sdp_find_fmtp_config(const uint8_t *line,
+static aula_status native_sdp_find_fmtp_config(const uint8_t *line,
                                                  size_t length, size_t cursor,
                                                  const uint8_t **out_value,
                                                  size_t *out_length) {
   static const char config_name[] = "config=";
   size_t start;
-  if (line == NULL || out_value == NULL || out_length == NULL) return LS200_STATUS_INVALID_ARGUMENT;
+  if (line == NULL || out_value == NULL || out_length == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   while (cursor + sizeof(config_name) - 1U <= length &&
          memcmp(line + cursor, config_name, sizeof(config_name) - 1U) != 0) cursor++;
-  if (cursor + sizeof(config_name) - 1U > length) return LS200_STATUS_INVALID_DATA;
+  if (cursor + sizeof(config_name) - 1U > length) return AULA_STATUS_INVALID_DATA;
   start = cursor + sizeof(config_name) - 1U;
   cursor = start;
   while (cursor < length && line[cursor] != ';' && line[cursor] != ' ' &&
          line[cursor] != '\t') cursor++;
   *out_value = line + start;
   *out_length = cursor - start;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status native_sdp_aac_config(native_sdp_media *media,
+static aula_status native_sdp_aac_config(native_sdp_media *media,
                                            const uint8_t *line, size_t length) {
   static const char prefix[] = "a=fmtp:";
   uint32_t payload_type;
@@ -282,20 +282,20 @@ static ls200_status native_sdp_aac_config(native_sdp_media *media,
   const uint8_t *config_value;
   uint8_t asc[2];
   if (media == NULL || media->kind != NATIVE_SDP_AUDIO ||
-      !native_sdp_prefix(line, length, prefix)) return LS200_STATUS_OK;
+      !native_sdp_prefix(line, length, prefix)) return AULA_STATUS_OK;
   if (!native_sdp_decimal(line, length, &cursor, 127U, &payload_type) ||
       cursor >= length || line[cursor] != ' ' || !media->codec_seen ||
-      payload_type != media->payload_type) return LS200_STATUS_OK;
+      payload_type != media->payload_type) return AULA_STATUS_OK;
   if (media->config_seen != 0 || native_sdp_find_fmtp_config(
-      line, length, cursor + 1U, &config_value, &config_length) != LS200_STATUS_OK ||
+      line, length, cursor + 1U, &config_value, &config_length) != AULA_STATUS_OK ||
       native_sdp_parse_asc_hex(config_value, config_length, asc) !=
-      LS200_STATUS_OK) return LS200_STATUS_INVALID_DATA;
-  if (ls200_aac_parse_audio_specific_config((ls200_bytes){asc, sizeof(asc)},
-                                            &media->aac) != LS200_STATUS_OK) {
-    return LS200_STATUS_UNSUPPORTED;
+      AULA_STATUS_OK) return AULA_STATUS_INVALID_DATA;
+  if (aula_aac_parse_audio_specific_config((aula_bytes){asc, sizeof(asc)},
+                                            &media->aac) != AULA_STATUS_OK) {
+    return AULA_STATUS_UNSUPPORTED;
   }
   media->config_seen = 1;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
 static int native_sdp_field_equals(const uint8_t *field, size_t length,
@@ -311,110 +311,110 @@ static size_t native_sdp_skip_fmtp_separators(
   return cursor;
 }
 
-static ls200_status native_sdp_next_fmtp_field(
+static aula_status native_sdp_next_fmtp_field(
     const uint8_t *line, size_t length, size_t *cursor,
-    ls200_bytes *name, ls200_bytes *value) {
+    aula_bytes *name, aula_bytes *value) {
   size_t name_start;
   size_t name_end;
   size_t value_start;
   *cursor = native_sdp_skip_fmtp_separators(line, length, *cursor);
-  if (*cursor == length) return LS200_STATUS_END;
+  if (*cursor == length) return AULA_STATUS_END;
   name_start = *cursor;
   while (*cursor < length && line[*cursor] != '=' && line[*cursor] != ';')
     (*cursor)++;
-  if (*cursor == length || line[*cursor] != '=') return LS200_STATUS_INVALID_DATA;
+  if (*cursor == length || line[*cursor] != '=') return AULA_STATUS_INVALID_DATA;
   name_end = (*cursor)++;
   value_start = *cursor;
   while (*cursor < length && line[*cursor] != ';' && line[*cursor] != ' ' &&
          line[*cursor] != '\t') (*cursor)++;
   if (name_end == name_start || *cursor == value_start)
-    return LS200_STATUS_INVALID_DATA;
-  *name = (ls200_bytes){line + name_start, name_end - name_start};
-  *value = (ls200_bytes){line + value_start, *cursor - value_start};
-  return LS200_STATUS_OK;
+    return AULA_STATUS_INVALID_DATA;
+  *name = (aula_bytes){line + name_start, name_end - name_start};
+  *value = (aula_bytes){line + value_start, *cursor - value_start};
+  return AULA_STATUS_OK;
 }
 
-static ls200_status native_sdp_h264_fmtp_fields(
+static aula_status native_sdp_h264_fmtp_fields(
     native_sdp_media *media, const uint8_t *line, size_t length,
     size_t cursor) {
   int profile_seen = 0;
   while (cursor < length) {
-    ls200_bytes name;
-    ls200_bytes value;
-    ls200_status status = native_sdp_next_fmtp_field(
+    aula_bytes name;
+    aula_bytes value;
+    aula_status status = native_sdp_next_fmtp_field(
         line, length, &cursor, &name, &value);
-    if (status == LS200_STATUS_END) break;
-    if (status != LS200_STATUS_OK) return status;
+    if (status == AULA_STATUS_END) break;
+    if (status != AULA_STATUS_OK) return status;
     if (native_sdp_field_equals(name.data, name.length, "profile-level-id")) {
       if (profile_seen != 0 || value.length != 6U)
-        return LS200_STATUS_INVALID_DATA;
+        return AULA_STATUS_INVALID_DATA;
       (void)memcpy(media->h264.profile_level_id, value.data, 6U);
       media->h264.profile_level_id[6] = '\0';
-      if (!ls200_h264_profile_level_id_valid(media->h264.profile_level_id))
-        return LS200_STATUS_UNSUPPORTED;
+      if (!aula_h264_profile_level_id_valid(media->h264.profile_level_id))
+        return AULA_STATUS_UNSUPPORTED;
       profile_seen = 1;
     }
   }
-  return profile_seen != 0 ? LS200_STATUS_OK : LS200_STATUS_UNSUPPORTED;
+  return profile_seen != 0 ? AULA_STATUS_OK : AULA_STATUS_UNSUPPORTED;
 }
 
-static ls200_status native_sdp_h264_fmtp(native_sdp_media *media,
+static aula_status native_sdp_h264_fmtp(native_sdp_media *media,
                                           const uint8_t *line,
                                           size_t length) {
   static const char prefix[] = "a=fmtp:";
   uint32_t payload_type;
   size_t cursor = sizeof(prefix) - 1U;
-  ls200_status status;
+  aula_status status;
   if (media == NULL || media->kind != NATIVE_SDP_VIDEO ||
-      !native_sdp_prefix(line, length, prefix)) return LS200_STATUS_OK;
+      !native_sdp_prefix(line, length, prefix)) return AULA_STATUS_OK;
   if (!native_sdp_decimal(line, length, &cursor, 127U, &payload_type) ||
       cursor >= length || line[cursor] != ' ' ||
       media->declared_payload_types[payload_type] == 0U) {
-    return LS200_STATUS_INVALID_DATA;
+    return AULA_STATUS_INVALID_DATA;
   }
-  if (media->h264_fmtp_seen != 0) return LS200_STATUS_INVALID_DATA;
+  if (media->h264_fmtp_seen != 0) return AULA_STATUS_INVALID_DATA;
   status = native_sdp_h264_fmtp_fields(media, line, length, cursor + 1U);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   media->fmtp_payload_type = (uint8_t)payload_type;
   media->h264_fmtp_seen = 1;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status native_sdp_control(native_sdp_media *media,
+static aula_status native_sdp_control(native_sdp_media *media,
                                        const uint8_t *line, size_t length) {
   static const char prefix[] = "a=control:";
   size_t prefix_length = sizeof(prefix) - 1U;
-  if (media == NULL || !native_sdp_prefix(line, length, prefix)) return LS200_STATUS_OK;
-  if (media->control_seen != 0) return LS200_STATUS_INVALID_DATA;
+  if (media == NULL || !native_sdp_prefix(line, length, prefix)) return AULA_STATUS_OK;
+  if (media->control_seen != 0) return AULA_STATUS_INVALID_DATA;
   media->control = line + prefix_length;
   media->control_length = length - prefix_length;
   media->control_seen = 1;
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status native_sdp_collect(native_sdp_media *media,
+static aula_status native_sdp_collect(native_sdp_media *media,
                                        const uint8_t *line, size_t length) {
-  ls200_status status;
-  if (media == NULL || media->kind == NATIVE_SDP_NONE) return LS200_STATUS_OK;
+  aula_status status;
+  if (media == NULL || media->kind == NATIVE_SDP_NONE) return AULA_STATUS_OK;
   status = native_sdp_rtpmap(media, line, length);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   status = native_sdp_aac_config(media, line, length);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   status = native_sdp_h264_fmtp(media, line, length);
-  if (status != LS200_STATUS_OK) return status;
+  if (status != AULA_STATUS_OK) return status;
   return native_sdp_control(media, line, length);
 }
 
-static ls200_status native_sdp_finish_video(const ls200_rtsp_uri *aggregate_uri,
+static aula_status native_sdp_finish_video(const aula_rtsp_uri *aggregate_uri,
                                             const native_sdp_media *media,
-                                            ls200_rtsp_native_tracks *tracks,
+                                            aula_rtsp_native_tracks *tracks,
                                             int *video_found) {
   if (media->codec_seen == 0 || media->control_seen == 0)
-    return LS200_STATUS_UNSUPPORTED;
+    return AULA_STATUS_UNSUPPORTED;
   if (media->h264_fmtp_seen != 0 &&
       media->fmtp_payload_type != media->payload_type)
-    return LS200_STATUS_UNSUPPORTED;
-  if (*video_found != 0) return LS200_STATUS_INVALID_DATA;
+    return AULA_STATUS_UNSUPPORTED;
+  if (*video_found != 0) return AULA_STATUS_INVALID_DATA;
   *video_found = 1;
   tracks->h264_payload_type = media->payload_type;
   tracks->h264 = media->h264;
@@ -422,15 +422,15 @@ static ls200_status native_sdp_finish_video(const ls200_rtsp_uri *aggregate_uri,
                               &tracks->video_uri);
 }
 
-static ls200_status native_sdp_finish_audio(const ls200_rtsp_uri *aggregate_uri,
+static aula_status native_sdp_finish_audio(const aula_rtsp_uri *aggregate_uri,
                                             const native_sdp_media *media,
-                                            ls200_rtsp_native_tracks *tracks,
+                                            aula_rtsp_native_tracks *tracks,
                                             int *audio_found) {
   if (media->codec_seen == 0 || media->config_seen == 0 || media->control_seen == 0 ||
       media->clock_rate != media->aac.sample_rate || media->channels != media->aac.channels) {
-    return LS200_STATUS_UNSUPPORTED;
+    return AULA_STATUS_UNSUPPORTED;
   }
-  if (*audio_found != 0) return LS200_STATUS_INVALID_DATA;
+  if (*audio_found != 0) return AULA_STATUS_INVALID_DATA;
   *audio_found = 1;
   tracks->aac_payload_type = media->payload_type;
   tracks->aac = media->aac;
@@ -438,40 +438,40 @@ static ls200_status native_sdp_finish_audio(const ls200_rtsp_uri *aggregate_uri,
                               &tracks->audio_uri);
 }
 
-static ls200_status native_sdp_finish(const ls200_rtsp_uri *aggregate_uri,
+static aula_status native_sdp_finish(const aula_rtsp_uri *aggregate_uri,
                                       const native_sdp_media *media,
-                                      ls200_rtsp_native_tracks *tracks,
+                                      aula_rtsp_native_tracks *tracks,
                                       int *video_found, int *audio_found) {
   if (aggregate_uri == NULL || media == NULL || tracks == NULL ||
       video_found == NULL || audio_found == NULL || media->kind == NATIVE_SDP_NONE) {
-    return LS200_STATUS_INVALID_ARGUMENT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   }
   return media->kind == NATIVE_SDP_VIDEO ?
       native_sdp_finish_video(aggregate_uri, media, tracks, video_found) :
       native_sdp_finish_audio(aggregate_uri, media, tracks, audio_found);
 }
 
-static ls200_status native_sdp_start_media(const ls200_rtsp_uri *aggregate_uri,
+static aula_status native_sdp_start_media(const aula_rtsp_uri *aggregate_uri,
                                            native_sdp_media *media,
                                            const uint8_t *line, size_t length,
-                                           ls200_rtsp_native_tracks *tracks,
+                                           aula_rtsp_native_tracks *tracks,
                                            int *video_found, int *audio_found) {
-  ls200_status status = native_sdp_finish(aggregate_uri, media, tracks,
+  aula_status status = native_sdp_finish(aggregate_uri, media, tracks,
                                           video_found, audio_found);
-  if (status != LS200_STATUS_OK && media->kind != NATIVE_SDP_NONE) return status;
+  if (status != AULA_STATUS_OK && media->kind != NATIVE_SDP_NONE) return status;
   (void)memset(media, 0, sizeof(*media));
   media->kind = native_sdp_media_kind_from_line(line, length);
   if (media->kind != NATIVE_SDP_NONE &&
       !native_sdp_declared_payloads(media, line, length)) {
-    return LS200_STATUS_INVALID_DATA;
+    return AULA_STATUS_INVALID_DATA;
   }
-  return LS200_STATUS_OK;
+  return AULA_STATUS_OK;
 }
 
-static ls200_status native_sdp_process_line(const ls200_rtsp_uri *aggregate_uri,
+static aula_status native_sdp_process_line(const aula_rtsp_uri *aggregate_uri,
                                             native_sdp_media *media,
                                             const uint8_t *line, size_t length,
-                                            ls200_rtsp_native_tracks *tracks,
+                                            aula_rtsp_native_tracks *tracks,
                                             int *video_found, int *audio_found) {
   if (length >= 2U && line[0] == 'm' && line[1] == '=') {
     return native_sdp_start_media(aggregate_uri, media, line, length, tracks,
@@ -480,35 +480,35 @@ static ls200_status native_sdp_process_line(const ls200_rtsp_uri *aggregate_uri,
   return native_sdp_collect(media, line, length);
 }
 
-static int native_sdp_inputs_valid(const ls200_rtsp_uri *aggregate_uri,
-                                   ls200_bytes sdp,
-                                   const ls200_rtsp_native_tracks *out_tracks) {
+static int native_sdp_inputs_valid(const aula_rtsp_uri *aggregate_uri,
+                                   aula_bytes sdp,
+                                   const aula_rtsp_native_tracks *out_tracks) {
   return aggregate_uri != NULL && sdp.data != NULL && sdp.length != 0U &&
-      sdp.length <= LS200_RTSP_MAX_BODY_BYTES && out_tracks != NULL;
+      sdp.length <= AULA_RTSP_MAX_BODY_BYTES && out_tracks != NULL;
 }
 
-ls200_status ls200_rtsp_sdp_select_native_tracks(
-    const ls200_rtsp_uri *aggregate_uri, ls200_bytes sdp,
-    ls200_rtsp_native_tracks *out_tracks) {
+aula_status aula_rtsp_sdp_select_native_tracks(
+    const aula_rtsp_uri *aggregate_uri, aula_bytes sdp,
+    aula_rtsp_native_tracks *out_tracks) {
   native_sdp_media media;
   const uint8_t *line;
   size_t line_length;
   size_t cursor = 0U;
   int video_found = 0;
   int audio_found = 0;
-  ls200_status status;
+  aula_status status;
   if (!native_sdp_inputs_valid(aggregate_uri, sdp, out_tracks)) {
-    return LS200_STATUS_INVALID_ARGUMENT;
+    return AULA_STATUS_INVALID_ARGUMENT;
   }
   (void)memset(out_tracks, 0, sizeof(*out_tracks));
   (void)memset(&media, 0, sizeof(media));
   while (native_sdp_line_next(sdp, &cursor, &line, &line_length) != 0) {
     status = native_sdp_process_line(aggregate_uri, &media, line, line_length,
                                      out_tracks, &video_found, &audio_found);
-    if (status != LS200_STATUS_OK) return status;
+    if (status != AULA_STATUS_OK) return status;
   }
   status = native_sdp_finish(aggregate_uri, &media, out_tracks,
                              &video_found, &audio_found);
-  if (status != LS200_STATUS_OK && media.kind != NATIVE_SDP_NONE) return status;
-  return video_found != 0 && audio_found != 0 ? LS200_STATUS_OK : LS200_STATUS_UNSUPPORTED;
+  if (status != AULA_STATUS_OK && media.kind != NATIVE_SDP_NONE) return status;
+  return video_found != 0 && audio_found != 0 ? AULA_STATUS_OK : AULA_STATUS_UNSUPPORTED;
 }

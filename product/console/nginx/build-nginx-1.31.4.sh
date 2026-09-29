@@ -2,13 +2,13 @@
 set -eu
 
 # Run from an exact nginx-1.31.4 source directory. The preparer admits only the
-# reviewed source hashes and supplies the recovered LS200 cross-probe facts.
+# reviewed source hashes and supplies the recovered Aula cross-probe facts.
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 repo_dir=$(CDPATH='' cd -- "$script_dir/../../.." && pwd -P)
 path_guard=$repo_dir/tooling/workspace/protected_output.py
-cross_prefix=${LS200_CROSS_PREFIX:?set LS200_CROSS_PREFIX to an ARM EABI5 toolchain prefix}
-sysroot=${LS200_SYSROOT:?set LS200_SYSROOT to the reviewed development sysroot}
-build_dir=${LS200_NGINX_ARM_BUILD_DIR:?set LS200_NGINX_ARM_BUILD_DIR to the staged nginx source}
+cross_prefix=${AULA_CROSS_PREFIX:?set AULA_CROSS_PREFIX to an ARM EABI5 toolchain prefix}
+sysroot=${AULA_SYSROOT:?set AULA_SYSROOT to the reviewed development sysroot}
+build_dir=${AULA_NGINX_ARM_BUILD_DIR:?set AULA_NGINX_ARM_BUILD_DIR to the staged nginx source}
 canonical_build=$(python3 "$path_guard" "$repo_dir" "$build_dir") || exit 2
 physical_pwd=$(pwd -P)
 [ "$build_dir" = "$canonical_build" ] && [ "$PWD" = "$canonical_build" ] &&
@@ -36,21 +36,21 @@ canonical_compiler=$(python3 "$path_guard" --input "$repo_dir" "$compiler") || e
     echo "build-nginx: compiler path must be canonical" >&2
     exit 2
 }
-"$repo_dir/dependencies/scripts/prepare-nginx-ls200-cross.sh" "$canonical_build"
+"$repo_dir/dependencies/scripts/prepare-nginx-aula-cross.sh" "$canonical_build"
 
 ./configure \
   --crossbuild=Linux:2.6.37:arm \
   --with-cc="$canonical_compiler" \
   --with-cc-opt="-I$canonical_sysroot/usr/include" \
   --with-ld-opt="-L$canonical_sysroot/usr/lib -L$canonical_sysroot/lib -Wl,-rpath-link,$canonical_sysroot/lib -Wl,-rpath-link,$canonical_sysroot/usr/lib" \
-  --prefix=/opt/ls200-nginx-1.31.4 \
-  --sbin-path=/usr/sbin/ls200-nginx \
-  --conf-path=/etc/ls200-console/nginx.conf \
-  --pid-path=/run/ls200-nginx.pid \
-  --error-log-path=/var/log/ls200-console/nginx-error.log \
-  --http-log-path=/var/log/ls200-console/nginx-access.log \
-  --user=ls200-web \
-  --group=ls200-web \
+  --prefix=/opt/aula-nginx-1.31.4 \
+  --sbin-path=/usr/sbin/aula-nginx \
+  --conf-path=/etc/aula-console/nginx.conf \
+  --pid-path=/run/aula-nginx.pid \
+  --error-log-path=/var/log/aula-console/nginx-error.log \
+  --http-log-path=/var/log/aula-console/nginx-access.log \
+  --user=aula-web \
+  --group=aula-web \
   --with-http_ssl_module \
   --without-quic_bpf_module \
   --without-http-cache \
@@ -85,4 +85,4 @@ canonical_compiler=$(python3 "$path_guard" --input "$repo_dir" "$compiler") || e
   --without-http_tunnel_module \
   --without-http_userid_module \
   --without-http_uwsgi_module
-make -j"${LS200_BUILD_JOBS:-1}"
+make -j"${AULA_BUILD_JOBS:-1}"
