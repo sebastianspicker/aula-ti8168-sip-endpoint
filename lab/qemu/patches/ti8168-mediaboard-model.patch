@@ -1,0 +1,3825 @@
+diff --git a/hw/arm/Kconfig b/hw/arm/Kconfig
+index 4e50fb1..5c05821 100644
+--- a/hw/arm/Kconfig
++++ b/hw/arm/Kconfig
+@@ -140,6 +140,13 @@ config OMAP
+     select SD
+     select SERIAL_MM
+
++config TI8168_MEDIABOARD
++    bool
++    default y
++    depends on TCG && ARM
++    select SERIAL_MM
++    select UNIMP
++
+ config REALVIEW
+     bool
+     default y
+diff --git a/hw/arm/meson.build b/hw/arm/meson.build
+index b187b94..d37a0b4 100644
+--- a/hw/arm/meson.build
++++ b/hw/arm/meson.build
+@@ -23,6 +23,16 @@ arm_common_ss.add(when: 'CONFIG_ARM_V7M', if_true: files('armv7m.c'))
+ arm_common_ss.add(when: 'CONFIG_EXYNOS4', if_true: files('exynos4210.c'))
+ arm_common_ss.add(when: 'CONFIG_DIGIC', if_true: files('digic.c'))
+ arm_common_ss.add(when: 'CONFIG_OMAP', if_true: files('omap1.c'))
++arm_common_ss.add(when: 'CONFIG_TI8168_MEDIABOARD', if_true: files(
++  'ti8168_mediaboard.c',
++  'ti8168_intc.c',
++  'ti8168_timer.c',
++  'ti8168_nand.c',
++  'ti8168_gpmc.c',
++  'ti8168_bootstrap.c',
++  'ti8168_probe_regs.c',
++  'ti8168_emac.c',
++))
+ arm_common_ss.add(when: 'CONFIG_ALLWINNER_A10', if_true: files('allwinner-a10.c', 'cubieboard.c'))
+ arm_common_ss.add(when: 'CONFIG_ALLWINNER_H3', if_true: files('allwinner-h3.c', 'orangepi.c'))
+ arm_common_ss.add(when: 'CONFIG_ALLWINNER_R40', if_true: files('allwinner-r40.c', 'bananapi_m2u.c'))
+diff --git a/hw/arm/ti8168_bootstrap.c b/hw/arm/ti8168_bootstrap.c
+new file mode 100644
+index 0000000..bd8c337
+--- /dev/null
++++ b/hw/arm/ti8168_bootstrap.c
+@@ -0,0 +1,402 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* TI8168 bootstrap-only EDMA, PCIESS, and McSPI register devices. */
++
++#include "qemu/osdep.h"
++#include "ti8168_internal.h"
++
++OBJECT_DECLARE_SIMPLE_TYPE(TI8168EDMACCBootstrapState,
++                           TI8168_EDMA_CC_BOOTSTRAP)
++OBJECT_DECLARE_SIMPLE_TYPE(TI8168PCIESSBootstrapState,
++                           TI8168_PCIESS_BOOTSTRAP)
++OBJECT_DECLARE_SIMPLE_TYPE(TI8168MCSPIBootstrapState,
++                           TI8168_MCSPI_BOOTSTRAP)
++
++enum {
++    TI8168_EDMA_CC_BOOTSTRAP_SIZE = 0x8000,
++    TI8168_PCIESS_BOOTSTRAP_SIZE = 0x4000,
++    TI8168_MCSPI_BOOTSTRAP_SIZE = 0x100,
++};
++struct TI8168EDMACCBootstrapState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    uint8_t storage[TI8168_EDMA_CC_BOOTSTRAP_SIZE];
++};
++
++static uint64_t ti8168_bootstrap_storage_read(const uint8_t *storage,
++                                               hwaddr offset, unsigned size)
++{
++    switch (size) {
++    case 1: return storage[offset];
++    case 2: return lduw_le_p(storage + offset);
++    case 4: return ldl_le_p(storage + offset);
++    default: g_assert_not_reached();
++    }
++}
++
++static void ti8168_bootstrap_storage_write(uint8_t *storage, hwaddr offset,
++                                            uint64_t value, unsigned size)
++{
++    switch (size) {
++    case 1: storage[offset] = value; return;
++    case 2: stw_le_p(storage + offset, value); return;
++    case 4: stl_le_p(storage + offset, value); return;
++    default: g_assert_not_reached();
++    }
++}
++
++static uint64_t ti8168_edma_cc_bootstrap_read(void *opaque, hwaddr offset,
++                                               unsigned size)
++{
++    TI8168EDMACCBootstrapState *s = opaque;
++
++    return ti8168_bootstrap_storage_read(s->storage, offset, size);
++}
++
++static void ti8168_edma_cc_bootstrap_write(void *opaque, hwaddr offset,
++                                            uint64_t value, unsigned size)
++{
++    TI8168EDMACCBootstrapState *s = opaque;
++
++    ti8168_bootstrap_storage_write(s->storage, offset, value, size);
++}
++
++static bool ti8168_edma_cc_bootstrap_accepts(void *opaque, hwaddr offset,
++                                              unsigned size, bool is_write,
++                                              MemTxAttrs attrs)
++{
++    return (size == 1 || size == 2 || size == 4) &&
++           !(offset & (size - 1)) &&
++           offset <= TI8168_EDMA_CC_BOOTSTRAP_SIZE - size;
++}
++
++static const MemoryRegionOps ti8168_edma_cc_bootstrap_ops = {
++    .read = ti8168_edma_cc_bootstrap_read,
++    .write = ti8168_edma_cc_bootstrap_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = {
++        .min_access_size = 1,
++        .max_access_size = 4,
++        .accepts = ti8168_edma_cc_bootstrap_accepts,
++    },
++};
++
++static void ti8168_edma_cc_bootstrap_reset(DeviceState *dev)
++{
++    TI8168EDMACCBootstrapState *s = TI8168_EDMA_CC_BOOTSTRAP(dev);
++
++    memset(s->storage, 0, sizeof(s->storage));
++}
++
++static void ti8168_edma_cc_bootstrap_realize(DeviceState *dev, Error **errp)
++{
++    TI8168EDMACCBootstrapState *s = TI8168_EDMA_CC_BOOTSTRAP(dev);
++
++    memory_region_init_io(&s->iomem, OBJECT(dev), &ti8168_edma_cc_bootstrap_ops,
++                          s, "ti8168.edma-cc-bootstrap",
++                          TI8168_EDMA_CC_BOOTSTRAP_SIZE);
++    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
++}
++
++static void ti8168_edma_cc_bootstrap_class_init(ObjectClass *klass,
++                                                 const void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    dc->realize = ti8168_edma_cc_bootstrap_realize;
++    device_class_set_legacy_reset(dc, ti8168_edma_cc_bootstrap_reset);
++}
++
++static const TypeInfo ti8168_edma_cc_bootstrap_type_info = {
++    .name = TYPE_TI8168_EDMA_CC_BOOTSTRAP,
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(TI8168EDMACCBootstrapState),
++    .class_init = ti8168_edma_cc_bootstrap_class_init,
++};
++
++/*
++ * A modeled PCIESS setup reads +0x180c and sets bit 17, then
++ * configures controller setup fields and the 32 outbound translation pairs.
++ * The config routes report only an absent device unless an explicitly selected
++ * controller setup field is selected below.  This object therefore retains
++ * setup storage, but deliberately creates no PCI bus, link, DMA, MSI,
++ * interrupt, or endpoint behaviour.
++ */
++struct TI8168PCIESSBootstrapState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    uint8_t storage[TI8168_PCIESS_BOOTSTRAP_SIZE];
++};
++
++static bool ti8168_pciess_bootstrap_range(hwaddr offset, unsigned size,
++                                          hwaddr base, unsigned length)
++{
++    return offset >= base && offset + size <= base + length;
++}
++
++static bool ti8168_pciess_bootstrap_is_storage(hwaddr offset, unsigned size)
++{
++    static const struct {
++        hwaddr offset;
++        unsigned length;
++    } setup_fields[] = {
++        { 0x004, 4 }, { 0x008, 4 }, { 0x030, 4 },
++        { 0x188, 4 }, { 0x18c, 4 },
++        { 0x100a, 2 }, { 0x1010, 4 }, { 0x1014, 4 }, { 0x101c, 2 },
++        { 0x180c, 4 },
++    };
++
++    for (size_t index = 0; index < ARRAY_SIZE(setup_fields); index++) {
++        if (ti8168_pciess_bootstrap_range(offset, size,
++                                          setup_fields[index].offset,
++                                          setup_fields[index].length)) {
++            return true;
++        }
++    }
++    return ti8168_pciess_bootstrap_range(offset, size, 0x200, 0x100);
++}
++
++static uint64_t ti8168_pciess_bootstrap_absent(unsigned size)
++{
++    switch (size) {
++    case 1:
++        return UINT8_MAX;
++    case 2:
++        return UINT16_MAX;
++    case 4:
++        return UINT32_MAX;
++    default:
++        g_assert_not_reached();
++    }
++}
++
++static uint64_t ti8168_pciess_bootstrap_read(void *opaque, hwaddr offset,
++                                              unsigned size)
++{
++    TI8168PCIESSBootstrapState *s = opaque;
++
++    if (!ti8168_pciess_bootstrap_is_storage(offset, size)) {
++        return ti8168_pciess_bootstrap_absent(size);
++    }
++    return ti8168_bootstrap_storage_read(s->storage, offset, size);
++}
++
++static void ti8168_pciess_bootstrap_write(void *opaque, hwaddr offset,
++                                           uint64_t value, unsigned size)
++{
++    TI8168PCIESSBootstrapState *s = opaque;
++
++    if (!ti8168_pciess_bootstrap_is_storage(offset, size)) {
++        return;
++    }
++    ti8168_bootstrap_storage_write(s->storage, offset, value, size);
++}
++
++static bool ti8168_pciess_bootstrap_accepts(void *opaque, hwaddr offset,
++                                             unsigned size, bool is_write,
++                                             MemTxAttrs attrs)
++{
++    return (size == 1 || size == 2 || size == 4) &&
++           !(offset & (size - 1)) &&
++           offset <= TI8168_PCIESS_BOOTSTRAP_SIZE - size;
++}
++
++static const MemoryRegionOps ti8168_pciess_bootstrap_ops = {
++    .read = ti8168_pciess_bootstrap_read,
++    .write = ti8168_pciess_bootstrap_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = {
++        .min_access_size = 1,
++        .max_access_size = 4,
++        .accepts = ti8168_pciess_bootstrap_accepts,
++    },
++};
++
++static void ti8168_pciess_bootstrap_reset(DeviceState *dev)
++{
++    TI8168PCIESSBootstrapState *s = TI8168_PCIESS_BOOTSTRAP(dev);
++
++    memset(s->storage, 0, sizeof(s->storage));
++}
++
++static void ti8168_pciess_bootstrap_realize(DeviceState *dev, Error **errp)
++{
++    TI8168PCIESSBootstrapState *s = TI8168_PCIESS_BOOTSTRAP(dev);
++
++    memory_region_init_io(&s->iomem, OBJECT(dev), &ti8168_pciess_bootstrap_ops,
++                          s, "ti8168.pciess-bootstrap",
++                          TI8168_PCIESS_BOOTSTRAP_SIZE);
++    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
++}
++
++static void ti8168_pciess_bootstrap_class_init(ObjectClass *klass,
++                                                const void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    dc->realize = ti8168_pciess_bootstrap_realize;
++    device_class_set_legacy_reset(dc, ti8168_pciess_bootstrap_reset);
++}
++
++static const TypeInfo ti8168_pciess_bootstrap_type_info = {
++    .name = TYPE_TI8168_PCIESS_BOOTSTRAP,
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(TI8168PCIESSBootstrapState),
++    .class_init = ti8168_pciess_bootstrap_class_init,
++};
++
++/*
++ * A modeled McSPI path enables its two clocks, then
++ * writes controller setup words at +0x28, +0x10, +0x20, and conditionally
++ * +0x2c.  The exact 0x100-byte resource is known, but clock-gated live reads
++ * could not recover hardware reset values.  This is therefore a no-device,
++ * writable bootstrap store for only those static accesses.  The documented
++ * reset-completion handshake is also modelled narrowly: a SYSCONFIG.SOFTRESET
++ * bit-1 write makes SYSSTATUS.RESETDONE bit 0 readable.  This is not McSPI,
++ * FIFO, DMA, interrupt, chip-select, or broader reset behaviour.
++ */
++struct TI8168MCSPIBootstrapState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    uint32_t setup[4];
++    bool resetdone;
++};
++
++static int ti8168_mcspi_bootstrap_index(hwaddr offset)
++{
++    switch (offset) {
++    case 0x10:
++        return 0;
++    case 0x20:
++        return 1;
++    case 0x28:
++        return 2;
++    case 0x2c:
++        return 3;
++    default:
++        return -1;
++    }
++}
++
++static uint64_t ti8168_mcspi_bootstrap_read(void *opaque, hwaddr offset,
++                                             unsigned size)
++{
++    TI8168MCSPIBootstrapState *s = opaque;
++    int index = ti8168_mcspi_bootstrap_index(offset);
++
++    if (offset == 0x14) {
++        g_assert(size == 4);
++        return s->resetdone;
++    }
++    g_assert(size == 4 && index >= 0);
++    return s->setup[index];
++}
++
++static void ti8168_mcspi_bootstrap_write(void *opaque, hwaddr offset,
++                                         uint64_t value, unsigned size)
++{
++    TI8168MCSPIBootstrapState *s = opaque;
++    int index = ti8168_mcspi_bootstrap_index(offset);
++
++    g_assert(size == 4 && index >= 0);
++    if (offset == 0x10 && (value & 2)) {
++        /* TI McSPI: software requests reset, then polls RESETDONE. */
++        s->resetdone = true;
++    }
++    s->setup[index] = value;
++}
++
++static bool ti8168_mcspi_bootstrap_accepts(void *opaque, hwaddr offset,
++                                           unsigned size, bool is_write,
++                                           MemTxAttrs attrs)
++{
++    if (size != 4 || (offset & 3)) {
++        return false;
++    }
++    if (offset == 0x14) {
++        return !is_write;
++    }
++    return ti8168_mcspi_bootstrap_index(offset) >= 0;
++}
++
++static const MemoryRegionOps ti8168_mcspi_bootstrap_ops = {
++    .read = ti8168_mcspi_bootstrap_read,
++    .write = ti8168_mcspi_bootstrap_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = {
++        .min_access_size = 1,
++        .max_access_size = 4,
++        .accepts = ti8168_mcspi_bootstrap_accepts,
++    },
++};
++
++static void ti8168_mcspi_bootstrap_reset(DeviceState *dev)
++{
++    TI8168MCSPIBootstrapState *s = TI8168_MCSPI_BOOTSTRAP(dev);
++
++    /* Deterministic synthetic model storage. */
++    memset(s->setup, 0, sizeof(s->setup));
++    s->resetdone = false;
++}
++
++static void ti8168_mcspi_bootstrap_realize(DeviceState *dev, Error **errp)
++{
++    TI8168MCSPIBootstrapState *s = TI8168_MCSPI_BOOTSTRAP(dev);
++
++    memory_region_init_io(&s->iomem, OBJECT(dev), &ti8168_mcspi_bootstrap_ops,
++                          s, "ti8168.mcspi-bootstrap",
++                          TI8168_MCSPI_BOOTSTRAP_SIZE);
++    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
++}
++
++static void ti8168_mcspi_bootstrap_class_init(ObjectClass *klass,
++                                               const void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    dc->realize = ti8168_mcspi_bootstrap_realize;
++    device_class_set_legacy_reset(dc, ti8168_mcspi_bootstrap_reset);
++}
++
++static const TypeInfo ti8168_mcspi_bootstrap_type_info = {
++    .name = TYPE_TI8168_MCSPI_BOOTSTRAP,
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(TI8168MCSPIBootstrapState),
++    .class_init = ti8168_mcspi_bootstrap_class_init,
++};
++
++static void ti8168_bootstrap_create(Object *parent, const char *name,
++                                    const char *type, hwaddr base)
++{
++    DeviceState *dev = qdev_new(type);
++
++    object_property_add_child(parent, name, OBJECT(dev));
++    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
++    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
++}
++
++void ti8168_edma_cc_bootstrap_create(Object *parent, hwaddr base)
++{
++    ti8168_bootstrap_create(parent, "edma-cc-bootstrap",
++                            TYPE_TI8168_EDMA_CC_BOOTSTRAP, base);
++}
++
++void ti8168_pciess_bootstrap_create(Object *parent, hwaddr base)
++{
++    ti8168_bootstrap_create(parent, "pciess-bootstrap",
++                            TYPE_TI8168_PCIESS_BOOTSTRAP, base);
++}
++
++void ti8168_mcspi_bootstrap_create(Object *parent, hwaddr base)
++{
++    ti8168_bootstrap_create(parent, "mcspi-bootstrap",
++                            TYPE_TI8168_MCSPI_BOOTSTRAP, base);
++}
++
++static void ti8168_bootstrap_register_types(void)
++{
++    type_register_static(&ti8168_edma_cc_bootstrap_type_info);
++    type_register_static(&ti8168_pciess_bootstrap_type_info);
++    type_register_static(&ti8168_mcspi_bootstrap_type_info);
++}
++
++type_init(ti8168_bootstrap_register_types)
+diff --git a/hw/arm/ti8168_emac.c b/hw/arm/ti8168_emac.c
+new file mode 100644
+index 0000000..4720b37
+--- /dev/null
++++ b/hw/arm/ti8168_emac.c
+@@ -0,0 +1,528 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/*
++ * Partial TI81xx DaVinci EMAC, CPDMA, and MDIO model.
++ * The two PHY slots use synthetic addresses 0 and 1.
++ */
++
++#include "qemu/osdep.h"
++#include "ti8168_internal.h"
++
++#define EMAC_SIZE                       0x4000
++#define EMAC_REGS                       0x1000
++#define MDIO_REGS                       0x0800
++#define MDIO_SIZE                       0x0100
++#define EMAC_CTRL_CMRXINTEN              0x0914
++#define EMAC_CTRL_CMTXINTEN              0x0918
++#define CPDMA_CTRL_RAM                  0x2000
++#define CPDMA_CTRL_RAM_SIZE             0x2000
++#define TI8168_DMA_DIRECT_BASE          0x41000000U
++#define TI8168_DMA_DIRECT_END           0x61000000U
++#define TI8168_DMA_QEMU_OFFSET          0x3f000000U
++#define TI8168_EMAC_PHY_ADDR_ETH0       0
++#define TI8168_EMAC_PHY_ADDR_ETH1       1
++#define TI8168_EMAC_PHY_COUNT            2
++#define TI8168_EMAC_PHY_ALIVE            \
++    (BIT(TI8168_EMAC_PHY_ADDR_ETH0) | BIT(TI8168_EMAC_PHY_ADDR_ETH1))
++
++#define MDIO_VERSION                    0x000
++#define MDIO_CONTROL                    0x004
++#define MDIO_ALIVE                      0x008
++#define MDIO_LINK                       0x00c
++#define MDIO_USERINTRAW                 0x020
++#define MDIO_USERINTMASKED              0x024
++#define MDIO_USERINTMASKSET             0x028
++#define MDIO_USERINTMASKCLEAR           0x02c
++#define MDIO_USERACCESS0                0x080
++#define MDIO_CONTROL_IDLE               BIT(31)
++#define MDIO_CONTROL_ENABLE             BIT(30)
++#define MDIO_ACCESS_GO                  BIT(31)
++#define MDIO_ACCESS_WRITE               BIT(30)
++#define MDIO_ACCESS_ACK                 BIT(29)
++
++#define CPDMA_TXIDVER                   0x000
++#define CPDMA_TXCONTROL                 0x004
++#define CPDMA_RXIDVER                   0x010
++#define CPDMA_RXCONTROL                 0x014
++#define CPDMA_SOFTRESET                 0x01c
++#define CPDMA_DMACONTROL                0x020
++#define CPDMA_DMASTATUS                 0x024
++#define CPDMA_RXBUFFOFS                 0x028
++#define CPDMA_EMCONTROL                 0x02c
++#define CPDMA_TXINTSTATRAW              0x080
++#define CPDMA_TXINTSTATMASKED           0x084
++#define CPDMA_TXINTMASKSET              0x088
++#define CPDMA_TXINTMASKCLEAR            0x08c
++#define CPDMA_MACINVECTOR               0x090
++#define CPDMA_MACEOIVECTOR              0x094
++#define CPDMA_RXINTSTATRAW              0x0a0
++#define CPDMA_RXINTSTATMASKED           0x0a4
++#define CPDMA_RXINTMASKSET              0x0a8
++#define CPDMA_RXINTMASKCLEAR            0x0ac
++#define CPDMA_DMAINTSTATRAW             0x0b0
++#define CPDMA_DMAINTSTATMASKED          0x0b4
++#define CPDMA_DMAINTMASKSET             0x0b8
++#define CPDMA_DMAINTMASKCLEAR           0x0bc
++#define EMAC_RXMBPENABLE                0x100
++#define EMAC_RXUNICASTSET               0x104
++#define EMAC_RXUNICASTCLEAR             0x108
++#define EMAC_RXMAXLEN                   0x10c
++#define EMAC_RXBUFFEROFFSET             0x110
++#define EMAC_MACCONTROL                 0x160
++#define EMAC_MACSTATUS                  0x164
++#define EMAC_EMCONTROL                  0x168
++#define EMAC_FIFOCONTROL                0x16c
++#define EMAC_MACCONFIG                  0x170
++#define EMAC_SOFTRESET                  0x174
++#define EMAC_MACSRCADDRLO               0x1d0
++#define EMAC_MACSRCADDRHI               0x1d4
++#define EMAC_MACADDRLO                  0x500
++#define EMAC_MACADDRHI                  0x504
++#define EMAC_MACINDEX                   0x508
++#define CPDMA_TXHDP                     0x600
++#define CPDMA_RXHDP                     0x620
++#define CPDMA_TXCP                      0x640
++#define CPDMA_RXCP                      0x660
++
++#define CPDMA_SOP                       BIT(31)
++#define CPDMA_EOP                       BIT(30)
++#define CPDMA_OWNER                     BIT(29)
++#define CPDMA_EOQ                       BIT(28)
++#define CPDMA_OVERSIZE                  BIT(24)
++#define CPDMA_DESC_LEN                  0xffff
++#define CPDMA_HOST_ERROR                BIT(1)
++#define RXMBP_ERROR_FRAMES              BIT(22)
++#define RXMBP_PROMISC                   BIT(21)
++#define RXMBP_BROADCAST                 BIT(13)
++#define RXMBP_MULTICAST                 BIT(5)
++#define EMAC_DEFAULT_RX_MAX_LEN         1518
++#define EMAC_MAX_FRAME                  2048
++
++typedef struct TI8168CPDMADesc {
++    uint32_t next;
++    uint32_t buffer;
++    uint32_t buflen;
++    uint32_t mode;
++} QEMU_PACKED TI8168CPDMADesc;
++
++typedef struct TI8168EMACState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    MemoryRegion regs;
++    MemoryRegion ctrl_ram;
++    qemu_irq rx_thresh_irq;
++    qemu_irq rx_irq;
++    qemu_irq tx_irq;
++    qemu_irq misc_irq;
++    NICConf conf;
++    NICState *nic;
++    QEMUBH *tx_bh;
++    uint32_t mdio_control;
++    uint32_t mdio_access;
++    uint32_t mdio_int_raw;
++    uint32_t mdio_int_mask;
++    uint16_t phy[TI8168_EMAC_PHY_COUNT][32];
++    uint32_t tx_control;
++    uint32_t rx_control;
++    uint32_t dma_control;
++    uint32_t rx_buffer_offset;
++    uint32_t rx_mbp_enable;
++    uint32_t rx_unicast;
++    uint32_t rx_max_len;
++    uint32_t mac_control;
++    uint32_t mac_src_addr_lo;
++    uint32_t mac_src_addr_hi;
++    uint32_t mac_addr_lo[8];
++    uint32_t mac_addr_hi[8];
++    uint32_t mac_index;
++    uint32_t tx_hdp;
++    uint32_t rx_hdp;
++    uint32_t tx_cp;
++    uint32_t rx_cp;
++    uint32_t tx_raw;
++    uint32_t tx_mask;
++    uint32_t rx_raw;
++    uint32_t rx_mask;
++    uint32_t dma_raw;
++    uint32_t dma_mask;
++    uint32_t rx_int_enable;
++    uint32_t tx_int_enable;
++} TI8168EMACState;
++
++#define TI8168_EMAC(obj) OBJECT_CHECK(TI8168EMACState, (obj), TYPE_TI8168_EMAC)
++
++static void ti8168_emac_update_irqs(TI8168EMACState *s)
++{
++    qemu_set_irq(s->rx_thresh_irq, 0);
++    /*
++     * TI8168 routes the v0 CPDMA RX and TX events to separate SoC IRQ
++     * inputs.  The modeled interrupt registers enable those inputs through
++     * platform-style callbacks, rather than CPDMA's v1 mask
++     * registers.  Do not suppress a pending v0 event when those optional
++     * diagnostic masks remain clear.
++     */
++    qemu_set_irq(s->rx_irq, !!(s->rx_int_enable & s->rx_raw & BIT(0)));
++    qemu_set_irq(s->tx_irq, !!(s->tx_int_enable & s->tx_raw & BIT(0)));
++    qemu_set_irq(s->misc_irq, !!s->dma_raw);
++}
++
++static int ti8168_emac_phy_index(unsigned phy)
++{
++    switch (phy) {
++    case TI8168_EMAC_PHY_ADDR_ETH0:
++        return 0;
++    case TI8168_EMAC_PHY_ADDR_ETH1:
++        return 1;
++    default:
++        return -1;
++    }
++}
++
++static void ti8168_emac_seed_mac(TI8168EMACState *s)
++{
++    const uint8_t *mac = s->conf.macaddr.a;
++    uint32_t lo = mac[0] | (mac[1] << 8) | (mac[2] << 16) | (mac[3] << 24);
++    uint32_t hi = mac[4] | (mac[5] << 8);
++
++    /* The driver obtains its permanent address from MACADDR[0]. */
++    s->mac_addr_lo[0] = lo;
++    s->mac_addr_hi[0] = hi;
++    s->mac_src_addr_hi = lo;
++    s->mac_src_addr_lo = hi;
++}
++
++static void ti8168_emac_clear_dma(TI8168EMACState *s)
++{
++    s->tx_control = 0;
++    s->rx_control = 0;
++    s->dma_control = 0;
++    s->rx_buffer_offset = 0;
++    s->tx_hdp = 0;
++    s->rx_hdp = 0;
++    s->tx_cp = 0;
++    s->rx_cp = 0;
++    s->tx_raw = 0;
++    s->tx_mask = 0;
++    s->rx_raw = 0;
++    s->rx_mask = 0;
++    s->dma_raw = 0;
++    s->dma_mask = 0;
++}
++
++static void ti8168_emac_reset_state(TI8168EMACState *s)
++{
++    unsigned i;
++
++    memset(s->phy, 0, sizeof(s->phy));
++    for (i = 0; i < TI8168_EMAC_PHY_COUNT; i++) {
++        s->phy[i][0] = 0x1140;
++        s->phy[i][1] = 0x786d;
++        s->phy[i][2] = 0x2000;
++        s->phy[i][3] = 0x5c90;
++        s->phy[i][4] = 0x01e1;
++        s->phy[i][5] = 0x01e1;
++        s->phy[i][9] = 0x0200;
++    }
++    s->mdio_control = MDIO_CONTROL_IDLE;
++    s->mdio_access = 0;
++    s->mdio_int_raw = 0;
++    s->mdio_int_mask = 0;
++    ti8168_emac_clear_dma(s);
++    s->rx_mbp_enable = 0;
++    s->rx_unicast = 0;
++    s->rx_max_len = EMAC_DEFAULT_RX_MAX_LEN;
++    s->mac_control = 0;
++    s->mac_src_addr_lo = 0;
++    s->mac_src_addr_hi = 0;
++    memset(s->mac_addr_lo, 0, sizeof(s->mac_addr_lo));
++    memset(s->mac_addr_hi, 0, sizeof(s->mac_addr_hi));
++    ti8168_emac_seed_mac(s);
++    s->mac_index = 0;
++    s->rx_int_enable = 0;
++    s->tx_int_enable = 0;
++    ti8168_emac_update_irqs(s);
++}
++
++static void ti8168_emac_reset(DeviceState *dev)
++{
++    ti8168_emac_reset_state(TI8168_EMAC(dev));
++}
++
++static void ti8168_emac_cpdma_reset(TI8168EMACState *s)
++{
++    ti8168_emac_clear_dma(s);
++    ti8168_emac_update_irqs(s);
++}
++
++static bool ti8168_emac_read_desc(dma_addr_t addr, TI8168CPDMADesc *desc)
++{
++    TI8168CPDMADesc le_desc;
++
++    if (dma_memory_read(&address_space_memory, addr, &le_desc, sizeof(le_desc),
++                        MEMTXATTRS_UNSPECIFIED)) {
++        return false;
++    }
++    desc->next = le32_to_cpu(le_desc.next);
++    desc->buffer = le32_to_cpu(le_desc.buffer);
++    desc->buflen = le32_to_cpu(le_desc.buflen);
++    desc->mode = le32_to_cpu(le_desc.mode);
++    return true;
++}
++
++/* The TI81xx kernel supplies CPDMA buffer addresses in its direct-map view. */
++static dma_addr_t ti8168_emac_buffer_addr(uint32_t addr)
++{
++    if (addr >= TI8168_DMA_DIRECT_BASE && addr < TI8168_DMA_DIRECT_END) {
++        return (dma_addr_t)addr + TI8168_DMA_QEMU_OFFSET;
++    }
++    return addr;
++}
++
++static bool ti8168_emac_write_desc(dma_addr_t addr, const TI8168CPDMADesc *desc)
++{
++    TI8168CPDMADesc le_desc = {
++        .next = cpu_to_le32(desc->next),
++        .buffer = cpu_to_le32(desc->buffer),
++        .buflen = cpu_to_le32(desc->buflen),
++        .mode = cpu_to_le32(desc->mode),
++    };
++
++    return !dma_memory_write(&address_space_memory, addr, &le_desc,
++                             sizeof(le_desc), MEMTXATTRS_UNSPECIFIED);
++}
++
++static void ti8168_emac_host_error(TI8168EMACState *s, const char *what)
++{
++    qemu_log_mask(LOG_GUEST_ERROR, "ti8168-emac: %s\n", what);
++    s->dma_raw |= CPDMA_HOST_ERROR;
++    ti8168_emac_update_irqs(s);
++}
++
++static void ti8168_emac_schedule_tx(TI8168EMACState *s);
++
++static void ti8168_emac_process_tx(void *opaque)
++{
++    TI8168EMACState *s = opaque;
++    TI8168CPDMADesc desc;
++    uint8_t *frame;
++    uint32_t length;
++    uint32_t addr = s->tx_hdp;
++
++    if (!(s->tx_control & 1) || !addr) {
++        return;
++    }
++    if (!ti8168_emac_read_desc(addr, &desc)) {
++        ti8168_emac_host_error(s, "cannot read TX descriptor");
++        return;
++    }
++    length = desc.buflen & CPDMA_DESC_LEN;
++    if (!(desc.mode & CPDMA_OWNER) || !desc.buffer || !length ||
++        length > EMAC_MAX_FRAME) {
++        ti8168_emac_host_error(s, "unsupported TX descriptor");
++        return;
++    }
++    frame = g_malloc(length);
++    if (dma_memory_read(&address_space_memory,
++                        ti8168_emac_buffer_addr(desc.buffer), frame, length,
++                        MEMTXATTRS_UNSPECIFIED)) {
++        g_free(frame);
++        ti8168_emac_host_error(s, "cannot read TX frame");
++        return;
++    }
++    qemu_send_packet(qemu_get_queue(s->nic), frame, length);
++    g_free(frame);
++    desc.mode &= ~(CPDMA_OWNER | CPDMA_EOQ);
++    if (!desc.next) {
++        desc.mode |= CPDMA_EOQ;
++    }
++    if (!ti8168_emac_write_desc(addr, &desc)) {
++        ti8168_emac_host_error(s, "cannot complete TX descriptor");
++        return;
++    }
++    s->tx_hdp = desc.next;
++    s->tx_cp = addr;
++    s->tx_raw |= BIT(0);
++    ti8168_emac_update_irqs(s);
++    if (s->tx_hdp) {
++        ti8168_emac_schedule_tx(s);
++    }
++}
++
++static void ti8168_emac_schedule_tx(TI8168EMACState *s)
++{
++    qemu_bh_schedule(s->tx_bh);
++}
++
++static void ti8168_emac_mac(const TI8168EMACState *s, uint8_t mac[ETH_ALEN])
++{
++    mac[0] = s->mac_src_addr_hi;
++    mac[1] = s->mac_src_addr_hi >> 8;
++    mac[2] = s->mac_src_addr_hi >> 16;
++    mac[3] = s->mac_src_addr_hi >> 24;
++    mac[4] = s->mac_src_addr_lo;
++    mac[5] = s->mac_src_addr_lo >> 8;
++}
++
++static bool ti8168_emac_accept(const TI8168EMACState *s, const uint8_t *buf,
++                                size_t size)
++{
++    uint8_t mac[ETH_ALEN];
++
++    if (size < ETH_ALEN || !s->rx_mbp_enable) {
++        return false;
++    }
++    if (s->rx_mbp_enable & RXMBP_PROMISC) {
++        return true;
++    }
++    if (!memcmp(buf, "\377\377\377\377\377\377", ETH_ALEN)) {
++        return s->rx_mbp_enable & RXMBP_BROADCAST;
++    }
++    if (buf[0] & 1) {
++        return s->rx_mbp_enable & RXMBP_MULTICAST;
++    }
++    ti8168_emac_mac(s, mac);
++    return (s->rx_unicast & BIT(0)) && !memcmp(buf, mac, ETH_ALEN);
++}
++
++static bool ti8168_emac_can_receive(NetClientState *nc)
++{
++    TI8168EMACState *s = qemu_get_nic_opaque(nc);
++    TI8168CPDMADesc desc;
++
++    return (s->rx_control & 1) && s->rx_hdp &&
++           ti8168_emac_read_desc(s->rx_hdp, &desc) &&
++           (desc.mode & CPDMA_OWNER) && desc.buffer &&
++           (desc.buflen & CPDMA_DESC_LEN);
++}
++
++static ssize_t ti8168_emac_receive(NetClientState *nc, const uint8_t *buf,
++                                    size_t size)
++{
++    TI8168EMACState *s = qemu_get_nic_opaque(nc);
++    TI8168CPDMADesc desc;
++    uint32_t addr = s->rx_hdp;
++    uint32_t length;
++    bool oversized = size > s->rx_max_len;
++
++    if (!ti8168_emac_can_receive(nc) || !ti8168_emac_accept(s, buf, size) ||
++        (oversized && !(s->rx_mbp_enable & RXMBP_ERROR_FRAMES))) {
++        return size;
++    }
++    if (!ti8168_emac_read_desc(addr, &desc)) {
++        ti8168_emac_host_error(s, "cannot read RX descriptor");
++        return -1;
++    }
++    length = MIN(MIN(size, s->rx_max_len),
++                 desc.buflen & CPDMA_DESC_LEN);
++    if (dma_memory_write(&address_space_memory,
++                         ti8168_emac_buffer_addr(desc.buffer +
++                                                 s->rx_buffer_offset),
++                         buf, length, MEMTXATTRS_UNSPECIFIED)) {
++        ti8168_emac_host_error(s, "cannot write RX frame");
++        return -1;
++    }
++    desc.mode = (desc.mode & ~(CPDMA_OWNER | CPDMA_EOQ | CPDMA_OVERSIZE |
++                               CPDMA_DESC_LEN)) |
++                CPDMA_SOP | CPDMA_EOP | length;
++    if (oversized) {
++        desc.mode |= CPDMA_OVERSIZE;
++    }
++    if (!desc.next) {
++        desc.mode |= CPDMA_EOQ;
++    }
++    if (!ti8168_emac_write_desc(addr, &desc)) {
++        ti8168_emac_host_error(s, "cannot complete RX descriptor");
++        return -1;
++    }
++    s->rx_hdp = desc.next;
++    s->rx_cp = addr;
++    s->rx_raw |= BIT(0);
++    ti8168_emac_update_irqs(s);
++    return size;
++}
++
++#include "ti8168_emac_regs.inc"
++
++static NetClientInfo ti8168_emac_net_info = {
++    .type = NET_CLIENT_DRIVER_NIC,
++    .size = sizeof(NICState),
++    .can_receive = ti8168_emac_can_receive,
++    .receive = ti8168_emac_receive,
++};
++
++static void ti8168_emac_realize(DeviceState *dev, Error **errp)
++{
++    TI8168EMACState *s = TI8168_EMAC(dev);
++    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
++
++    memory_region_init(&s->iomem, OBJECT(dev), TYPE_TI8168_EMAC, EMAC_SIZE);
++    memory_region_init_io(&s->regs, OBJECT(dev), &ti8168_emac_ops, s,
++                          TYPE_TI8168_EMAC "-regs", CPDMA_CTRL_RAM);
++    memory_region_init_ram(&s->ctrl_ram, OBJECT(dev), TYPE_TI8168_EMAC
++                           "-ctrl-ram", CPDMA_CTRL_RAM_SIZE, &error_fatal);
++    memory_region_add_subregion(&s->iomem, 0, &s->regs);
++    memory_region_add_subregion(&s->iomem, CPDMA_CTRL_RAM, &s->ctrl_ram);
++    sysbus_init_mmio(sbd, &s->iomem);
++    sysbus_init_irq(sbd, &s->rx_thresh_irq);
++    sysbus_init_irq(sbd, &s->rx_irq);
++    sysbus_init_irq(sbd, &s->tx_irq);
++    sysbus_init_irq(sbd, &s->misc_irq);
++    qemu_macaddr_default_if_unset(&s->conf.macaddr);
++    s->tx_bh = qemu_bh_new(ti8168_emac_process_tx, s);
++    s->nic = qemu_new_nic(&ti8168_emac_net_info, &s->conf, TYPE_TI8168_EMAC,
++                          dev->id, &dev->mem_reentrancy_guard, s);
++    qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
++}
++
++static void ti8168_emac_unrealize(DeviceState *dev)
++{
++    TI8168EMACState *s = TI8168_EMAC(dev);
++
++    qemu_bh_delete(s->tx_bh);
++    qemu_del_nic(s->nic);
++}
++
++static const Property ti8168_emac_properties[] = {
++    DEFINE_NIC_PROPERTIES(TI8168EMACState, conf),
++};
++
++static void ti8168_emac_class_init(ObjectClass *klass, const void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
++    dc->desc = "TI81xx DaVinci EMAC/CPDMA/MDIO";
++    dc->realize = ti8168_emac_realize;
++    dc->unrealize = ti8168_emac_unrealize;
++    device_class_set_legacy_reset(dc, ti8168_emac_reset);
++    device_class_set_props(dc, ti8168_emac_properties);
++}
++
++static const TypeInfo ti8168_emac_type_info = {
++    .name = TYPE_TI8168_EMAC,
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(TI8168EMACState),
++    .class_init = ti8168_emac_class_init,
++};
++
++void ti8168_emac_create(Object *parent, const char *child_name, hwaddr base,
++                        qemu_irq rx_thresh_irq, qemu_irq rx_irq,
++                        qemu_irq tx_irq, qemu_irq misc_irq)
++{
++    DeviceState *dev = qdev_new(TYPE_TI8168_EMAC);
++
++    object_property_add_child(parent, child_name, OBJECT(dev));
++    qemu_configure_nic_device(dev, true, NULL);
++    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
++    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
++    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, rx_thresh_irq);
++    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 1, rx_irq);
++    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 2, tx_irq);
++    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 3, misc_irq);
++}
++
++static void ti8168_emac_register_types(void)
++{
++    type_register_static(&ti8168_emac_type_info);
++}
++
++type_init(ti8168_emac_register_types)
+diff --git a/hw/arm/ti8168_emac_regs.inc b/hw/arm/ti8168_emac_regs.inc
+new file mode 100644
+index 0000000..7225ac1
+--- /dev/null
++++ b/hw/arm/ti8168_emac_regs.inc
+@@ -0,0 +1,285 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++static void ti8168_emac_mdio_access(TI8168EMACState *s, uint32_t value)
++{
++    /*
++     * A modeled MDIO callback encodes its
++     * phy_id argument in bits 16..20 and its register argument in
++     * bits 21..25.  Preserve that guest-visible TI81xx layout.
++     */
++    unsigned phy = (value >> 16) & 0x1f;
++    unsigned reg = (value >> 21) & 0x1f;
++    int phy_index = ti8168_emac_phy_index(phy);
++
++    s->mdio_access = value & ~(MDIO_ACCESS_GO | MDIO_ACCESS_ACK);
++    if (phy_index >= 0) {
++        if (value & MDIO_ACCESS_WRITE) {
++            s->phy[phy_index][reg] = value;
++            if (reg == 0 && (s->phy[phy_index][reg] & BIT(15))) {
++                s->phy[phy_index][reg] &= ~BIT(15);
++            }
++        }
++        s->mdio_access |= MDIO_ACCESS_ACK | s->phy[phy_index][reg];
++    } else {
++        s->mdio_access |= 0xffff;
++    }
++}
++
++static uint64_t ti8168_emac_mdio_read(TI8168EMACState *s, hwaddr offset)
++{
++    switch (offset) {
++    case MDIO_VERSION: return 1;
++    case MDIO_CONTROL: return s->mdio_control | MDIO_CONTROL_IDLE;
++    case MDIO_ALIVE:
++    case MDIO_LINK: return TI8168_EMAC_PHY_ALIVE;
++    case MDIO_USERINTRAW: return s->mdio_int_raw;
++    case MDIO_USERINTMASKED: return s->mdio_int_raw & s->mdio_int_mask;
++    case MDIO_USERINTMASKSET:
++    case MDIO_USERINTMASKCLEAR: return s->mdio_int_mask;
++    case MDIO_USERACCESS0: return s->mdio_access;
++    default: return 0;
++    }
++}
++
++static void ti8168_emac_mdio_write(TI8168EMACState *s, hwaddr offset,
++                                   uint32_t value)
++{
++    switch (offset) {
++    case MDIO_CONTROL:
++        s->mdio_control = value & (MDIO_CONTROL_ENABLE | 0xffff);
++        break;
++    case MDIO_USERINTMASKSET:
++        s->mdio_int_mask |= value;
++        break;
++    case MDIO_USERINTMASKCLEAR:
++        s->mdio_int_mask &= ~value;
++        s->mdio_int_raw &= ~value;
++        break;
++    case MDIO_USERACCESS0:
++        if (value & MDIO_ACCESS_GO) {
++            ti8168_emac_mdio_access(s, value);
++        }
++        break;
++    default:
++        break;
++    }
++    ti8168_emac_update_irqs(s);
++}
++
++static bool ti8168_emac_read_control(TI8168EMACState *s, hwaddr offset,
++                                    uint64_t *value)
++{
++    switch (offset) {
++    case CPDMA_TXIDVER:
++    case CPDMA_RXIDVER: *value = 0x100; return true;
++    case CPDMA_TXCONTROL: *value = s->tx_control; return true;
++    case CPDMA_RXCONTROL: *value = s->rx_control; return true;
++    case CPDMA_SOFTRESET:
++    case EMAC_SOFTRESET: *value = 0; return true;
++    case CPDMA_DMACONTROL: *value = s->dma_control; return true;
++    case CPDMA_DMASTATUS: *value = 0; return true;
++    case CPDMA_RXBUFFOFS:
++    case EMAC_RXBUFFEROFFSET: *value = s->rx_buffer_offset; return true;
++    default: return false;
++    }
++}
++
++static bool ti8168_emac_read_mac(TI8168EMACState *s, hwaddr offset,
++                                 uint64_t *value)
++{
++    switch (offset) {
++    case EMAC_RXMBPENABLE: *value = s->rx_mbp_enable; return true;
++    case EMAC_RXUNICASTSET: *value = s->rx_unicast; return true;
++    case EMAC_RXUNICASTCLEAR: *value = ~s->rx_unicast; return true;
++    case EMAC_RXMAXLEN: *value = s->rx_max_len; return true;
++    case EMAC_MACCONTROL: *value = s->mac_control; return true;
++    case EMAC_MACSTATUS: *value = 0; return true;
++    case EMAC_MACSRCADDRLO: *value = s->mac_src_addr_lo; return true;
++    case EMAC_MACSRCADDRHI: *value = s->mac_src_addr_hi; return true;
++    case EMAC_MACADDRLO: *value = s->mac_addr_lo[s->mac_index & 7]; return true;
++    case EMAC_MACADDRHI: *value = s->mac_addr_hi[s->mac_index & 7]; return true;
++    case EMAC_MACINDEX: *value = s->mac_index; return true;
++    default: return false;
++    }
++}
++
++static bool ti8168_emac_read_interrupt(TI8168EMACState *s, hwaddr offset,
++                                       uint64_t *value)
++{
++    switch (offset) {
++    case CPDMA_TXINTSTATRAW: *value = s->tx_raw; return true;
++    case CPDMA_TXINTSTATMASKED: *value = s->tx_raw & s->tx_mask; return true;
++    case CPDMA_TXINTMASKSET:
++    case CPDMA_TXINTMASKCLEAR: *value = s->tx_mask; return true;
++    case CPDMA_RXINTSTATRAW: *value = s->rx_raw; return true;
++    case CPDMA_RXINTSTATMASKED: *value = s->rx_raw & s->rx_mask; return true;
++    case CPDMA_RXINTMASKSET:
++    case CPDMA_RXINTMASKCLEAR: *value = s->rx_mask; return true;
++    default: return false;
++    }
++}
++
++static bool ti8168_emac_read_completion(TI8168EMACState *s, hwaddr offset,
++                                        uint64_t *value)
++{
++    switch (offset) {
++    case CPDMA_DMAINTSTATRAW: *value = s->dma_raw; return true;
++    case CPDMA_DMAINTSTATMASKED: *value = s->dma_raw & s->dma_mask; return true;
++    case CPDMA_DMAINTMASKSET:
++    case CPDMA_DMAINTMASKCLEAR: *value = s->dma_mask; return true;
++    case CPDMA_MACINVECTOR:
++        /* Synthetic compatibility value; no board version claim. */
++        *value = (s->rx_raw ? BIT(0) : 0) |
++                 (s->tx_raw ? BIT(16) : 0) |
++                 (s->dma_raw ? BIT(26) : 0);
++        return true;
++    case CPDMA_TXHDP: *value = s->tx_hdp; return true;
++    case CPDMA_RXHDP: *value = s->rx_hdp; return true;
++    case CPDMA_TXCP: *value = s->tx_cp; return true;
++    case CPDMA_RXCP: *value = s->rx_cp; return true;
++    default: return false;
++    }
++}
++
++static uint64_t ti8168_emac_cpdma_read(TI8168EMACState *s, hwaddr offset)
++{
++    uint64_t value;
++
++    if (ti8168_emac_read_control(s, offset, &value) ||
++        ti8168_emac_read_mac(s, offset, &value) ||
++        ti8168_emac_read_interrupt(s, offset, &value) ||
++        ti8168_emac_read_completion(s, offset, &value)) {
++        return value;
++    }
++    return 0;
++}
++
++static bool ti8168_emac_write_control(TI8168EMACState *s, hwaddr offset,
++                                      uint32_t value)
++{
++    switch (offset) {
++    case CPDMA_SOFTRESET:
++        if (value & 1) {
++            ti8168_emac_cpdma_reset(s);
++        }
++        return true;
++    case EMAC_SOFTRESET:
++        if (value & 1) {
++            ti8168_emac_reset_state(s);
++        }
++        return true;
++    case CPDMA_TXCONTROL: s->tx_control = value & 1; ti8168_emac_schedule_tx(s); return true;
++    case CPDMA_RXCONTROL: s->rx_control = value & 1; return true;
++    case CPDMA_DMACONTROL: s->dma_control = value; return true;
++    case CPDMA_RXBUFFOFS:
++    case EMAC_RXBUFFEROFFSET: s->rx_buffer_offset = value & CPDMA_DESC_LEN; return true;
++    default: return false;
++    }
++}
++
++static bool ti8168_emac_write_interrupt(TI8168EMACState *s, hwaddr offset,
++                                        uint32_t value)
++{
++    switch (offset) {
++    case CPDMA_TXINTMASKSET: s->tx_mask |= value; return true;
++    case CPDMA_TXINTMASKCLEAR: s->tx_mask &= ~value; return true;
++    case CPDMA_RXINTMASKSET: s->rx_mask |= value; return true;
++    case CPDMA_RXINTMASKCLEAR: s->rx_mask &= ~value; return true;
++    case CPDMA_DMAINTMASKSET: s->dma_mask |= value; return true;
++    case CPDMA_DMAINTMASKCLEAR: s->dma_mask &= ~value; return true;
++    default: return false;
++    }
++}
++
++static bool ti8168_emac_write_mac(TI8168EMACState *s, hwaddr offset,
++                                  uint32_t value)
++{
++    switch (offset) {
++    case EMAC_RXMBPENABLE: s->rx_mbp_enable = value; return true;
++    case EMAC_RXUNICASTSET: s->rx_unicast |= value; return true;
++    case EMAC_RXUNICASTCLEAR: s->rx_unicast &= ~value; return true;
++    case EMAC_RXMAXLEN: s->rx_max_len = value & CPDMA_DESC_LEN; return true;
++    case EMAC_MACCONTROL: s->mac_control = value; return true;
++    case EMAC_MACSRCADDRLO: s->mac_src_addr_lo = value; return true;
++    case EMAC_MACSRCADDRHI: s->mac_src_addr_hi = value; return true;
++    case EMAC_MACINDEX: s->mac_index = value & 7; return true;
++    case EMAC_MACADDRLO: s->mac_addr_lo[s->mac_index & 7] = value; return true;
++    case EMAC_MACADDRHI: s->mac_addr_hi[s->mac_index & 7] = value; return true;
++    default: return false;
++    }
++}
++
++static bool ti8168_emac_write_completion(TI8168EMACState *s, hwaddr offset,
++                                         uint32_t value)
++{
++    switch (offset) {
++    case CPDMA_TXHDP: s->tx_hdp = value & ~3U; ti8168_emac_schedule_tx(s); return true;
++    case CPDMA_RXHDP: s->rx_hdp = value & ~3U; return true;
++    case CPDMA_TXCP:
++        /* One modelled TX channel has one pending completion event. */
++        s->tx_raw &= ~BIT(0);
++        return true;
++    case CPDMA_RXCP:
++        /* One modelled RX channel has one pending completion event. */
++        s->rx_raw &= ~BIT(0);
++        return true;
++    default: return false;
++    }
++}
++
++static void ti8168_emac_cpdma_write(TI8168EMACState *s, hwaddr offset,
++                                    uint32_t value)
++{
++    ti8168_emac_write_control(s, offset, value) ||
++        ti8168_emac_write_interrupt(s, offset, value) ||
++        ti8168_emac_write_mac(s, offset, value) ||
++        ti8168_emac_write_completion(s, offset, value);
++    ti8168_emac_update_irqs(s);
++    if ((offset == CPDMA_RXCONTROL || offset == CPDMA_RXHDP) &&
++        ti8168_emac_can_receive(qemu_get_queue(s->nic))) {
++        qemu_flush_queued_packets(qemu_get_queue(s->nic));
++    }
++}
++
++static uint64_t ti8168_emac_read(void *opaque, hwaddr offset, unsigned size)
++{
++    TI8168EMACState *s = opaque;
++
++    if (offset == EMAC_CTRL_CMRXINTEN) {
++        return s->rx_int_enable;
++    }
++    if (offset == EMAC_CTRL_CMTXINTEN) {
++        return s->tx_int_enable;
++    }
++    if (offset >= MDIO_REGS && offset < MDIO_REGS + MDIO_SIZE) {
++        return ti8168_emac_mdio_read(s, offset - MDIO_REGS);
++    }
++    return offset >= EMAC_REGS ? ti8168_emac_cpdma_read(s, offset - EMAC_REGS) :
++           ti8168_emac_cpdma_read(s, offset);
++}
++
++static void ti8168_emac_write(void *opaque, hwaddr offset, uint64_t value,
++                              unsigned size)
++{
++    TI8168EMACState *s = opaque;
++
++    if (offset == EMAC_CTRL_CMRXINTEN) {
++        s->rx_int_enable = value;
++        ti8168_emac_update_irqs(s);
++    } else if (offset == EMAC_CTRL_CMTXINTEN) {
++        s->tx_int_enable = value;
++        ti8168_emac_update_irqs(s);
++    } else if (offset >= MDIO_REGS && offset < MDIO_REGS + MDIO_SIZE) {
++        ti8168_emac_mdio_write(s, offset - MDIO_REGS, value);
++    } else if (offset >= EMAC_REGS) {
++        ti8168_emac_cpdma_write(s, offset - EMAC_REGS, value);
++    } else {
++        ti8168_emac_cpdma_write(s, offset, value);
++    }
++}
++
++static const MemoryRegionOps ti8168_emac_ops = {
++    .read = ti8168_emac_read,
++    .write = ti8168_emac_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = { .min_access_size = 4, .max_access_size = 4, .unaligned = false },
++};
+diff --git a/hw/arm/ti8168_gpmc.c b/hw/arm/ti8168_gpmc.c
+new file mode 100644
+index 0000000..effbd7e
+--- /dev/null
++++ b/hw/arm/ti8168_gpmc.c
+@@ -0,0 +1,289 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* TI8168 GPMC compatibility device. */
++
++#include "qemu/osdep.h"
++#include "ti8168_internal.h"
++
++OBJECT_DECLARE_SIMPLE_TYPE(TI8168GPMCState, TI8168_GPMC)
++
++enum {
++    TI8168_GPMC_NAND_COMMAND = 0x7c,
++    TI8168_GPMC_NAND_ADDRESS = 0x80,
++    TI8168_GPMC_NAND_DATA = 0x84,
++    TI8168_GPMC_CS0_CONFIG1 = 0x60,
++    TI8168_GPMC_CS0_CONFIG7 = 0x78,
++    TI8168_GPMC_STATUS = 0x54,
++    TI8168_GPMC_PREFETCH_CONFIG1 = 0x1e0,
++    TI8168_GPMC_PREFETCH_CONFIG2 = 0x1e4,
++    TI8168_GPMC_PREFETCH_CONTROL = 0x1ec,
++    TI8168_GPMC_PREFETCH_STATUS = 0x1f0,
++    TI8168_GPMC_PREFETCH_FIFO_BYTES = 64,
++    TI8168_GPMC_CSVALID = BIT(6),
++    TI8168_GPMC_APERTURE_SIZE = 16 * MiB,
++};
++struct TI8168GPMCState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    MemoryRegion aperture;
++    DeviceState *nand;
++    uint32_t sysconfig;
++    uint32_t config[7];
++    uint32_t prefetch_config1;
++    uint32_t prefetch_count;
++    uint32_t prefetch_control;
++    uint32_t prefetch_remaining;
++    bool aperture_mapped;
++    hwaddr aperture_base;
++};
++
++static uint8_t ti8168_gpmc_nand_read(TI8168GPMCState *s)
++{
++    uint8_t value = s->nand ? ti8168_synthetic_nand_data_read(s->nand) : 0xff;
++
++    if (s->prefetch_control && s->prefetch_remaining) {
++        s->prefetch_remaining--;
++    }
++    return value;
++}
++
++static void ti8168_gpmc_nand_write(TI8168GPMCState *s, uint8_t value)
++{
++    if (s->nand) {
++        ti8168_synthetic_nand_data_write(s->nand, value);
++    }
++    if (s->prefetch_control && s->prefetch_remaining) {
++        s->prefetch_remaining--;
++    }
++}
++
++static void ti8168_gpmc_remap(TI8168GPMCState *s)
++{
++    uint32_t config7 = s->config[6];
++    hwaddr base = (hwaddr)(config7 & 0x3f) << 24;
++
++    if (s->aperture_mapped) {
++        memory_region_del_subregion(get_system_memory(), &s->aperture);
++        s->aperture_mapped = false;
++    }
++    if (s->nand && (config7 & TI8168_GPMC_CSVALID)) {
++        s->aperture_base = base;
++        memory_region_add_subregion(get_system_memory(), base, &s->aperture);
++        s->aperture_mapped = true;
++    }
++}
++
++static uint64_t ti8168_gpmc_aperture_read(void *opaque, hwaddr offset,
++                                           unsigned size)
++{
++    TI8168GPMCState *s = opaque;
++    uint64_t value = 0;
++    unsigned i;
++
++    for (i = 0; i < size; i++) {
++        value |= (uint64_t)ti8168_gpmc_nand_read(s) << (i * 8);
++    }
++    return value;
++}
++
++static void ti8168_gpmc_aperture_write(void *opaque, hwaddr offset,
++                                       uint64_t value, unsigned size)
++{
++    TI8168GPMCState *s = opaque;
++    unsigned i;
++
++    if (s->nand) {
++        for (i = 0; i < size; i++) {
++            ti8168_gpmc_nand_write(s, value >> (i * 8));
++        }
++    }
++}
++
++static const MemoryRegionOps ti8168_gpmc_aperture_ops = {
++    .read = ti8168_gpmc_aperture_read,
++    .write = ti8168_gpmc_aperture_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = { .min_access_size = 1, .max_access_size = 4 },
++};
++
++static uint64_t ti8168_gpmc_read(void *opaque, hwaddr offset, unsigned size)
++{
++    TI8168GPMCState *s = opaque;
++
++    if (offset >= TI8168_GPMC_CS0_CONFIG1 &&
++        offset <= TI8168_GPMC_CS0_CONFIG7 && !(offset & 3)) {
++        return s->config[(offset - TI8168_GPMC_CS0_CONFIG1) / 4];
++    }
++    switch (offset) {
++    case 0x00: return 0x50;
++    case 0x10: return s->sysconfig;
++    case 0x14: return 1;
++    case TI8168_GPMC_STATUS: return 1;
++    case TI8168_GPMC_PREFETCH_CONFIG1: return s->prefetch_config1;
++    case TI8168_GPMC_PREFETCH_CONFIG2: return s->prefetch_count;
++    case TI8168_GPMC_PREFETCH_CONTROL: return s->prefetch_control;
++    case TI8168_GPMC_PREFETCH_STATUS:
++        return (MIN(s->prefetch_remaining,
++                    (uint32_t)TI8168_GPMC_PREFETCH_FIFO_BYTES) << 24) |
++               (s->prefetch_remaining & 0x3fff);
++    case TI8168_GPMC_NAND_DATA: {
++        uint64_t value = 0;
++        unsigned i;
++
++        for (i = 0; i < size; i++) {
++            value |= (uint64_t)ti8168_gpmc_nand_read(s) << (i * 8);
++        }
++        return value;
++    }
++    default: return 0;
++    }
++}
++
++static bool ti8168_gpmc_write_nand(TI8168GPMCState *s, hwaddr offset,
++                                   uint64_t value, unsigned size)
++{
++    unsigned i;
++
++    switch (offset) {
++    case TI8168_GPMC_NAND_COMMAND:
++        if (s->nand) {
++            ti8168_synthetic_nand_command(s->nand, value);
++        }
++        return true;
++    case TI8168_GPMC_NAND_ADDRESS:
++        if (s->nand) {
++            ti8168_synthetic_nand_address(s->nand, value);
++        }
++        return true;
++    case TI8168_GPMC_NAND_DATA:
++        for (i = 0; s->nand && i < size; i++) {
++            ti8168_gpmc_nand_write(s, value >> (i * 8));
++        }
++        return true;
++    default:
++        return false;
++    }
++}
++
++static void ti8168_gpmc_write(void *opaque, hwaddr offset, uint64_t value,
++                              unsigned size)
++{
++    TI8168GPMCState *s = opaque;
++
++    if (offset >= TI8168_GPMC_CS0_CONFIG1 &&
++        offset <= TI8168_GPMC_CS0_CONFIG7 && !(offset & 3)) {
++        s->config[(offset - TI8168_GPMC_CS0_CONFIG1) / 4] = value;
++        if (offset == TI8168_GPMC_CS0_CONFIG7) {
++            ti8168_gpmc_remap(s);
++        }
++        return;
++    }
++    if (ti8168_gpmc_write_nand(s, offset, value, size)) {
++        return;
++    }
++    switch (offset) {
++    case 0x10:
++        s->sysconfig = value & 0x1;
++        break;
++    case TI8168_GPMC_PREFETCH_CONFIG1:
++        s->prefetch_config1 = value;
++        break;
++    case TI8168_GPMC_PREFETCH_CONFIG2:
++        s->prefetch_count = value & 0x3fff;
++        break;
++    case TI8168_GPMC_PREFETCH_CONTROL:
++        s->prefetch_control = value & 1;
++        s->prefetch_remaining = s->prefetch_control ? s->prefetch_count : 0;
++        break;
++    default:
++        break;
++    }
++}
++
++static bool ti8168_gpmc_accepts(void *opaque, hwaddr offset, unsigned size,
++                                bool is_write, MemTxAttrs attrs)
++{
++    if (offset == TI8168_GPMC_NAND_COMMAND ||
++        offset == TI8168_GPMC_NAND_ADDRESS) {
++        return size == 1;
++    }
++    if (offset == TI8168_GPMC_NAND_DATA) {
++        return size == 1 || size == 2 || size == 4;
++    }
++    return size == 4 && !(offset & 3);
++}
++
++static const MemoryRegionOps ti8168_gpmc_ops = {
++    .read = ti8168_gpmc_read,
++    .write = ti8168_gpmc_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = {
++        .min_access_size = 1,
++        .max_access_size = 4,
++        .accepts = ti8168_gpmc_accepts,
++    },
++};
++
++static void ti8168_gpmc_reset(DeviceState *dev)
++{
++    TI8168GPMCState *s = TI8168_GPMC(dev);
++
++    s->sysconfig = 0;
++    memset(s->config, 0, sizeof(s->config));
++    s->prefetch_config1 = 0;
++    s->prefetch_count = 0;
++    s->prefetch_control = 0;
++    s->prefetch_remaining = 0;
++    ti8168_gpmc_remap(s);
++}
++
++static void ti8168_gpmc_realize(DeviceState *dev, Error **errp)
++{
++    TI8168GPMCState *s = TI8168_GPMC(dev);
++
++    memory_region_init_io(&s->iomem, OBJECT(dev), &ti8168_gpmc_ops, s,
++                          "ti8168.gpmc", 0x1000);
++    memory_region_init_io(&s->aperture, OBJECT(dev),
++                          &ti8168_gpmc_aperture_ops, s,
++                          "ti8168.gpmc.cs0-synthetic-nand",
++                          TI8168_GPMC_APERTURE_SIZE);
++    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
++}
++
++static void ti8168_gpmc_class_init(ObjectClass *klass, const void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    dc->realize = ti8168_gpmc_realize;
++    device_class_set_legacy_reset(dc, ti8168_gpmc_reset);
++}
++
++static const TypeInfo ti8168_gpmc_type_info = {
++    .name = TYPE_TI8168_GPMC,
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(TI8168GPMCState),
++    .class_init = ti8168_gpmc_class_init,
++};
++
++void ti8168_gpmc_create(Object *parent, DeviceState *nand, hwaddr base)
++{
++    TI8168GPMCState *gpmc = TI8168_GPMC(qdev_new(TYPE_TI8168_GPMC));
++
++    object_property_add_child(parent, "gpmc", OBJECT(gpmc));
++    gpmc->nand = nand;
++    sysbus_realize_and_unref(SYS_BUS_DEVICE(gpmc), &error_fatal);
++    sysbus_mmio_map(SYS_BUS_DEVICE(gpmc), 0, base);
++}
++
++static void ti8168_gpmc_register_types(void)
++{
++    type_register_static(&ti8168_gpmc_type_info);
++}
++
++type_init(ti8168_gpmc_register_types)
++
++/*
++ * The synthetic probe clears the CC+0x4000..0x7fff PaRAM array
++ * byte-by-byte, then stores its region configuration at CC+0x280 and +0x284.
++ * This object retains only that bootstrap storage contract.  It deliberately
++ * has no channel, event, transfer-controller, or interrupt behaviour.
++ */
+diff --git a/hw/arm/ti8168_intc.c b/hw/arm/ti8168_intc.c
+new file mode 100644
+index 0000000..2c84c2b
+--- /dev/null
++++ b/hw/arm/ti8168_intc.c
+@@ -0,0 +1,318 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* TI8168 INTCPS compatibility device. */
++
++#include "qemu/osdep.h"
++#include "ti8168_internal.h"
++
++OBJECT_DECLARE_SIMPLE_TYPE(TI8168IntcState, TI8168_INTC)
++
++enum {
++    TI8168_NUM_IRQS = 128,
++};
++struct TI8168IntcState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    qemu_irq parent_irq;
++    qemu_irq parent_fiq;
++    /* Hardware input levels and software IRQ requests are independent. */
++    uint32_t line_level[4];
++    uint32_t soft_pending[4];
++    uint32_t mask[4];
++    uint32_t ilr[TI8168_NUM_IRQS];
++    uint32_t sysconfig;
++    uint32_t protection;
++    uint32_t idle;
++    uint32_t threshold;
++    int irq_in_service;
++    int fiq_in_service;
++};
++
++static void ti8168_intc_reset(DeviceState *dev);
++static void ti8168_intc_update(TI8168IntcState *s);
++
++static void ti8168_intc_reset_state(TI8168IntcState *s, bool cold_reset)
++{
++    if (cold_reset) {
++        memset(s->line_level, 0, sizeof(s->line_level));
++    }
++    memset(s->soft_pending, 0, sizeof(s->soft_pending));
++    memset(s->mask, 0xff, sizeof(s->mask));
++    memset(s->ilr, 0, sizeof(s->ilr));
++    s->sysconfig = 0;
++    s->protection = 0;
++    s->idle = 0;
++    s->threshold = 0x3f;
++    s->irq_in_service = -1;
++    s->fiq_in_service = -1;
++    ti8168_intc_update(s);
++}
++
++static uint32_t ti8168_intc_pending(const TI8168IntcState *s, unsigned bank)
++{
++    return s->line_level[bank] | s->soft_pending[bank];
++}
++
++static int ti8168_intc_active(TI8168IntcState *s, bool fiq)
++{
++    int irq;
++    int selected = -1;
++    unsigned selected_priority = 0x40;
++
++    for (irq = 0; irq < TI8168_NUM_IRQS; irq++) {
++        unsigned bank = irq >> 5;
++        unsigned bit = irq & 31;
++        bool route_fiq = s->ilr[irq] & 1;
++        unsigned priority = (s->ilr[irq] >> 2) & 0x3f;
++
++        if (route_fiq != fiq || priority > s->threshold ||
++            !(ti8168_intc_pending(s, bank) & ~s->mask[bank] & BIT(bit))) {
++            continue;
++        }
++        if (priority < selected_priority) {
++            selected_priority = priority;
++            selected = irq;
++        }
++    }
++    return selected;
++}
++
++static void ti8168_intc_update(TI8168IntcState *s)
++{
++    qemu_set_irq(s->parent_irq, s->irq_in_service < 0 &&
++                 ti8168_intc_active(s, false) >= 0);
++    qemu_set_irq(s->parent_fiq, s->fiq_in_service < 0 &&
++                 ti8168_intc_active(s, true) >= 0);
++}
++
++static void ti8168_intc_set_irq(void *opaque, int irq, int level)
++{
++    TI8168IntcState *s = opaque;
++    unsigned bank = irq >> 5;
++    uint32_t bit = BIT(irq & 31);
++
++    if (level) {
++        s->line_level[bank] |= bit;
++    } else {
++        s->line_level[bank] &= ~bit;
++    }
++    ti8168_intc_update(s);
++}
++
++static uint32_t ti8168_intc_claim(TI8168IntcState *s, bool fiq)
++{
++    int irq = ti8168_intc_active(s, fiq);
++
++    if (irq >= 0) {
++        if (fiq) {
++            s->fiq_in_service = irq;
++        } else {
++            s->irq_in_service = irq;
++        }
++        ti8168_intc_update(s);
++    }
++    return irq < 0 ? 0x80 : irq;
++}
++
++static bool ti8168_intc_read_primary(TI8168IntcState *s, hwaddr offset,
++                                     uint64_t *value)
++{
++    int irq;
++
++    switch (offset) {
++    case 0x00: *value = 0x40; return true; /* INTCPS revision 4.0 */
++    case 0x10: *value = s->sysconfig; return true;
++    case 0x14: *value = 1; return true; /* reset complete */
++    case 0x40: *value = ti8168_intc_claim(s, false); return true;
++    case 0x44: *value = ti8168_intc_claim(s, true); return true;
++    case 0x48: *value = 0; return true;
++    case 0x4c: *value = s->protection; return true;
++    case 0x50: *value = s->idle; return true;
++    case 0x60:
++        irq = ti8168_intc_active(s, false);
++        *value = irq < 0 ? 0x3f : (s->ilr[irq] >> 2) & 0x3f;
++        return true;
++    case 0x64:
++        irq = ti8168_intc_active(s, true);
++        *value = irq < 0 ? 0x3f : (s->ilr[irq] >> 2) & 0x3f;
++        return true;
++    case 0x68: *value = s->threshold; return true;
++    default: return false;
++    }
++}
++
++static uint64_t ti8168_intc_read_bank(TI8168IntcState *s, hwaddr offset)
++{
++    unsigned bank = (offset - 0x80) >> 5;
++
++    switch ((offset - 0x80) & 0x1f) {
++    case 0x00: return ti8168_intc_pending(s, bank);
++    case 0x04: return s->mask[bank];
++    case 0x18: return ti8168_intc_pending(s, bank) & ~s->mask[bank];
++    default: return 0;
++    }
++}
++
++static uint64_t ti8168_intc_read(void *opaque, hwaddr offset, unsigned size)
++{
++    TI8168IntcState *s = opaque;
++    uint64_t value;
++
++    if (ti8168_intc_read_primary(s, offset, &value)) {
++        return value;
++    }
++    if (offset >= 0x80 && offset < 0x100) {
++        return ti8168_intc_read_bank(s, offset);
++    }
++    if (offset >= 0x100 && offset < 0x300 && !(offset & 3)) {
++        return s->ilr[(offset - 0x100) >> 2];
++    }
++    qemu_log_mask(LOG_UNIMP, "ti8168-intc: read offset 0x%" HWADDR_PRIx "\n",
++                  offset);
++    return 0;
++}
++
++static bool ti8168_intc_write_primary(TI8168IntcState *s, hwaddr offset,
++                                      uint64_t value)
++{
++    switch (offset) {
++    case 0x10:
++        if (value & 2) {
++            /* SOFTRESET is self-clearing but does not deassert device lines. */
++            ti8168_intc_reset_state(s, false);
++            return true;
++        }
++        s->sysconfig = value & 1;
++        return true;
++    case 0x48:
++        /*
++         * SIR reads claim the selected source; CONTROL bit 0 releases IRQ
++         * service and bit 1 releases FIQ service.  A level source that remains asserted is eligible
++         * again after acknowledgement.  This is deliberately conservative
++         * rather than a claim of cycle-accurate INTCPS arbitration.
++         */
++        if (value & 1) {
++            s->irq_in_service = -1;
++        }
++        if (value & 2) {
++            s->fiq_in_service = -1;
++        }
++        ti8168_intc_update(s);
++        return true;
++    case 0x4c:
++        s->protection = value & 1;
++        return true;
++    case 0x50:
++        s->idle = value & 1;
++        return true;
++    case 0x68:
++        s->threshold = value & 0x3f;
++        return true;
++    default: return false;
++    }
++}
++
++static void ti8168_intc_write_bank(TI8168IntcState *s, hwaddr offset,
++                                    uint64_t value)
++{
++    unsigned bank = (offset - 0x80) >> 5;
++
++    switch ((offset - 0x80) & 0x1f) {
++    case 0x04: s->mask[bank] = value; break;
++    case 0x08: s->mask[bank] &= ~value; break;
++    case 0x0c: s->mask[bank] |= value; break;
++    case 0x10: s->soft_pending[bank] |= value; break;
++    case 0x14: s->soft_pending[bank] &= ~value; break;
++    default: break;
++    }
++    ti8168_intc_update(s);
++}
++
++static void ti8168_intc_write(void *opaque, hwaddr offset, uint64_t value,
++                              unsigned size)
++{
++    TI8168IntcState *s = opaque;
++
++    if (ti8168_intc_write_primary(s, offset, value)) {
++        return;
++    }
++    if (offset >= 0x80 && offset < 0x100) {
++        ti8168_intc_write_bank(s, offset, value);
++        return;
++    }
++    if (offset >= 0x100 && offset < 0x300 && !(offset & 3)) {
++        s->ilr[(offset - 0x100) >> 2] = value & 0xff;
++        ti8168_intc_update(s);
++        return;
++    }
++    qemu_log_mask(LOG_UNIMP,
++                  "ti8168-intc: write offset 0x%" HWADDR_PRIx " = 0x%" PRIx64 "\n",
++                  offset, value);
++}
++
++static const MemoryRegionOps ti8168_intc_ops = {
++    .read = ti8168_intc_read,
++    .write = ti8168_intc_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = { .min_access_size = 4, .max_access_size = 4 },
++};
++
++static void ti8168_intc_reset(DeviceState *dev)
++{
++    TI8168IntcState *s = TI8168_INTC(dev);
++
++    ti8168_intc_reset_state(s, true);
++}
++
++static void ti8168_intc_init(Object *obj)
++{
++    TI8168IntcState *s = TI8168_INTC(obj);
++    DeviceState *dev = DEVICE(obj);
++    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
++
++    memory_region_init_io(&s->iomem, obj, &ti8168_intc_ops, s,
++                          "ti8168.intc", 0x1000);
++    sysbus_init_mmio(sbd, &s->iomem);
++    sysbus_init_irq(sbd, &s->parent_irq);
++    sysbus_init_irq(sbd, &s->parent_fiq);
++    qdev_init_gpio_in(dev, ti8168_intc_set_irq, TI8168_NUM_IRQS);
++}
++
++static void ti8168_intc_class_init(ObjectClass *klass, const void *data)
++{
++    device_class_set_legacy_reset(DEVICE_CLASS(klass), ti8168_intc_reset);
++}
++
++static const TypeInfo ti8168_intc_type_info = {
++    .name = TYPE_TI8168_INTC,
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(TI8168IntcState),
++    .instance_init = ti8168_intc_init,
++    .class_init = ti8168_intc_class_init,
++};
++
++DeviceState *ti8168_intc_create(Object *parent, hwaddr base,
++                                qemu_irq irq, qemu_irq fiq)
++{
++    DeviceState *dev = qdev_new(TYPE_TI8168_INTC);
++
++    object_property_add_child(parent, "intc", OBJECT(dev));
++    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
++    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
++    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq);
++    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 1, fiq);
++    return dev;
++}
++
++qemu_irq ti8168_intc_get_irq(DeviceState *dev, unsigned irq)
++{
++    return qdev_get_gpio_in(dev, irq);
++}
++
++static void ti8168_intc_register_types(void)
++{
++    type_register_static(&ti8168_intc_type_info);
++}
++
++type_init(ti8168_intc_register_types)
++
++/* Minimal OMAP dual-mode timer with overflow and auto-reload. */
+diff --git a/hw/arm/ti8168_internal.h b/hw/arm/ti8168_internal.h
+new file mode 100644
+index 0000000..b7a9aef
+--- /dev/null
++++ b/hw/arm/ti8168_internal.h
+@@ -0,0 +1,31 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* Shared implementation includes for the synthetic TI8168 model. */
++#ifndef HW_ARM_TI8168_INTERNAL_H
++#define HW_ARM_TI8168_INTERNAL_H
++
++#include "qemu/bitops.h"
++#include "qemu/error-report.h"
++#include "qemu/log.h"
++#include "qemu/main-loop.h"
++#include "qemu/module.h"
++#include "qemu/timer.h"
++#include "qemu/units.h"
++#include "qapi/error.h"
++#include "hw/arm/boot.h"
++#include "hw/arm/machines-qom.h"
++#include "hw/char/serial-mm.h"
++#include "hw/core/boards.h"
++#include "hw/core/irq.h"
++#include "hw/core/qdev-properties.h"
++#include "hw/core/sysbus.h"
++#include "hw/misc/unimp.h"
++#include "migration/blocker.h"
++#include "net/eth.h"
++#include "net/net.h"
++#include "system/address-spaces.h"
++#include "system/dma.h"
++#include "system/system.h"
++
++#include "ti8168_mediaboard.h"
++
++#endif
+diff --git a/hw/arm/ti8168_mediaboard.c b/hw/arm/ti8168_mediaboard.c
+new file mode 100644
+index 0000000..aa0285d
+--- /dev/null
++++ b/hw/arm/ti8168_mediaboard.c
+@@ -0,0 +1,427 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/*
++ * Synthetic TI8168 media board experiment.
++ *
++ * Register behavior is partial and synthetic.  Machine defaults do not
++ * represent a physical board or a hardware reset snapshot.
++ *
++ * Copyright (c) 2026 Sebastian Spicker
++ *
++ */
++
++#include "qemu/osdep.h"
++#include "ti8168_internal.h"
++
++#define TYPE_TI8168_MEDIABOARD_MACHINE MACHINE_TYPE_NAME("ti8168-mediaboard")
++OBJECT_DECLARE_SIMPLE_TYPE(TI8168AulaMachineState, TI8168_MEDIABOARD_MACHINE)
++
++typedef enum TI8168NandProfile {
++    TI8168_NAND_DISABLED,
++    TI8168_NAND_SYNTHETIC_READ_ONLY,
++} TI8168NandProfile;
++
++enum {
++    TI8168_RAM_BASE = 0x80000000,
++    TI8168_RAM_SIZE = 512 * MiB,
++    /* Synthetic SRAM aperture for bounded software tests. */
++    TI8168_SRAM_BASE = 0x4020f800,
++    TI8168_SRAM_SIZE = 0x800,
++    /* TI81xx idle code reads this SRAM page as a WFI ordering barrier. */
++    TI8168_WFI_BARRIER_BASE = 0x40300000,
++    TI8168_WFI_BARRIER_SIZE = 0x1000,
++    /* Synthetic DMM register storage. */
++    TI8168_DMM_BASE = 0x4e000000,
++    TI8168_DMM_BOOTSTRAP_SIZE = 0x1000,
++    TI8168_MACHINE_ID = 0,
++    TI8168_INTC_BASE = 0x48200000,
++    TI8168_GPMC_BASE = 0x50000000,
++    TI8168_PRCM_BASE = 0x48180000,
++    TI8168_CONTROL_BASE = 0x48140000,
++    /* EDMA CC registers plus exactly 512 32-byte PaRAM entries. */
++    TI8168_EDMA_CC_BASE = 0x49000000,
++    TI8168_EDMA_CC_BOOTSTRAP_SIZE = 0x8000,
++    /* PCIESS setup space only; no PCI fabric or link model is present. */
++    TI8168_PCIESS_BASE = 0x51000000,
++    TI8168_PCIESS_BOOTSTRAP_SIZE = 0x4000,
++    /* Bounded McSPI placeholder; no SPI controller is modelled. */
++    TI8168_MCSPI_BASE = 0x48030100,
++    TI8168_MCSPI_BOOTSTRAP_SIZE = 0x100,
++    TI8168_UART1_BASE = 0x48020000,
++    TI8168_UART2_BASE = 0x48022000,
++    TI8168_UART3_BASE = 0x48024000,
++};
++
++static const char *const ti8168_nand_profile_names[] = {
++    [TI8168_NAND_DISABLED] = "none",
++    [TI8168_NAND_SYNTHETIC_READ_ONLY] = "synthetic-read-only",
++};
++
++static const QEnumLookup ti8168_nand_profile_lookup = {
++    .array = ti8168_nand_profile_names,
++    .size = ARRAY_SIZE(ti8168_nand_profile_names),
++};
++
++enum {
++    TI8168_IRQ_UART1 = 72,
++    TI8168_IRQ_UART2 = 73,
++    TI8168_IRQ_UART3 = 74,
++    TI8168_IRQ_EMAC0_RX_THRESH = 40,
++    TI8168_IRQ_EMAC0_RX = 41,
++    TI8168_IRQ_EMAC0_TX = 42,
++    TI8168_IRQ_EMAC0_MISC = 43,
++    TI8168_NUM_IRQS = 128,
++};
++
++/* OMAP INTCPS register layout used by TI81xx. */
++struct TI8168AulaMachineState {
++    MachineState parent_obj;
++    struct arm_boot_info bootinfo;
++    MemoryRegion sram;
++    MemoryRegion wfi_barrier;
++    MemoryRegion dmm_bootstrap;
++    TI8168NandProfile nand_profile;
++    char *nand_images[TI8168_NAND_MTD_COUNT];
++    char *nand_oob_images[TI8168_NAND_MTD_COUNT];
++    bool nand_read_only;
++    bool nand_cow;
++    Error *migration_blocker;
++};
++
++static int ti8168_get_nand_profile(Object *obj, Error **errp)
++{
++    return TI8168_MEDIABOARD_MACHINE(obj)->nand_profile;
++}
++
++static void ti8168_set_nand_profile(Object *obj, int value, Error **errp)
++{
++    if (value < TI8168_NAND_DISABLED ||
++        value > TI8168_NAND_SYNTHETIC_READ_ONLY) {
++        error_setg(errp, "invalid ti8168-mediaboard NAND profile");
++        return;
++    }
++    TI8168_MEDIABOARD_MACHINE(obj)->nand_profile = value;
++}
++
++#define DEFINE_TI8168_NAND_MTD_PROPERTIES(index) \
++static char *ti8168_get_nand_mtd##index##_image(Object *obj, Error **errp) \
++{ \
++    return g_strdup(TI8168_MEDIABOARD_MACHINE(obj)->nand_images[index]); \
++} \
++static void ti8168_set_nand_mtd##index##_image(Object *obj, \
++                                                const char *value, \
++                                                Error **errp) \
++{ \
++    TI8168AulaMachineState *s = TI8168_MEDIABOARD_MACHINE(obj); \
++    g_free(s->nand_images[index]); \
++    s->nand_images[index] = g_strdup(value); \
++} \
++static char *ti8168_get_nand_mtd##index##_oob_image(Object *obj, \
++                                                      Error **errp) \
++{ \
++    return g_strdup(TI8168_MEDIABOARD_MACHINE(obj)->nand_oob_images[index]); \
++} \
++static void ti8168_set_nand_mtd##index##_oob_image(Object *obj, \
++                                                    const char *value, \
++                                                    Error **errp) \
++{ \
++    TI8168AulaMachineState *s = TI8168_MEDIABOARD_MACHINE(obj); \
++    g_free(s->nand_oob_images[index]); \
++    s->nand_oob_images[index] = g_strdup(value); \
++}
++
++DEFINE_TI8168_NAND_MTD_PROPERTIES(0)
++DEFINE_TI8168_NAND_MTD_PROPERTIES(1)
++
++#define ADD_TI8168_NAND_MTD_PROPERTIES(oc, index) \
++    object_class_property_add_str(oc, "nand-mtd" #index "-image", \
++                                  ti8168_get_nand_mtd##index##_image, \
++                                  ti8168_set_nand_mtd##index##_image); \
++    object_class_property_set_description(oc, "nand-mtd" #index "-image", \
++                                          "mtd" #index " synthetic bank main image"); \
++    object_class_property_add_str(oc, "nand-mtd" #index "-oob-image", \
++                                  ti8168_get_nand_mtd##index##_oob_image, \
++                                  ti8168_set_nand_mtd##index##_oob_image); \
++    object_class_property_set_description(oc, "nand-mtd" #index "-oob-image", \
++                                          "mtd" #index " synthetic bank OOB image")
++
++static char *ti8168_get_nand_image(Object *obj, Error **errp)
++{
++    return ti8168_get_nand_mtd0_image(obj, errp);
++}
++
++static void ti8168_set_nand_image(Object *obj, const char *value,
++                                   Error **errp)
++{
++    ti8168_set_nand_mtd0_image(obj, value, errp);
++}
++
++static char *ti8168_get_nand_oob_image(Object *obj, Error **errp)
++{
++    return ti8168_get_nand_mtd0_oob_image(obj, errp);
++}
++
++static void ti8168_set_nand_oob_image(Object *obj, const char *value,
++                                       Error **errp)
++{
++    ti8168_set_nand_mtd0_oob_image(obj, value, errp);
++}
++
++static bool ti8168_get_nand_read_only(Object *obj, Error **errp)
++{
++    return TI8168_MEDIABOARD_MACHINE(obj)->nand_read_only;
++}
++
++static void ti8168_set_nand_read_only(Object *obj, bool value, Error **errp)
++{
++    if (!value) {
++        error_setg(errp, "ti8168-mediaboard accepts only a read-only NAND backend");
++        return;
++    }
++    TI8168_MEDIABOARD_MACHINE(obj)->nand_read_only = true;
++}
++
++static bool ti8168_get_nand_cow(Object *obj, Error **errp)
++{
++    return TI8168_MEDIABOARD_MACHINE(obj)->nand_cow;
++}
++
++static void ti8168_set_nand_cow(Object *obj, bool value, Error **errp)
++{
++    TI8168_MEDIABOARD_MACHINE(obj)->nand_cow = value;
++}
++
++static void ti8168_mediaboard_validate(const MachineState *machine)
++{
++    if (machine->ram_size != TI8168_RAM_SIZE) {
++        error_report("ti8168-mediaboard synthetic model requires 512 MiB RAM");
++        exit(EXIT_FAILURE);
++    }
++    if (machine->smp.cpus != 1) {
++        error_report("ti8168-mediaboard models exactly one Cortex-A8");
++        exit(EXIT_FAILURE);
++    }
++}
++
++static ARMCPU *ti8168_mediaboard_map_memory(TI8168AulaMachineState *s,
++                                       MachineState *machine)
++{
++    MemoryRegion *system_memory = get_system_memory();
++    ARMCPU *cpu = ARM_CPU(cpu_create(machine->cpu_type));
++
++    memory_region_add_subregion(system_memory, TI8168_RAM_BASE, machine->ram);
++    /* The machine retains the region; RAM migration registration needs a Device. */
++    memory_region_init_ram(&s->sram, OBJECT(cpu), "ti8168.sram.4020f800",
++                           TI8168_SRAM_SIZE, &error_fatal);
++    memory_region_add_subregion(system_memory, TI8168_SRAM_BASE, &s->sram);
++    memory_region_init_ram(&s->wfi_barrier, OBJECT(cpu),
++                           "ti8168.sram.wfi-barrier",
++                           TI8168_WFI_BARRIER_SIZE, &error_fatal);
++    memory_region_add_subregion(system_memory, TI8168_WFI_BARRIER_BASE,
++                                &s->wfi_barrier);
++    memory_region_init_ram(&s->dmm_bootstrap, OBJECT(cpu),
++                           "ti8168.dmm-bootstrap",
++                           TI8168_DMM_BOOTSTRAP_SIZE, &error_fatal);
++    memory_region_add_subregion(system_memory, TI8168_DMM_BASE,
++                                &s->dmm_bootstrap);
++    return cpu;
++}
++
++static void ti8168_mediaboard_create_uarts(TI8168AulaMachineState *s,
++                                      DeviceState *intc)
++{
++    MemoryRegion *system_memory = get_system_memory();
++    SerialMM *uart1;
++
++    uart1 = serial_mm_init(system_memory, TI8168_UART1_BASE, 2,
++                           ti8168_intc_get_irq(intc, TI8168_IRQ_UART1),
++                           3000000, serial_hd(0), DEVICE_LITTLE_ENDIAN);
++    serial_mm_enable_omap_compat(uart1);
++    serial_mm_enable_omap_compat(
++        serial_mm_init(system_memory, TI8168_UART2_BASE, 2,
++                       ti8168_intc_get_irq(intc, TI8168_IRQ_UART2),
++                       3000000, serial_hd(1), DEVICE_LITTLE_ENDIAN));
++    serial_mm_enable_omap_compat(
++        serial_mm_init(system_memory, TI8168_UART3_BASE, 2,
++                       ti8168_intc_get_irq(intc, TI8168_IRQ_UART3),
++                       3000000, serial_hd(2), DEVICE_LITTLE_ENDIAN));
++    /* serial-mm supplies the legacy 16550 window; these cover OMAP probes. */
++    ti8168_probe_create(OBJECT(s), "uart-ext[*]", TI8168_UART1_BASE + 0x20, 0xe0,
++                        PROBE_UART);
++    ti8168_probe_create(OBJECT(s), "uart-ext[*]", TI8168_UART2_BASE + 0x20, 0xe0,
++                        PROBE_UART);
++    ti8168_probe_create(OBJECT(s), "uart-ext[*]", TI8168_UART3_BASE + 0x20, 0xe0,
++                        PROBE_UART);
++}
++
++static DeviceState *ti8168_mediaboard_create_peripherals(
++    TI8168AulaMachineState *s, DeviceState *intc)
++{
++    static const hwaddr timer_bases[] = {
++        0x4802e000, 0x48040000, 0x48042000, 0x48044000,
++        0x48046000, 0x48048000, 0x4804a000,
++    };
++    static const unsigned timer_irqs[] = { 67, 68, 69, 92, 93, 94, 95 };
++    DeviceState *nand = NULL;
++    int i;
++
++    for (i = 0; i < ARRAY_SIZE(timer_bases); i++) {
++        ti8168_timer_create(OBJECT(s), timer_bases[i],
++                            ti8168_intc_get_irq(intc, timer_irqs[i]));
++    }
++
++    ti8168_probe_create(OBJECT(s), "control-probe", TI8168_CONTROL_BASE, 0x21000,
++                        PROBE_CONTROL);
++    ti8168_probe_create(OBJECT(s), "prcm-probe", TI8168_PRCM_BASE, 0x4000,
++                        PROBE_PRCM);
++    ti8168_edma_cc_bootstrap_create(OBJECT(s), TI8168_EDMA_CC_BASE);
++    ti8168_pciess_bootstrap_create(OBJECT(s), TI8168_PCIESS_BASE);
++    ti8168_mcspi_bootstrap_create(OBJECT(s), TI8168_MCSPI_BASE);
++    if (s->nand_profile == TI8168_NAND_SYNTHETIC_READ_ONLY) {
++        nand = ti8168_synthetic_nand_create(OBJECT(s), s->nand_images,
++                                             s->nand_oob_images,
++                                             s->nand_read_only, s->nand_cow);
++    }
++    ti8168_gpmc_create(OBJECT(s), nand, TI8168_GPMC_BASE);
++    ti8168_probe_create(OBJECT(s), "elm-probe", 0x48080000, 0x2000,
++                        PROBE_ELM);
++    return nand;
++}
++
++static void ti8168_mediaboard_add_placeholders(TI8168AulaMachineState *s,
++                                          DeviceState *intc)
++{
++    /* Explicit placeholders: every region has a named fidelity gap. */
++    create_unimplemented_device("ti8168.gpio1", 0x48032000, 0x1000);
++    create_unimplemented_device("ti8168.gpio2", 0x4804c000, 0x1000);
++    create_unimplemented_device("ti8168.i2c1", 0x48028000, 0x1000);
++    create_unimplemented_device("ti8168.i2c2", 0x4802a000, 0x1000);
++    /* Unimplemented TI8168 peripheral apertures. */
++    create_unimplemented_device("ti8168.mcasp0", 0x48038000, 0x1000);
++    create_unimplemented_device("ti8168.mcasp1", 0x4803c000, 0x1000);
++    create_unimplemented_device("ti8168.mcasp2", 0x48050000, 0x1000);
++    create_unimplemented_device("ti8168.mmc1", 0x48060000, 0x1000);
++    create_unimplemented_device("ti8168.rtc", 0x480c0000, 0x1000);
++    create_unimplemented_device("ti8168.watchdog", 0x480c2000, 0x1000);
++    create_unimplemented_device("ti8168.mailbox", 0x480c8000, 0x1000);
++    ti8168_emac_create(OBJECT(s), "emac0", 0x4a100000,
++                       ti8168_intc_get_irq(intc, TI8168_IRQ_EMAC0_RX_THRESH),
++                       ti8168_intc_get_irq(intc, TI8168_IRQ_EMAC0_RX),
++                       ti8168_intc_get_irq(intc, TI8168_IRQ_EMAC0_TX),
++                       ti8168_intc_get_irq(intc, TI8168_IRQ_EMAC0_MISC));
++    create_unimplemented_device("ti8168.emac1", 0x4a120000, 0x2000);
++    create_unimplemented_device("ti8168.sata", 0x4a140000, 0x10000);
++    create_unimplemented_device("ti8168.usb-otg-hs", 0x47400000, 0x1000);
++    create_unimplemented_device("ti8168.usb", 0x47401000, 0x10000);
++}
++
++static void ti8168_mediaboard_load_kernel(TI8168AulaMachineState *s,
++                                     MachineState *machine, ARMCPU *cpu)
++{
++    s->bootinfo = (struct arm_boot_info) {
++        .ram_size = machine->ram_size,
++        .loader_start = TI8168_RAM_BASE,
++        .board_id = TI8168_MACHINE_ID,
++        .kernel_filename = machine->kernel_filename,
++        .kernel_cmdline = machine->kernel_cmdline,
++        .initrd_filename = machine->initrd_filename,
++        .dtb_filename = NULL,
++    };
++    arm_load_kernel(cpu, machine, &s->bootinfo);
++}
++
++static void ti8168_mediaboard_init(MachineState *machine)
++{
++    TI8168AulaMachineState *s = TI8168_MEDIABOARD_MACHINE(machine);
++    ARMCPU *cpu;
++    DeviceState *intc;
++
++    ti8168_mediaboard_validate(machine);
++    cpu = ti8168_mediaboard_map_memory(s, machine);
++    intc = ti8168_intc_create(OBJECT(s), TI8168_INTC_BASE,
++                              qdev_get_gpio_in(DEVICE(cpu), ARM_CPU_IRQ),
++                              qdev_get_gpio_in(DEVICE(cpu), ARM_CPU_FIQ));
++    ti8168_mediaboard_create_uarts(s, intc);
++    ti8168_mediaboard_create_peripherals(s, intc);
++
++    error_setg(&s->migration_blocker,
++               "ti8168-mediaboard has no migration or snapshot state contract");
++    if (migrate_add_blocker(&s->migration_blocker, &error_fatal) < 0) {
++        g_assert_not_reached();
++    }
++    ti8168_mediaboard_add_placeholders(s, intc);
++    ti8168_mediaboard_load_kernel(s, machine, cpu);
++}
++
++static void ti8168_mediaboard_machine_class_init(ObjectClass *oc, const void *data)
++{
++    MachineClass *mc = MACHINE_CLASS(oc);
++
++    mc->desc = "Synthetic TI8168 media board model";
++    mc->init = ti8168_mediaboard_init;
++    mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-a8");
++    mc->default_ram_size = TI8168_RAM_SIZE;
++    mc->min_cpus = 1;
++    mc->max_cpus = 1;
++    mc->default_cpus = 1;
++    mc->no_floppy = true;
++    mc->no_cdrom = true;
++    mc->no_parallel = true;
++    mc->default_ram_id = "ti8168.ddr3";
++    object_class_property_add_enum(oc, "nand-profile", "TI8168NandProfile",
++                                   &ti8168_nand_profile_lookup,
++                                   ti8168_get_nand_profile,
++                                   ti8168_set_nand_profile);
++    object_class_property_set_description(oc, "nand-profile",
++                                          "none (default) or synthetic-read-only");
++    ADD_TI8168_NAND_MTD_PROPERTIES(oc, 0);
++    ADD_TI8168_NAND_MTD_PROPERTIES(oc, 1);
++    object_class_property_add_str(oc, "nand-image", ti8168_get_nand_image,
++                                  ti8168_set_nand_image);
++    object_class_property_set_description(oc, "nand-image",
++                                          "compatibility alias for nand-mtd0-image");
++    object_class_property_add_str(oc, "nand-oob-image",
++                                  ti8168_get_nand_oob_image,
++                                  ti8168_set_nand_oob_image);
++    object_class_property_set_description(oc, "nand-oob-image",
++                                          "compatibility alias for nand-mtd0-oob-image");
++    object_class_property_add_bool(oc, "nand-read-only",
++                                   ti8168_get_nand_read_only,
++                                   ti8168_set_nand_read_only);
++    object_class_property_add_bool(oc, "nand-cow", ti8168_get_nand_cow,
++                                   ti8168_set_nand_cow);
++    object_class_property_set_description(oc, "nand-cow",
++        "opt-in volatile NAND copy-on-write overlay; backing files stay read-only");
++}
++
++static void ti8168_mediaboard_instance_init(Object *obj)
++{
++    TI8168_MEDIABOARD_MACHINE(obj)->nand_read_only = true;
++}
++
++static void ti8168_mediaboard_instance_finalize(Object *obj)
++{
++    TI8168AulaMachineState *s = TI8168_MEDIABOARD_MACHINE(obj);
++    unsigned i;
++
++    for (i = 0; i < ARRAY_SIZE(s->nand_images); i++) {
++        g_clear_pointer(&s->nand_images[i], g_free);
++        g_clear_pointer(&s->nand_oob_images[i], g_free);
++    }
++}
++
++static const TypeInfo ti8168_mediaboard_machine_type_info = {
++    .name = TYPE_TI8168_MEDIABOARD_MACHINE,
++    .parent = TYPE_MACHINE,
++    .instance_size = sizeof(TI8168AulaMachineState),
++    .instance_init = ti8168_mediaboard_instance_init,
++    .instance_finalize = ti8168_mediaboard_instance_finalize,
++    .class_init = ti8168_mediaboard_machine_class_init,
++    .interfaces = arm_machine_interfaces,
++};
++
++static void ti8168_mediaboard_register_types(void)
++{
++    type_register_static(&ti8168_mediaboard_machine_type_info);
++}
++
++type_init(ti8168_mediaboard_register_types)
+diff --git a/hw/arm/ti8168_mediaboard.h b/hw/arm/ti8168_mediaboard.h
+new file mode 100644
+index 0000000..62c7305
+--- /dev/null
++++ b/hw/arm/ti8168_mediaboard.h
+@@ -0,0 +1,52 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* Internal interfaces between the synthetic TI8168 machine and its devices. */
++#ifndef HW_ARM_TI8168_MEDIABOARD_H
++#define HW_ARM_TI8168_MEDIABOARD_H
++
++#include "qemu/typedefs.h"
++#include "hw/core/irq.h"
++
++#define TYPE_TI8168_INTC "ti8168-intc"
++#define TYPE_TI8168_TIMER "ti8168-timer"
++#define TYPE_TI8168_PROBE_REGS "ti8168-probe-regs"
++#define TYPE_TI8168_SYNTHETIC_NAND "ti8168-synthetic-nand"
++#define TYPE_TI8168_GPMC "ti8168-gpmc"
++#define TYPE_TI8168_EDMA_CC_BOOTSTRAP "ti8168-edma-cc-bootstrap"
++#define TYPE_TI8168_PCIESS_BOOTSTRAP "ti8168-pciess-bootstrap"
++#define TYPE_TI8168_MCSPI_BOOTSTRAP "ti8168-mcspi-bootstrap"
++#define TYPE_TI8168_EMAC "ti8168-emac"
++
++#define TI8168_NAND_MTD_COUNT 2
++
++enum TI8168ProbeRole {
++    PROBE_CONTROL,
++    PROBE_PRCM,
++    PROBE_GPMC,
++    PROBE_UART,
++    PROBE_ELM,
++};
++
++DeviceState *ti8168_intc_create(Object *parent, hwaddr base,
++                                qemu_irq irq, qemu_irq fiq);
++qemu_irq ti8168_intc_get_irq(DeviceState *dev, unsigned irq);
++void ti8168_timer_create(Object *parent, hwaddr base, qemu_irq irq);
++DeviceState *ti8168_synthetic_nand_create(
++    Object *parent, char *const images[TI8168_NAND_MTD_COUNT],
++    char *const oob_images[TI8168_NAND_MTD_COUNT],
++    bool read_only, bool cow);
++uint8_t ti8168_synthetic_nand_data_read(DeviceState *dev);
++void ti8168_synthetic_nand_data_write(DeviceState *dev, uint8_t value);
++void ti8168_synthetic_nand_command(DeviceState *dev, uint8_t command);
++void ti8168_synthetic_nand_address(DeviceState *dev, uint8_t value);
++void ti8168_gpmc_create(Object *parent, DeviceState *nand, hwaddr base);
++void ti8168_edma_cc_bootstrap_create(Object *parent, hwaddr base);
++void ti8168_pciess_bootstrap_create(Object *parent, hwaddr base);
++void ti8168_mcspi_bootstrap_create(Object *parent, hwaddr base);
++DeviceState *ti8168_probe_create(Object *parent, const char *child_name,
++                                 hwaddr base, uint32_t size,
++                                 enum TI8168ProbeRole role);
++void ti8168_emac_create(Object *parent, const char *child_name, hwaddr base,
++                        qemu_irq rx_thresh_irq, qemu_irq rx_irq,
++                        qemu_irq tx_irq, qemu_irq misc_irq);
++
++#endif
+diff --git a/hw/arm/ti8168_nand.c b/hw/arm/ti8168_nand.c
+new file mode 100644
+index 0000000..d5937d6
+--- /dev/null
++++ b/hw/arm/ti8168_nand.c
+@@ -0,0 +1,539 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* Synthetic NAND transport with explicit backing geometry. */
++
++#include "qemu/osdep.h"
++#include "ti8168_internal.h"
++
++OBJECT_DECLARE_SIMPLE_TYPE(TI8168SyntheticNANDState, TI8168_SYNTHETIC_NAND)
++enum {
++    TI8168_SYNTHETIC_NAND_SIZE = 0x20000000,
++    TI8168_SYNTHETIC_NAND_PAGE_SIZE = 0x800,
++    TI8168_SYNTHETIC_NAND_OOB_SIZE = 0x40,
++    TI8168_SYNTHETIC_NAND_PAGE_DATA_SIZE =
++        TI8168_SYNTHETIC_NAND_PAGE_SIZE + TI8168_SYNTHETIC_NAND_OOB_SIZE,
++    TI8168_SYNTHETIC_NAND_PAGES_PER_BLOCK = 0x40,
++    TI8168_SYNTHETIC_NAND_PARAMETER_PAGE_SIZE = 256,
++    TI8168_SYNTHETIC_NAND_ID = 0x00a5f0e1,
++    TI8168_GPMC_NAND_COMMAND = 0x7c,
++    TI8168_GPMC_NAND_ADDRESS = 0x80,
++    TI8168_GPMC_NAND_DATA = 0x84,
++    TI8168_GPMC_CS0_CONFIG1 = 0x60,
++    TI8168_GPMC_CS0_CONFIG7 = 0x78,
++    TI8168_GPMC_CSVALID = BIT(6),
++    TI8168_GPMC_APERTURE_SIZE = 16 * MiB,
++};
++
++typedef enum TI8168SyntheticNandMode {
++    TI8168_NAND_IDLE,
++    TI8168_NAND_READ_ID,
++    TI8168_NAND_READ_PARAMETER_PAGE,
++    TI8168_NAND_READ_STATUS,
++    TI8168_NAND_READ_PAGE,
++    TI8168_NAND_READ_CACHE,
++    TI8168_NAND_PROGRAM,
++    TI8168_NAND_ERASE,
++} TI8168SyntheticNandMode;
++
++typedef struct TI8168NandRegion {
++    uint64_t offset;
++    uint64_t size;
++    uint64_t oob_size;
++    char *image;
++    char *oob_image;
++    GMappedFile *image_map;
++    GMappedFile *oob_map;
++} TI8168NandRegion;
++
++/* A COW page includes main and OOB bytes so program and erase stay atomic. */
++typedef struct TI8168NandCowPage {
++    uint8_t data[TI8168_SYNTHETIC_NAND_PAGE_DATA_SIZE];
++} TI8168NandCowPage;
++
++static const TI8168NandRegion ti8168_nand_region_layout[
++    TI8168_NAND_MTD_COUNT] = {
++    { 0x00000000, 0x10000000, 0x00800000 },
++    { 0x10000000, 0x10000000, 0x00800000 },
++};
++
++struct TI8168SyntheticNANDState {
++    DeviceState parent_obj;
++    uint32_t id;
++    uint32_t page_size;
++    uint32_t oob_size;
++    bool read_only;
++    bool cow;
++    TI8168NandRegion regions[TI8168_NAND_MTD_COUNT];
++    GHashTable *cow_pages;
++    uint8_t address[5];
++    unsigned address_count;
++    uint8_t read_id_address;
++    uint8_t parameter_page[TI8168_SYNTHETIC_NAND_PARAMETER_PAGE_SIZE];
++    uint64_t data_offset;
++    uint64_t main_data_limit;
++    uint64_t data_limit;
++    uint32_t row;
++    uint8_t program_data[TI8168_SYNTHETIC_NAND_PAGE_DATA_SIZE];
++    uint32_t program_count;
++    bool program_error;
++    uint8_t status;
++    TI8168SyntheticNandMode mode;
++};
++
++static void ti8168_synthetic_nand_instance_init(Object *obj);
++static void ti8168_synthetic_nand_init_parameter_page(
++    TI8168SyntheticNANDState *s);
++
++static uint8_t ti8168_synthetic_nand_ready_status(
++    const TI8168SyntheticNANDState *s)
++{
++    return 0x40 | (s->cow ? 0x80 : 0);
++}
++
++static void ti8168_synthetic_nand_fail(TI8168SyntheticNANDState *s,
++                                       const char *operation)
++{
++    s->status = ti8168_synthetic_nand_ready_status(s) | 0x01;
++    qemu_log_mask(LOG_GUEST_ERROR,
++                  "ti8168 synthetic NAND: rejected %s"
++                  " (mode=%u addresses=%u count=%u)\n",
++                  operation, s->mode, s->address_count, s->program_count);
++}
++
++static void ti8168_synthetic_nand_status_fail(TI8168SyntheticNANDState *s)
++{
++    s->status = ti8168_synthetic_nand_ready_status(s) | 0x01;
++}
++
++static TI8168NandRegion *ti8168_synthetic_nand_region(
++    TI8168SyntheticNANDState *s, uint64_t offset)
++{
++    unsigned i;
++
++    for (i = 0; i < ARRAY_SIZE(s->regions); i++) {
++        TI8168NandRegion *region = &s->regions[i];
++
++        if (offset >= region->offset && offset < region->offset + region->size) {
++            return region;
++        }
++    }
++    return NULL;
++}
++
++static gpointer ti8168_synthetic_nand_cow_key(uint32_t row)
++{
++    return GUINT_TO_POINTER(row + 1);
++}
++
++static uint8_t ti8168_synthetic_nand_read_backing(
++    TI8168SyntheticNANDState *s, uint32_t row, uint32_t column)
++{
++    uint64_t page_offset = (uint64_t)row * s->page_size;
++    TI8168NandRegion *region = ti8168_synthetic_nand_region(s, page_offset);
++    uint64_t oob_offset;
++
++    if (!region) {
++        return 0xff;
++    }
++    if (column < s->page_size) {
++        if (!region->image_map) {
++            return 0xff;
++        }
++        return ((const uint8_t *)g_mapped_file_get_contents(region->image_map))[
++            page_offset - region->offset + column];
++    }
++    if (!region->oob_map) {
++        return 0xff;
++    }
++    oob_offset = ((page_offset - region->offset) /
++                  s->page_size) * s->oob_size + column - s->page_size;
++    return oob_offset < region->oob_size ?
++        ((const uint8_t *)g_mapped_file_get_contents(region->oob_map))[oob_offset] :
++        0xff;
++}
++
++static TI8168NandCowPage *ti8168_synthetic_nand_cow_page(
++    TI8168SyntheticNANDState *s, uint32_t row, bool create, bool erased)
++{
++    TI8168NandCowPage *page;
++    unsigned column;
++
++    if (!s->cow_pages) {
++        return NULL;
++    }
++    page = g_hash_table_lookup(s->cow_pages,
++                               ti8168_synthetic_nand_cow_key(row));
++    if (page || !create) {
++        return page;
++    }
++    page = g_new(TI8168NandCowPage, 1);
++    if (erased) {
++        memset(page->data, 0xff, sizeof(page->data));
++    } else {
++        for (column = 0; column < ARRAY_SIZE(page->data); column++) {
++            page->data[column] = ti8168_synthetic_nand_read_backing(
++                s, row, column);
++        }
++    }
++    g_hash_table_insert(s->cow_pages, ti8168_synthetic_nand_cow_key(row),
++                        page);
++    return page;
++}
++
++static uint8_t ti8168_synthetic_nand_read_page_byte(
++    TI8168SyntheticNANDState *s, uint32_t row, uint32_t column)
++{
++    TI8168NandCowPage *page = ti8168_synthetic_nand_cow_page(
++        s, row, false, false);
++
++    if (page) {
++        return page->data[column];
++    }
++    return ti8168_synthetic_nand_read_backing(s, row, column);
++}
++
++static uint8_t ti8168_synthetic_nand_oob(TI8168SyntheticNANDState *s,
++                                         uint64_t offset)
++{
++    return ti8168_synthetic_nand_read_page_byte(s, s->row,
++                                                s->page_size + offset);
++}
++
++static bool ti8168_synthetic_nand_set_read_window(
++    TI8168SyntheticNANDState *s, uint64_t column)
++{
++    uint64_t page_offset = (uint64_t)s->row * s->page_size;
++
++    if (column >= s->page_size + s->oob_size ||
++        page_offset >= TI8168_SYNTHETIC_NAND_SIZE) {
++        ti8168_synthetic_nand_status_fail(s);
++        s->mode = TI8168_NAND_IDLE;
++        return false;
++    }
++    s->data_offset = page_offset + column;
++    s->main_data_limit = ((uint64_t)s->row + 1) * s->page_size;
++    s->data_limit = s->main_data_limit + s->oob_size;
++    s->status = ti8168_synthetic_nand_ready_status(s);
++    s->mode = TI8168_NAND_READ_PAGE;
++    return true;
++}
++
++static void ti8168_synthetic_nand_start_read(TI8168SyntheticNANDState *s)
++{
++    uint64_t column;
++
++    if (s->address_count < 5) {
++        ti8168_synthetic_nand_status_fail(s);
++        s->mode = TI8168_NAND_IDLE;
++        return;
++    }
++    column = s->address[0] | ((uint64_t)s->address[1] << 8);
++    s->row = s->address[2] | ((uint32_t)s->address[3] << 8) |
++             ((uint32_t)s->address[4] << 16);
++    ti8168_synthetic_nand_set_read_window(s, column);
++}
++
++static void ti8168_synthetic_nand_program(TI8168SyntheticNANDState *s)
++{
++    TI8168NandCowPage *page;
++    uint64_t page_offset;
++    uint32_t column;
++    unsigned i;
++
++    if (s->address_count < 5 || s->program_error) {
++        ti8168_synthetic_nand_fail(s, "program");
++        return;
++    }
++    column = s->address[0] | ((uint32_t)s->address[1] << 8);
++    s->row = s->address[2] | ((uint32_t)s->address[3] << 8) |
++             ((uint32_t)s->address[4] << 16);
++    page_offset = (uint64_t)s->row * s->page_size;
++    if (column >= TI8168_SYNTHETIC_NAND_PAGE_DATA_SIZE ||
++        s->program_count > TI8168_SYNTHETIC_NAND_PAGE_DATA_SIZE - column ||
++        page_offset >= TI8168_SYNTHETIC_NAND_SIZE) {
++        ti8168_synthetic_nand_fail(s, "program outside a page");
++        return;
++    }
++    /* Programming preserves every untouched main/OOB byte from backing. */
++    page = ti8168_synthetic_nand_cow_page(s, s->row, true, false);
++    g_assert(page);
++    for (i = 0; i < s->program_count; i++) {
++        page->data[column + i] &= s->program_data[i];
++    }
++    s->status = ti8168_synthetic_nand_ready_status(s);
++}
++
++static void ti8168_synthetic_nand_erase(TI8168SyntheticNANDState *s)
++{
++    uint64_t page_offset;
++    uint32_t first_row;
++    unsigned page;
++
++    if (s->address_count < 3) {
++        ti8168_synthetic_nand_fail(s, "erase");
++        return;
++    }
++    s->row = s->address[0] | ((uint32_t)s->address[1] << 8) |
++             ((uint32_t)s->address[2] << 16);
++    page_offset = (uint64_t)s->row * s->page_size;
++    if (page_offset >= TI8168_SYNTHETIC_NAND_SIZE) {
++        ti8168_synthetic_nand_fail(s, "erase outside NAND");
++        return;
++    }
++    first_row = s->row & ~(TI8168_SYNTHETIC_NAND_PAGES_PER_BLOCK - 1);
++    for (page = 0; page < TI8168_SYNTHETIC_NAND_PAGES_PER_BLOCK; page++) {
++        TI8168NandCowPage *cow_page =
++            ti8168_synthetic_nand_cow_page(s, first_row + page, true, true);
++
++        g_assert(cow_page);
++        memset(cow_page->data, 0xff, sizeof(cow_page->data));
++    }
++    s->status = ti8168_synthetic_nand_ready_status(s);
++}
++
++static void ti8168_synthetic_nand_random_read(TI8168SyntheticNANDState *s)
++{
++    uint64_t column;
++
++    if (s->address_count < 2) {
++        ti8168_synthetic_nand_status_fail(s);
++        s->mode = TI8168_NAND_IDLE;
++        return;
++    }
++    column = s->address[0] | ((uint64_t)s->address[1] << 8);
++    ti8168_synthetic_nand_set_read_window(s, column);
++}
++
++static bool ti8168_synthetic_nand_read_command(TI8168SyntheticNANDState *s,
++                                                uint8_t command)
++{
++    switch (command) {
++    case 0x90: /* READ ID */
++        s->address_count = 0;
++        s->read_id_address = 0;
++        s->data_offset = 0;
++        s->mode = TI8168_NAND_READ_ID;
++        return true;
++    case 0xec: /* READ PARAMETER PAGE */
++        s->data_offset = 0;
++        s->mode = TI8168_NAND_READ_PARAMETER_PAGE;
++        return true;
++    case 0x70: /* STATUS */
++        s->mode = TI8168_NAND_READ_STATUS;
++        return true;
++    case 0x00: /* READ PAGE setup */
++        s->address_count = 0;
++        s->mode = TI8168_NAND_READ_PAGE;
++        return true;
++    case 0x30: /* READ PAGE confirm */
++        ti8168_synthetic_nand_start_read(s);
++        return true;
++    case 0x05: /* RANDOM DATA OUTPUT setup (read cache) */
++        s->address_count = 0;
++        s->mode = TI8168_NAND_READ_CACHE;
++        return true;
++    case 0xe0: /* RANDOM DATA OUTPUT confirm */
++        ti8168_synthetic_nand_random_read(s);
++        return true;
++    default:
++        return false;
++    }
++}
++
++static bool ti8168_synthetic_nand_write_command(TI8168SyntheticNANDState *s,
++                                                 uint8_t command)
++{
++    switch (command) {
++    case 0x80: /* PROGRAM setup */
++        s->address_count = 0;
++        s->program_count = 0;
++        s->program_error = false;
++        s->mode = TI8168_NAND_PROGRAM;
++        if (!s->cow) {
++            ti8168_synthetic_nand_fail(s, "program");
++        }
++        return true;
++    case 0x10: /* PROGRAM confirm */
++        if (s->cow) {
++            ti8168_synthetic_nand_program(s);
++        } else {
++            ti8168_synthetic_nand_fail(s, "program");
++        }
++        s->mode = TI8168_NAND_IDLE;
++        return true;
++    case 0x60: /* ERASE setup */
++        s->address_count = 0;
++        s->mode = TI8168_NAND_ERASE;
++        if (!s->cow) {
++            ti8168_synthetic_nand_fail(s, "erase");
++        }
++        return true;
++    case 0xd0: /* ERASE confirm */
++        if (s->cow) {
++            ti8168_synthetic_nand_erase(s);
++        } else {
++            ti8168_synthetic_nand_fail(s, "erase");
++        }
++        s->mode = TI8168_NAND_IDLE;
++        return true;
++    default:
++        return false;
++    }
++}
++
++static void ti8168_synthetic_nand_do_command(TI8168SyntheticNANDState *s,
++                                              uint8_t command)
++{
++    if (command == 0xff) { /* RESET */
++        s->address_count = 0;
++        s->read_id_address = 0;
++        s->data_offset = 0;
++        s->main_data_limit = 0;
++        s->data_limit = 0;
++        s->status = ti8168_synthetic_nand_ready_status(s);
++        s->mode = TI8168_NAND_IDLE;
++        return;
++    }
++    if (!ti8168_synthetic_nand_read_command(s, command) &&
++        !ti8168_synthetic_nand_write_command(s, command)) {
++        s->mode = TI8168_NAND_IDLE;
++    }
++}
++
++static void ti8168_synthetic_nand_do_address(TI8168SyntheticNANDState *s,
++                                              uint8_t value)
++{
++    if (s->mode == TI8168_NAND_READ_ID && s->address_count == 0) {
++        s->read_id_address = value;
++        s->data_offset = 0;
++    }
++    if (s->address_count < ARRAY_SIZE(s->address)) {
++        s->address[s->address_count++] = value;
++    } else {
++        ti8168_synthetic_nand_status_fail(s);
++    }
++}
++
++static uint8_t ti8168_synthetic_nand_do_data_read(TI8168SyntheticNANDState *s)
++{
++    uint8_t value;
++
++    switch (s->mode) {
++    case TI8168_NAND_READ_ID:
++        if (s->read_id_address == 0x20) {
++            static const uint8_t onfi_signature[] = "ONFI";
++
++            if (s->data_offset >= sizeof(onfi_signature) - 1) {
++                return 0xff;
++            }
++            return onfi_signature[s->data_offset++];
++        }
++        if (s->data_offset >= sizeof(s->id)) {
++            return 0xff;
++        }
++        value = s->id >> (s->data_offset++ * 8);
++        return value;
++    case TI8168_NAND_READ_PARAMETER_PAGE:
++        if (s->data_offset >= sizeof(s->parameter_page)) {
++            return 0xff;
++        }
++        return s->parameter_page[s->data_offset++];
++    case TI8168_NAND_READ_STATUS:
++        return s->status;
++    case TI8168_NAND_READ_PAGE:
++        if (s->data_offset >= s->data_limit) {
++            ti8168_synthetic_nand_status_fail(s);
++            return 0xff;
++        }
++        if (s->data_offset >= s->main_data_limit) {
++            return ti8168_synthetic_nand_oob(
++                s, s->data_offset++ - s->main_data_limit);
++        }
++        value = ti8168_synthetic_nand_read_page_byte(
++            s, s->row, s->data_offset - (uint64_t)s->row * s->page_size);
++        s->data_offset++;
++        return value;
++    default:
++        return 0xff;
++    }
++}
++
++static void ti8168_synthetic_nand_do_data_write(TI8168SyntheticNANDState *s,
++                                                 uint8_t value)
++{
++    if (s->mode == TI8168_NAND_PROGRAM) {
++        if (!s->cow) {
++            ti8168_synthetic_nand_fail(s, "program data");
++        } else if (s->address_count < 5 ||
++                   s->program_count == ARRAY_SIZE(s->program_data)) {
++            s->program_error = true;
++            ti8168_synthetic_nand_fail(s, "program data outside a page");
++        } else {
++            s->program_data[s->program_count++] = value;
++        }
++    }
++}
++
++static void ti8168_synthetic_nand_reset(DeviceState *dev)
++{
++    TI8168SyntheticNANDState *s = TI8168_SYNTHETIC_NAND(dev);
++
++    s->address_count = 0;
++    s->read_id_address = 0;
++    s->data_offset = 0;
++    s->main_data_limit = 0;
++    s->data_limit = 0;
++    s->row = 0;
++    s->program_count = 0;
++    s->program_error = false;
++    s->status = ti8168_synthetic_nand_ready_status(s);
++    s->mode = TI8168_NAND_IDLE;
++}
++
++#include "ti8168_nand_device.inc"
++
++DeviceState *ti8168_synthetic_nand_create(
++    Object *parent, char *const images[TI8168_NAND_MTD_COUNT],
++    char *const oob_images[TI8168_NAND_MTD_COUNT],
++    bool read_only, bool cow)
++{
++    DeviceState *dev = qdev_new(TYPE_TI8168_SYNTHETIC_NAND);
++    TI8168SyntheticNANDState *s = TI8168_SYNTHETIC_NAND(dev);
++    unsigned i;
++
++    object_property_add_child(parent, "synthetic-nand", OBJECT(dev));
++    for (i = 0; i < ARRAY_SIZE(s->regions); i++) {
++        s->regions[i].image = g_strdup(images[i]);
++        s->regions[i].oob_image = g_strdup(oob_images[i]);
++    }
++    qdev_prop_set_bit(dev, "read-only", read_only);
++    qdev_prop_set_bit(dev, "cow", cow);
++    qdev_realize_and_unref(dev, NULL, &error_fatal);
++    return dev;
++}
++
++uint8_t ti8168_synthetic_nand_data_read(DeviceState *dev)
++{
++    return ti8168_synthetic_nand_do_data_read(TI8168_SYNTHETIC_NAND(dev));
++}
++
++void ti8168_synthetic_nand_data_write(DeviceState *dev, uint8_t value)
++{
++    ti8168_synthetic_nand_do_data_write(TI8168_SYNTHETIC_NAND(dev), value);
++}
++
++void ti8168_synthetic_nand_command(DeviceState *dev, uint8_t command)
++{
++    ti8168_synthetic_nand_do_command(TI8168_SYNTHETIC_NAND(dev), command);
++}
++
++void ti8168_synthetic_nand_address(DeviceState *dev, uint8_t value)
++{
++    ti8168_synthetic_nand_do_address(TI8168_SYNTHETIC_NAND(dev), value);
++}
++
++static void ti8168_synthetic_nand_register_types(void)
++{
++    type_register_static(&ti8168_synthetic_nand_type_info);
++}
++
++type_init(ti8168_synthetic_nand_register_types)
+diff --git a/hw/arm/ti8168_nand_device.inc b/hw/arm/ti8168_nand_device.inc
+new file mode 100644
+index 0000000..727cfff
+--- /dev/null
++++ b/hw/arm/ti8168_nand_device.inc
+@@ -0,0 +1,199 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++static void ti8168_synthetic_nand_init_parameter_page(
++    TI8168SyntheticNANDState *s)
++{
++    uint16_t crc = 0x4f4e;
++    unsigned i;
++
++    memset(s->parameter_page, 0, sizeof(s->parameter_page));
++    memcpy(s->parameter_page, "ONFI", 4);
++    s->parameter_page[4] = 0x02; /* ONFI revision bit 1. */
++    s->parameter_page[80] = 0x00;
++    s->parameter_page[81] = 0x08; /* 0x800-byte main page, little-endian. */
++    s->parameter_page[84] = 0x40;
++    s->parameter_page[92] = 0x40; /* 0x40 pages per block. */
++    s->parameter_page[96] = 0x00;
++    s->parameter_page[97] = 0x10; /* 4096 blocks per LUN: one 512 MiB chip. */
++    s->parameter_page[100] = 0x01;
++    s->parameter_page[101] = 0x32; /* 2 column, 3 row address cycles. */
++
++    for (i = 0; i < sizeof(s->parameter_page) - sizeof(crc); i++) {
++        unsigned bit;
++
++        crc ^= (uint16_t)s->parameter_page[i] << 8;
++        for (bit = 0; bit < 8; bit++) {
++            crc = (crc & 0x8000) ? (crc << 1) ^ 0x8005 : crc << 1;
++        }
++    }
++    s->parameter_page[254] = crc;
++    s->parameter_page[255] = crc >> 8;
++}
++
++static bool ti8168_synthetic_nand_open_region(TI8168NandRegion *region,
++                                               unsigned index, Error **errp)
++{
++    Error *local_err = NULL;
++    GError *map_err = NULL;
++    struct stat st;
++
++    if (!!region->image != !!region->oob_image) {
++        error_setg(errp, "ti8168 NAND mtd%u requires both main and OOB images",
++                   index);
++        return false;
++    }
++    if (!region->image) {
++        return true;
++    }
++    int fd = qemu_open(region->image, O_RDONLY | O_BINARY, &local_err);
++
++    if (fd < 0) {
++        error_propagate(errp, local_err);
++        return false;
++    }
++    if (fstat(fd, &st) < 0 || !S_ISREG(st.st_mode)) {
++        error_setg_errno(errp, errno,
++                         "ti8168 NAND mtd%u main image is not a regular file",
++                         index);
++        close(fd);
++        return false;
++    }
++    if (st.st_size != region->size) {
++        error_setg(errp, "ti8168 NAND mtd%u main image size is 0x%" PRIx64
++                   ", expected 0x%" PRIx64, index, (uint64_t)st.st_size,
++                   region->size);
++        close(fd);
++        return false;
++    }
++    close(fd);
++    region->image_map = g_mapped_file_new(region->image, false, &map_err);
++    if (!region->image_map) {
++        error_setg(errp, "cannot map ti8168 NAND mtd%u main image: %s", index,
++                   map_err->message);
++        g_error_free(map_err);
++        return false;
++    }
++    if (g_mapped_file_get_length(region->image_map) != region->size) {
++        error_setg(errp, "ti8168 NAND mtd%u main image changed while mapping",
++                   index);
++        return false;
++    }
++    fd = qemu_open(region->oob_image, O_RDONLY | O_BINARY, &local_err);
++    if (fd < 0) {
++        error_propagate(errp, local_err);
++        return false;
++    }
++    if (fstat(fd, &st) < 0 || !S_ISREG(st.st_mode)) {
++        error_setg_errno(errp, errno,
++                         "ti8168 NAND mtd%u OOB image is not a regular file",
++                         index);
++        close(fd);
++        return false;
++    }
++    if (st.st_size != region->oob_size) {
++        error_setg(errp, "ti8168 NAND mtd%u OOB image size is 0x%" PRIx64
++                   ", expected 0x%" PRIx64, index, (uint64_t)st.st_size,
++                   region->oob_size);
++        close(fd);
++        return false;
++    }
++    close(fd);
++    region->oob_map = g_mapped_file_new(region->oob_image, false, &map_err);
++    if (!region->oob_map) {
++        error_setg(errp, "cannot map ti8168 NAND mtd%u OOB image: %s", index,
++                   map_err->message);
++        g_error_free(map_err);
++        return false;
++    }
++    if (g_mapped_file_get_length(region->oob_map) != region->oob_size) {
++        error_setg(errp, "ti8168 NAND mtd%u OOB image changed while mapping",
++                   index);
++        return false;
++    }
++    return true;
++}
++
++static void ti8168_synthetic_nand_realize(DeviceState *dev, Error **errp)
++{
++    TI8168SyntheticNANDState *s = TI8168_SYNTHETIC_NAND(dev);
++    unsigned i;
++
++    if (!s->read_only) {
++        error_setg(errp, "ti8168 synthetic NAND rejects writable backends");
++        return;
++    }
++    if (s->page_size != TI8168_SYNTHETIC_NAND_PAGE_SIZE ||
++        s->oob_size != TI8168_SYNTHETIC_NAND_OOB_SIZE) {
++        error_setg(errp, "ti8168 synthetic NAND supports only page-size 0x%x and "
++                   "synthetic erased oob-size 0x%x",
++                   TI8168_SYNTHETIC_NAND_PAGE_SIZE,
++                   TI8168_SYNTHETIC_NAND_OOB_SIZE);
++        return;
++    }
++    for (i = 0; i < ARRAY_SIZE(s->regions); i++) {
++        if (!ti8168_synthetic_nand_open_region(&s->regions[i], i, errp)) {
++            return;
++        }
++    }
++    if (s->cow) {
++        s->cow_pages = g_hash_table_new_full(g_direct_hash, g_direct_equal,
++                                             NULL, g_free);
++    }
++    ti8168_synthetic_nand_init_parameter_page(s);
++}
++
++static void ti8168_synthetic_nand_finalize(Object *obj)
++{
++    TI8168SyntheticNANDState *s = TI8168_SYNTHETIC_NAND(obj);
++
++    unsigned i;
++
++    for (i = 0; i < ARRAY_SIZE(s->regions); i++) {
++        TI8168NandRegion *region = &s->regions[i];
++
++        g_clear_pointer(&region->image_map, g_mapped_file_unref);
++        g_clear_pointer(&region->oob_map, g_mapped_file_unref);
++        g_clear_pointer(&region->image, g_free);
++        g_clear_pointer(&region->oob_image, g_free);
++    }
++    g_clear_pointer(&s->cow_pages, g_hash_table_destroy);
++}
++
++static const Property ti8168_synthetic_nand_properties[] = {
++    DEFINE_PROP_UINT32("id", TI8168SyntheticNANDState, id,
++                       TI8168_SYNTHETIC_NAND_ID),
++    DEFINE_PROP_UINT32("page-size", TI8168SyntheticNANDState, page_size,
++                       TI8168_SYNTHETIC_NAND_PAGE_SIZE),
++    DEFINE_PROP_UINT32("oob-size", TI8168SyntheticNANDState, oob_size,
++                       TI8168_SYNTHETIC_NAND_OOB_SIZE),
++    DEFINE_PROP_BOOL("read-only", TI8168SyntheticNANDState, read_only, true),
++    DEFINE_PROP_BOOL("cow", TI8168SyntheticNANDState, cow, false),
++};
++
++static void ti8168_synthetic_nand_class_init(ObjectClass *klass,
++                                              const void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    dc->realize = ti8168_synthetic_nand_realize;
++    device_class_set_legacy_reset(dc, ti8168_synthetic_nand_reset);
++    device_class_set_props(dc, ti8168_synthetic_nand_properties);
++}
++
++static const TypeInfo ti8168_synthetic_nand_type_info = {
++    .name = TYPE_TI8168_SYNTHETIC_NAND,
++    .parent = TYPE_DEVICE,
++    .instance_size = sizeof(TI8168SyntheticNANDState),
++    .instance_init = ti8168_synthetic_nand_instance_init,
++    .class_init = ti8168_synthetic_nand_class_init,
++    .instance_finalize = ti8168_synthetic_nand_finalize,
++};
++
++static void ti8168_synthetic_nand_instance_init(Object *obj)
++{
++    TI8168SyntheticNANDState *s = TI8168_SYNTHETIC_NAND(obj);
++    unsigned i;
++
++    for (i = 0; i < ARRAY_SIZE(s->regions); i++) {
++        s->regions[i] = ti8168_nand_region_layout[i];
++    }
++}
+diff --git a/hw/arm/ti8168_probe_regs.c b/hw/arm/ti8168_probe_regs.c
+new file mode 100644
+index 0000000..d2dddaa
+--- /dev/null
++++ b/hw/arm/ti8168_probe_regs.c
+@@ -0,0 +1,258 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* TI8168 bounded probe-register compatibility device. */
++
++#include "qemu/osdep.h"
++#include "ti8168_internal.h"
++
++OBJECT_DECLARE_SIMPLE_TYPE(TI8168ProbeRegsState, TI8168_PROBE_REGS)
++
++/* These offsets are relative to the UART extension window at UART_BASE + 0x20. */
++enum {
++    TI8168_UART_EXT_MDR1 = 0x00, /* UART_MDR1, absolute offset 0x20 */
++    TI8168_UART_EXT_SCR = 0x20,  /* UART_SCR,  absolute offset 0x40 */
++    TI8168_UART_EXT_SYSC = 0x34, /* UART_SYSC, absolute offset 0x54 */
++    TI8168_UART_EXT_SYSS = 0x38, /* UART_SYSS, absolute offset 0x58 */
++    TI8168_UART_EXT_WER = 0x3c,  /* UART_WER,  absolute offset 0x5c */
++};
++
++struct TI8168ProbeRegsState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    uint32_t role;
++    uint32_t size;
++    uint32_t config;
++    uint32_t mdr1;
++    uint32_t scr;
++    uint16_t wer;
++    uint32_t control_regs[0x1000 / sizeof(uint32_t)];
++    unsigned unimp_logs;
++};
++
++/* Unknown CONTROL registers use zero-initialized synthetic storage. */
++static void ti8168_probe_log_unimplemented(TI8168ProbeRegsState *s,
++                                            bool write, hwaddr offset,
++                                            uint64_t value)
++{
++    if (s->unimp_logs == 16) {
++        qemu_log_mask(LOG_UNIMP,
++                      "ti8168-probe[%u]: further unimplemented accesses suppressed\n",
++                      s->role);
++    }
++    if (s->unimp_logs++ >= 16) {
++        return;
++    }
++    if (write) {
++        qemu_log_mask(LOG_UNIMP,
++                      "ti8168-probe[%u]: unimplemented write offset 0x%" HWADDR_PRIx
++                      " = 0x%" PRIx64 "\n", s->role, offset, value);
++    } else {
++        qemu_log_mask(LOG_UNIMP,
++                      "ti8168-probe[%u]: unimplemented read offset 0x%" HWADDR_PRIx
++                      "\n", s->role, offset);
++    }
++}
++
++static bool ti8168_probe_control_read(TI8168ProbeRegsState *s, hwaddr offset,
++                                      uint64_t *value)
++{
++    if (offset < sizeof(s->control_regs) && !(offset & 3)) {
++        *value = s->control_regs[offset / 4];
++        return true;
++    }
++    return false;
++}
++
++static bool ti8168_probe_gpmc_read(TI8168ProbeRegsState *s, hwaddr offset,
++                                   uint64_t *value)
++{
++    switch (offset) {
++    case 0x00: *value = 0x50; return true;
++    case 0x10: *value = s->config; return true;
++    case 0x14: *value = 1; return true;
++    default: return false;
++    }
++}
++
++static bool ti8168_probe_elm_read(TI8168ProbeRegsState *s, hwaddr offset,
++                                  uint64_t *value)
++{
++    switch (offset) {
++    case 0x10: *value = s->config; return true;
++    case 0x14: *value = 1; return true; /* SYSSTATUS.RESETDONE */
++    default: return false;
++    }
++}
++
++static bool ti8168_probe_uart_read(TI8168ProbeRegsState *s, hwaddr offset,
++                                   uint64_t *value)
++{
++    switch (offset) {
++    case TI8168_UART_EXT_MDR1: *value = s->mdr1; return true;
++    case TI8168_UART_EXT_SCR: *value = s->scr; return true;
++    case TI8168_UART_EXT_SYSC: *value = s->config; return true;
++    case TI8168_UART_EXT_SYSS: *value = 1; return true;
++    case TI8168_UART_EXT_WER: *value = s->wer; return true;
++    default: return false;
++    }
++}
++
++static uint64_t ti8168_probe_read(void *opaque, hwaddr offset, unsigned size)
++{
++    TI8168ProbeRegsState *s = opaque;
++    uint64_t value = 0;
++    bool handled = false;
++
++    switch (s->role) {
++    case PROBE_CONTROL:
++        handled = ti8168_probe_control_read(s, offset, &value);
++        break;
++    case PROBE_GPMC:
++        handled = ti8168_probe_gpmc_read(s, offset, &value);
++        break;
++    case PROBE_ELM:
++        handled = ti8168_probe_elm_read(s, offset, &value);
++        break;
++    case PROBE_UART:
++        /*
++         * This is an OMAP-UART extension probe stub layered beside serial-mm,
++         * not a claim of an exact UART model.  These reset/poll values let the
++         * early OMAP driver complete its reset and mode-selection probes.
++         */
++        handled = ti8168_probe_uart_read(s, offset, &value);
++        break;
++    case PROBE_PRCM:
++        break;
++    }
++    if (handled) {
++        return value;
++    }
++    ti8168_probe_log_unimplemented(s, false, offset, 0);
++    return 0;
++}
++
++static void ti8168_probe_write(void *opaque, hwaddr offset, uint64_t value,
++                               unsigned size)
++{
++    TI8168ProbeRegsState *s = opaque;
++    if (s->role == PROBE_GPMC && offset == 0x10) {
++        s->config = value & 0x1;
++        return;
++    }
++    if (s->role == PROBE_ELM && offset == 0x10) {
++        s->config = value;
++        return;
++    }
++    if (s->role == PROBE_CONTROL &&
++        offset < sizeof(s->control_regs) && !(offset & 3)) {
++        s->control_regs[offset / 4] = value;
++        return;
++    }
++    if (s->role == PROBE_UART) {
++        switch (offset) {
++        case TI8168_UART_EXT_MDR1: s->mdr1 = value & 0x7; return;
++        case TI8168_UART_EXT_SCR: s->scr = value & 0xff; return;
++        case TI8168_UART_EXT_SYSC:
++            s->config = value & 0x1;
++            if (value & 0x2) {
++                s->mdr1 = 0x7;
++                s->scr = 0;
++                s->wer = 0;
++            }
++            return;
++        case TI8168_UART_EXT_WER: s->wer = value & 0xffff; return;
++        default: break;
++        }
++    }
++    ti8168_probe_log_unimplemented(s, true, offset, value);
++}
++
++static bool ti8168_probe_accepts(void *opaque, hwaddr offset, unsigned size,
++                                 bool is_write, MemTxAttrs attrs)
++{
++    TI8168ProbeRegsState *s = opaque;
++    if (s->role == PROBE_UART) {
++        return size == 1 || (size == 2 && !(offset & 1)) ||
++               (size == 4 && !(offset & 3));
++    }
++    if (s->role == PROBE_CONTROL) {
++        return size == 4 && !(offset & 3);
++    }
++    return size == 4 && !(offset & 3);
++}
++
++static const MemoryRegionOps ti8168_probe_ops = {
++    .read = ti8168_probe_read,
++    .write = ti8168_probe_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = {
++        .min_access_size = 1,
++        .max_access_size = 4,
++        .accepts = ti8168_probe_accepts,
++    },
++};
++
++static void ti8168_probe_reset(DeviceState *dev)
++{
++    TI8168ProbeRegsState *s = TI8168_PROBE_REGS(dev);
++    s->config = 0;
++    s->mdr1 = 0x7;
++    s->scr = 0;
++    s->wer = 0;
++    memset(s->control_regs, 0, sizeof(s->control_regs));
++    s->unimp_logs = 0;
++}
++
++static void ti8168_probe_realize(DeviceState *dev, Error **errp)
++{
++    TI8168ProbeRegsState *s = TI8168_PROBE_REGS(dev);
++
++    if (!s->size) {
++        error_setg(errp, "ti8168-probe-regs size must be non-zero");
++        return;
++    }
++    memory_region_init_io(&s->iomem, OBJECT(dev), &ti8168_probe_ops, s,
++                          "ti8168.probe-regs", s->size);
++    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
++}
++
++static const Property ti8168_probe_properties[] = {
++    DEFINE_PROP_UINT32("role", TI8168ProbeRegsState, role, PROBE_CONTROL),
++    DEFINE_PROP_UINT32("size", TI8168ProbeRegsState, size, 0x1000),
++};
++
++static void ti8168_probe_class_init(ObjectClass *klass, const void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    dc->realize = ti8168_probe_realize;
++    device_class_set_legacy_reset(dc, ti8168_probe_reset);
++    device_class_set_props(dc, ti8168_probe_properties);
++}
++
++static const TypeInfo ti8168_probe_type_info = {
++    .name = TYPE_TI8168_PROBE_REGS,
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(TI8168ProbeRegsState),
++    .class_init = ti8168_probe_class_init,
++};
++
++DeviceState *ti8168_probe_create(Object *parent, const char *child_name,
++                                 hwaddr base, uint32_t size,
++                                 enum TI8168ProbeRole role)
++{
++    DeviceState *dev = qdev_new(TYPE_TI8168_PROBE_REGS);
++
++    object_property_add_child(parent, child_name, OBJECT(dev));
++    qdev_prop_set_uint32(dev, "role", role);
++    qdev_prop_set_uint32(dev, "size", size);
++    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
++    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
++    return dev;
++}
++
++static void ti8168_probe_register_types(void)
++{
++    type_register_static(&ti8168_probe_type_info);
++}
++
++type_init(ti8168_probe_register_types)
+diff --git a/hw/arm/ti8168_timer.c b/hw/arm/ti8168_timer.c
+new file mode 100644
+index 0000000..cf6f6ac
+--- /dev/null
++++ b/hw/arm/ti8168_timer.c
+@@ -0,0 +1,239 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* TI8168 dual-mode timer compatibility device. */
++
++#include "qemu/osdep.h"
++#include "ti8168_internal.h"
++
++OBJECT_DECLARE_SIMPLE_TYPE(TI8168TimerState, TI8168_TIMER)
++struct TI8168TimerState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    qemu_irq irq;
++    QEMUTimer *qtimer;
++    uint32_t frequency;
++    uint32_t tisr;
++    uint32_t tier;
++    uint32_t twer;
++    uint32_t tclr;
++    uint32_t tcrr;
++    uint32_t tldr;
++    uint32_t tmar;
++    uint32_t tsicr;
++    int64_t started_ns;
++};
++
++static uint32_t ti8168_timer_count(TI8168TimerState *s)
++{
++    uint64_t elapsed, ticks;
++
++    if (!(s->tclr & 1)) {
++        return s->tcrr;
++    }
++    elapsed = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) - s->started_ns;
++    ticks = muldiv64(elapsed, s->frequency, NANOSECONDS_PER_SECOND);
++    /* Do not expose a wrapped count while an overflow callback is pending. */
++    if (!(s->tclr & 2) && ticks >= (uint64_t)UINT32_MAX - s->tcrr) {
++        return UINT32_MAX;
++    }
++    return s->tcrr + ticks;
++}
++
++static void ti8168_timer_schedule(TI8168TimerState *s)
++{
++    uint32_t count;
++    uint64_t ticks;
++    int64_t delay;
++
++    timer_del(s->qtimer);
++    if (!(s->tclr & 1)) {
++        return;
++    }
++    count = ti8168_timer_count(s);
++    s->tcrr = count;
++    s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++    ticks = (uint64_t)UINT32_MAX - count + 1;
++    delay = muldiv64(ticks, NANOSECONDS_PER_SECOND, s->frequency);
++    timer_mod(s->qtimer, s->started_ns + MAX(delay, 1));
++}
++
++static void ti8168_timer_expire(void *opaque)
++{
++    TI8168TimerState *s = opaque;
++
++    s->tisr |= 2;
++    qemu_set_irq(s->irq, !!(s->tier & s->tisr));
++    if (s->tclr & 2) {
++        s->tcrr = s->tldr;
++        s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++        ti8168_timer_schedule(s);
++    } else {
++        /* Without AR the free-running counter wraps to zero. */
++        s->tcrr = 0;
++        s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++        ti8168_timer_schedule(s);
++    }
++}
++
++static uint64_t ti8168_timer_read(void *opaque, hwaddr offset, unsigned size)
++{
++    TI8168TimerState *s = opaque;
++
++    switch (offset) {
++    case 0x00: return 0x40;
++    case 0x10: return 0;
++    case 0x14: return 1;
++    case 0x24: return s->tisr;
++    case 0x28: return s->tisr;
++    case 0x34: return s->twer;
++    case 0x38: return s->tclr;
++    case 0x3c: return ti8168_timer_count(s);
++    case 0x40: return s->tldr;
++    case 0x48: return 0; /* TWPS: all writes take effect immediately. */
++    case 0x4c: return s->tmar;
++    case 0x54: return s->tsicr;
++    default: return 0;
++    }
++}
++
++static void ti8168_timer_write(void *opaque, hwaddr offset, uint64_t value,
++                               unsigned size)
++{
++    TI8168TimerState *s = opaque;
++    uint32_t old_count = ti8168_timer_count(s);
++
++    switch (offset) {
++    case 0x10:
++        if (value & 2) {
++            s->tisr = s->tier = s->twer = s->tclr = s->tsicr = 0;
++            s->tcrr = s->tldr = s->tmar = 0;
++            timer_del(s->qtimer);
++            qemu_set_irq(s->irq, 0);
++        }
++        return;
++    case 0x28:
++        s->tisr &= ~value;
++        qemu_set_irq(s->irq, !!(s->tier & s->tisr));
++        return;
++    case 0x2c:
++        s->tier |= value & 7;
++        qemu_set_irq(s->irq, !!(s->tier & s->tisr));
++        return;
++    case 0x30:
++        s->tier &= ~(value & 7);
++        qemu_set_irq(s->irq, !!(s->tier & s->tisr));
++        return;
++    case 0x34: s->twer = value & 7; return;
++    case 0x38:
++        s->tcrr = old_count;
++        s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++        s->tclr = value;
++        ti8168_timer_schedule(s);
++        return;
++    case 0x3c:
++        s->tcrr = value;
++        s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++        ti8168_timer_schedule(s);
++        return;
++    case 0x40: s->tldr = value; return;
++    case 0x44:
++        s->tcrr = s->tldr;
++        s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++        ti8168_timer_schedule(s);
++        return;
++    case 0x4c: s->tmar = value; return;
++    case 0x54: s->tsicr = value; return;
++    default: return;
++    }
++}
++
++static const MemoryRegionOps ti8168_timer_ops = {
++    .read = ti8168_timer_read,
++    .write = ti8168_timer_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = { .min_access_size = 4, .max_access_size = 4 },
++};
++
++static void ti8168_timer_reset(DeviceState *dev)
++{
++    TI8168TimerState *s = TI8168_TIMER(dev);
++
++    timer_del(s->qtimer);
++    s->tisr = s->tier = s->twer = s->tclr = s->tsicr = 0;
++    s->tcrr = s->tldr = s->tmar = 0;
++    s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++    qemu_set_irq(s->irq, 0);
++}
++
++static void ti8168_timer_unrealize(DeviceState *dev)
++{
++    TI8168TimerState *s = TI8168_TIMER(dev);
++
++    if (s->qtimer) {
++        timer_free(s->qtimer);
++        s->qtimer = NULL;
++    }
++}
++
++static void ti8168_timer_realize(DeviceState *dev, Error **errp)
++{
++    TI8168TimerState *s = TI8168_TIMER(dev);
++
++    if (!s->frequency) {
++        error_setg(errp, "ti8168-timer frequency must be non-zero");
++        return;
++    }
++    s->qtimer = timer_new_ns(QEMU_CLOCK_VIRTUAL, ti8168_timer_expire, s);
++}
++
++static void ti8168_timer_init(Object *obj)
++{
++    TI8168TimerState *s = TI8168_TIMER(obj);
++    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
++
++    memory_region_init_io(&s->iomem, obj, &ti8168_timer_ops, s,
++                          "ti8168.timer", 0x2000);
++    sysbus_init_mmio(sbd, &s->iomem);
++    sysbus_init_irq(sbd, &s->irq);
++}
++
++static const Property ti8168_timer_properties[] = {
++    DEFINE_PROP_UINT32("frequency", TI8168TimerState, frequency, 27000000),
++};
++
++static void ti8168_timer_class_init(ObjectClass *klass, const void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    dc->realize = ti8168_timer_realize;
++    dc->unrealize = ti8168_timer_unrealize;
++    device_class_set_legacy_reset(dc, ti8168_timer_reset);
++    device_class_set_props(dc, ti8168_timer_properties);
++}
++
++static const TypeInfo ti8168_timer_type_info = {
++    .name = TYPE_TI8168_TIMER,
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(TI8168TimerState),
++    .instance_init = ti8168_timer_init,
++    .class_init = ti8168_timer_class_init,
++};
++
++void ti8168_timer_create(Object *parent, hwaddr base, qemu_irq irq)
++{
++    DeviceState *dev = qdev_new(TYPE_TI8168_TIMER);
++
++    object_property_add_child(parent, "timer[*]", OBJECT(dev));
++    qdev_prop_set_uint32(dev, "frequency", 27000000);
++    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
++    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
++    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq);
++}
++
++static void ti8168_timer_register_types(void)
++{
++    type_register_static(&ti8168_timer_type_info);
++}
++
++type_init(ti8168_timer_register_types)
++
++/* Synthetic timer behavior; no hardware reset claim. */
+diff --git a/hw/char/serial-mm.c b/hw/char/serial-mm.c
+index 0e0be26..2514645 100644
+--- a/hw/char/serial-mm.c
++++ b/hw/char/serial-mm.c
+@@ -30,18 +30,102 @@
+ #include "qapi/error.h"
+ #include "hw/core/qdev-properties.h"
+
++enum {
++    OMAP_UART_LCR_CONF_MODE_A = 0x80,
++    OMAP_UART_LCR_CONF_MODE_B = 0xbf,
++    OMAP_UART_MCR_TCRTLR = 0x40,
++};
++
++static bool serial_mm_omap_read(SerialMM *smm, hwaddr reg, uint64_t *value)
++{
++    if (!smm->omap_compat) {
++        return false;
++    }
++
++    if (smm->serial.lcr == OMAP_UART_LCR_CONF_MODE_B) {
++        switch (reg) {
++        case 2: *value = smm->omap_efr; return true;
++        case 4: *value = smm->omap_xon1; return true;
++        case 5: *value = smm->omap_xon2; return true;
++        case 6: *value = smm->omap_xoff1; return true;
++        case 7: *value = smm->omap_xoff2; return true;
++        default: break;
++        }
++    }
++    if (smm->serial.lcr == OMAP_UART_LCR_CONF_MODE_A &&
++        smm->omap_mcr_extra & OMAP_UART_MCR_TCRTLR) {
++        if (reg == 6) {
++            *value = smm->omap_tcr;
++            return true;
++        }
++        if (reg == 7) {
++            *value = smm->omap_tlr;
++            return true;
++        }
++    }
++    if (reg == 4) {
++        *value = serial_io_ops.read(&smm->serial, reg, 1) |
++                 smm->omap_mcr_extra;
++        return true;
++    }
++    return false;
++}
++
++static bool serial_mm_omap_write(SerialMM *smm, hwaddr reg, uint8_t value)
++{
++    if (!smm->omap_compat) {
++        return false;
++    }
++
++    if (smm->serial.lcr == OMAP_UART_LCR_CONF_MODE_B) {
++        switch (reg) {
++        case 2: smm->omap_efr = value; return true;
++        case 4: smm->omap_xon1 = value; return true;
++        case 5: smm->omap_xon2 = value; return true;
++        case 6: smm->omap_xoff1 = value; return true;
++        case 7: smm->omap_xoff2 = value; return true;
++        default: break;
++        }
++    }
++    if (smm->serial.lcr == OMAP_UART_LCR_CONF_MODE_A &&
++        smm->omap_mcr_extra & OMAP_UART_MCR_TCRTLR) {
++        if (reg == 6) {
++            smm->omap_tcr = value;
++            return true;
++        }
++        if (reg == 7) {
++            smm->omap_tlr = value;
++            return true;
++        }
++    }
++    if (reg == 4) {
++        smm->omap_mcr_extra = value & OMAP_UART_MCR_TCRTLR;
++    }
++    return false;
++}
++
+ static uint64_t serial_mm_read(void *opaque, hwaddr addr, unsigned size)
+ {
+     SerialMM *s = SERIAL_MM(opaque);
+-    return serial_io_ops.read(&s->serial, addr >> s->regshift, 1);
++    hwaddr reg = addr >> s->regshift;
++    uint64_t value;
++
++    if (serial_mm_omap_read(s, reg, &value)) {
++        return value;
++    }
++    return serial_io_ops.read(&s->serial, reg, 1);
+ }
+
+ static void serial_mm_write(void *opaque, hwaddr addr,
+                             uint64_t value, unsigned size)
+ {
+     SerialMM *s = SERIAL_MM(opaque);
++    hwaddr reg = addr >> s->regshift;
++
+     value &= 255;
+-    serial_io_ops.write(&s->serial, addr >> s->regshift, value, 1);
++    if (!serial_mm_omap_write(s, reg, value)) {
++        serial_io_ops.write(&s->serial, reg, value, 1);
++    }
+ }
+
+ static const MemoryRegionOps serial_mm_ops[] = {
+@@ -116,6 +200,11 @@ SerialMM *serial_mm_init(MemoryRegion *address_space,
+     return smm;
+ }
+
++void serial_mm_enable_omap_compat(SerialMM *smm)
++{
++    smm->omap_compat = true;
++}
++
+ static void serial_mm_instance_init(Object *o)
+ {
+     SerialMM *smm = SERIAL_MM(o);
+diff --git a/include/hw/char/serial-mm.h b/include/hw/char/serial-mm.h
+index 0076bdc..81fdbe0 100644
+--- a/include/hw/char/serial-mm.h
++++ b/include/hw/char/serial-mm.h
+@@ -42,11 +42,21 @@ struct SerialMM {
+
+     uint8_t regshift;
+     uint8_t endianness;
++    bool omap_compat;
++    uint8_t omap_efr;
++    uint8_t omap_xon1;
++    uint8_t omap_xon2;
++    uint8_t omap_xoff1;
++    uint8_t omap_xoff2;
++    uint8_t omap_mcr_extra;
++    uint8_t omap_tcr;
++    uint8_t omap_tlr;
+ };
+
+ SerialMM *serial_mm_init(MemoryRegion *address_space,
+                          hwaddr base, int regshift,
+                          qemu_irq irq, int baudbase,
+                          Chardev *chr, enum device_endian end);
++void serial_mm_enable_omap_compat(SerialMM *smm);
+
+ #endif

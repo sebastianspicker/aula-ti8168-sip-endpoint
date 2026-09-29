@@ -61,13 +61,13 @@ trusted installer-side verifier checks the manifest and each staged file before
 activation; a verifier contained in the candidate payload is not a trust anchor.
 A digest calculated from an untrusted candidate at install time is insufficient.
 
-## Evidence handling
+## Sensitive data handling
 
 Follow the [sanitization policy](../product/sipd/docs/governance/sanitization-policy.md).
 Complete firmware, extracted filesystems, raw captures, authenticated evidence,
 credentials, certificates, keys, device identifiers, private addresses, and
-security reproduction material belong only below ignored `evidence/private/`
-or an equivalent approved private disclosure channel.
+security reproduction material belong outside this repository in an approved
+private disclosure channel.
 
 Public reports may contain bounded, sanitized technical conclusions. They must
 not contain working exploit payloads, account names, device serials, private

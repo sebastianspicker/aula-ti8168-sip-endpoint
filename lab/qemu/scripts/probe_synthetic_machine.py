@@ -169,7 +169,7 @@ def main() -> int:
         if actual_oob != BACKING_OOB or actual_adjacent_oob != b"\x6b":
             raise RuntimeError("QEMU modified the immutable synthetic OOB backing")
     print(machine_help_line(qemu))
-    print("synthetic-only machine and NAND COW qtests passed.")
+    print("synthetic-only machine and NAND COW probes passed.")
     return 0
 
 

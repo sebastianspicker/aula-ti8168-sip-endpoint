@@ -19,14 +19,4 @@ function(aula_sipd_apply_platform_libraries target_name)
     PRIVATE AULA_SIPD_HAVE_CLOCK_GETTIME=$<BOOL:${AULA_SIPD_HAVE_CLOCK_GETTIME}>
             AULA_SIPD_HAVE_GETRANDOM=$<BOOL:${AULA_SIPD_HAVE_GETRANDOM}>
             AULA_SIPD_HAVE_POSIX_SPAWN=$<BOOL:${AULA_SIPD_HAVE_POSIX_SPAWN}>)
-
-  if(AULA_SIPD_ENABLE_SANITIZERS)
-    if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
-      target_compile_options(${target_name} PRIVATE -fsanitize=address,undefined
-                                                    -fno-omit-frame-pointer)
-      target_link_options(${target_name} PRIVATE -fsanitize=address,undefined)
-    else()
-      message(FATAL_ERROR "Sanitizers require a Clang or GNU host compiler")
-    endif()
-  endif()
 endfunction()

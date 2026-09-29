@@ -7,7 +7,7 @@
 
 #define AULA_ENDPOINT_SOURCE_DISCOVERY_MAX_NS UINT64_C(5000000000)
 
-/* Synthetic black-frame parameter sets; see tests/fixtures/h264-parameter-sets.md. */
+/* Synthetic baseline black-frame parameter sets for the fixture backend. */
 static const aula_sdp_codec BASELINE_VIDEO_CODECS[] = {
   {AULA_SDP_CODEC_H264, 96U, 90000U, 1U,
    "packetization-mode=1;profile-level-id=42c01f;sprop-parameter-sets=Z0LAH9kAUAW7ARAAAAMAEAAAAwPA8YMkgA==,aMuMsg=="}
@@ -63,4 +63,3 @@ aula_status endpoint_discover_source_h264(aula_endpoint *endpoint) {
   endpoint->source_h264_profile_present = 1;
   return AULA_STATUS_OK;
 }
-

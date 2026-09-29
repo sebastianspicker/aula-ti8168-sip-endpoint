@@ -18,8 +18,4 @@ void aula_rtp_send_batch_abort(aula_rtp_send_batch *batch);
 aula_status aula_rtp_send_queue_dequeue_bounded(aula_rtp_send_queue *queue,
     uint64_t now_ns, uint32_t max_burst, aula_rtp_packet *out_packet);
 
-#if defined(AULA_SIPD_TEST_FAULTS) && AULA_SIPD_TEST_FAULTS
-void aula_rtp_send_queue_test_fail_allocation_after(int allocation_count);
-#endif
-
 #endif

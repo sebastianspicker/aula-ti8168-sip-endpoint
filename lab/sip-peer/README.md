@@ -15,8 +15,7 @@ networking exposes to the target guest (`QEMU_PEER_ADDRESS`,
 `QEMU_NAT_PORT_MIN`/`QEMU_NAT_PORT_MAX`), and allows the distinct RTCP tuple
 QEMU's NAT produces. It is used unchanged for the physical private-lab
 campaign as well, since both environments share the same guest-side NAT
-contract. It is a separate file from `private_sip_peer.py` only to stay under
-the maintained-source file-size gate; both live in this one directory.
+contract.
 
 `run_private_sip_peer.py` is the CLI entry point:
 
@@ -36,8 +35,7 @@ JSON, and exits non-zero if the run did not complete.
 
 - `tooling/live/campaign_calls.py` runs `run_private_sip_peer.py` as a
   subprocess against the physical target private lab.
-- `lab/sip-peer/tests/` exercises the shared peer protocol and the QEMU
-  profile and CLI together.
+- `qemu_profile.py` supplies the corresponding QEMU network profile.
 
 Callers add exactly one `sys.path` entry for this directory and import
 `private_sip_peer` directly; there is no package chain to follow.

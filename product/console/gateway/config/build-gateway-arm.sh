@@ -39,8 +39,7 @@ for header in jansson.h openssl/ssl.h fcgiapp.h; do
 done
 
 # The gateway's own translation units and the device-client sources it links
-# are defined once in gateway/sources.mk; read them the same way
-# tests/preview/run.sh reads gateway/preview/sources.mk.
+# are defined once in gateway/sources.mk and exposed by the component Makefile.
 gateway_sources=$(make -s -C "$console_dir" print-gateway-sources)
 device_client_sources=$(make -s -C "$console_dir" print-device-client-sources)
 

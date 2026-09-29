@@ -4,11 +4,9 @@ The declared cross-build profile is ARMv7 Linux 2.6.37, ARM EABI5, glibc
 2.12, with dynamic interpreter `/lib/ld-linux.so.3`. These are build
 constraints, not a claim that an artifact runs on a physical board.
 
-No upstream-only release sysroot or toolchain has been supplied and approved.
-Public ARM binaries remain blocked by the
-[public release policy](../../../../docs/PUBLIC_RELEASE.md). Previous
-firmware-based build records and inputs belong to the private research corpus;
-they do not establish release provenance.
+No upstream-only release sysroot or toolchain is included. An ARM binary needs
+a separately reviewed toolchain, sysroot, dependency closure, provenance, and
+redistribution rights.
 
 ## Reviewed inputs
 
@@ -21,9 +19,8 @@ libraries and a successful cross build cannot substitute for that review.
 `tools/construct-sysroot.py` consumes an explicit
 `aula-sipd-sysroot-v1` manifest of already acquired regular files. It checks
 SHA-256 values and produces a canonical sysroot lock. It neither downloads
-inputs nor determines their redistribution rights. Inputs and outputs inside
-the entire `evidence/` tree are rejected, including resolved aliases. Keep
-sysroot and report output below `.work/`.
+inputs nor determines their redistribution rights. Keep sysroot and report
+output below `.work/` and do not use recovered or private firmware inputs.
 
 ## Cross-build contract
 
@@ -50,8 +47,8 @@ The script sets `CC`, `AR`, `RANLIB`, and `SYSROOT`, then configures CMake with
 toolchain programs and sysroot, root-path-only library/include/package lookup,
 and `AULA_SIPD_TARGET_PROFILE=aula-arm-eabi5`. It enables the exact external
 PJSIP, FAAD2, SpeexDSP, and libsrtp production paths and refuses missing, symlinked,
-host-side, or out-of-sysroot dependency inputs. It disables tests, fuzzing,
-and sanitizers, then builds only `aula-sipd`. It must not fetch a toolchain,
+host-side, or out-of-sysroot dependency inputs. It builds only `aula-sipd` and
+must not fetch a toolchain,
 discover host packages, or execute a target binary.
 
 ## Static inspection
@@ -85,9 +82,8 @@ source files, checks imports, and rejects ARM `svc` instructions and active
 imports. A register-held syscall number is not inferred from an SVC site.
 
 `tools/generate-arm-report.py` combines the exact `check-arm-abi: OK` output
-and interface audit JSON. The report still leaves confined execution, fixture
-calls and hardware behavior unproven. Report writers protect all of
-`evidence/`, without selecting an individual firmware extraction.
+and interface audit JSON. The report still leaves confined execution and
+hardware behavior unproven.
 
 ## Optional confined execution
 
@@ -98,7 +94,7 @@ must already contain `qemu-arm`; the runner never pulls it. It uses no network,
 a read-only container root and mounts, dropped capabilities, and an
 unprivileged user. There is no automatic host-QEMU fallback.
 
-Host verification does not exercise this optional lane. An ARM acceptance
+The default host build does not exercise this optional lane. An ARM acceptance
 claim needs reviewed inputs, static interface reports and separately
 authorized runtime evidence. No private corpus or generated sysroot is a
 product build dependency.

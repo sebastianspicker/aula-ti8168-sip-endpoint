@@ -43,7 +43,7 @@ MAC = re.compile(r"\A(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\Z")
 FINGERPRINT = re.compile(r"\ASHA256:[A-Za-z0-9+/]{20,64}={0,2}\Z")
 VERSION = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 REPOSITORY = Path(__file__).resolve().parents[2]
-PRIVATE_ROOTS = (REPOSITORY / ".work", REPOSITORY / "evidence/private")
+PRIVATE_ROOTS = (REPOSITORY / ".work",)
 
 
 class SessionError(ValueError):
@@ -148,7 +148,7 @@ def _session_path(path_text: str | None) -> tuple[Path, Path]:
         raise SessionError("LIVE_SESSION parent is unavailable") from error
     matching_root = next((root for root in PRIVATE_ROOTS if resolved_parent == root.resolve() or resolved_parent.is_relative_to(root.resolve())), None)
     if matching_root is None:
-        raise SessionError("LIVE_SESSION must remain below .work or evidence/private")
+        raise SessionError("LIVE_SESSION must remain below .work")
     _secure_private_parent(path, matching_root)
     return path, matching_root
 

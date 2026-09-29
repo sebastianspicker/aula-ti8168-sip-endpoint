@@ -44,26 +44,15 @@ lookup, retrieval, or link step. Approval requires all of the following:
 2. review of the relevant post-2.17 security fix and immutable selected source
    revision, including SHA-256;
 3. a dated CVE/advisory snapshot for the selected revision;
-4. host and ARM EABI5 build/self-test evidence;
+4. host and ARM EABI5 build evidence;
 5. minimal feature configuration and static/dynamic dependency closure; and
 6. a reviewed entry in `third_party/manifest.json` and this gate record.
 
 The owned low-level adapter has been compiled and linked on the host against
-the exact selected revision. A deterministic UDP private-lab integration test
-drives typed LSZ1 originate through INVITE, provisional and final responses,
-ACK, H.264/G.711 SDP, RFC4733 DTMF, BYE, and teardown. A second integration
-test uses a TLS-capable build to prove trusted loopback acceptance with SNI and
-hostname verification plus wrong-identity rejection before any `INVITE`, with
-no cleartext or independent PJSIP resolver fallback. A third integration test
-proves TLS proxy REGISTER, SHA-256 digest retry, secret non-disclosure, 200
-completion, and live local status propagation. The exact-dependency suite also
-links the locked libsrtp 2.8 source and passes strict SDES-SRTP SDP,
-RTP/SRTCP encryption, matching-key receive, replay, tamper, and wrong-key
-oracles. It passes 13/13 CTests in both strict and ASan/UBSan builds. This is
-host fixture interoperability, not trusted-device certificate deployment,
-provider-issued proxy credentials, public TLS, Zoom acceptance, target
-compatibility, or live SRTP proof. ARM compatibility and live interoperability
-remain release gates.
+the recorded revision. That does not establish trusted-device certificate
+deployment, provider-issued proxy credentials, public TLS, Zoom acceptance,
+target compatibility, or live SRTP behavior. ARM compatibility and live
+interoperability remain separate gates.
 
 The public `sip.h` contract intentionally exposes no PJSIP types, so selection
 can remain blocked without preventing portable-core implementation.

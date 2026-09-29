@@ -29,23 +29,6 @@ struct aula_rtp_send_batch {
   uint64_t now_ns;
 };
 
-#if defined(AULA_SIPD_TEST_FAULTS) && AULA_SIPD_TEST_FAULTS
-static int pacing_fail_allocation_after = -1;
-
-void aula_rtp_send_queue_test_fail_allocation_after(int allocation_count) {
-  pacing_fail_allocation_after = allocation_count;
-}
-
-static int pacing_allocation_fails(void) {
-  if (pacing_fail_allocation_after < 0) return 0;
-  if (pacing_fail_allocation_after == 0) return 1;
-  --pacing_fail_allocation_after;
-  return 0;
-}
-#else
-static int pacing_allocation_fails(void) { return 0; }
-#endif
-
 static void pacing_secure_zero(void *memory, size_t length) {
   volatile uint8_t *cursor = (volatile uint8_t *)memory;
   while (length > 0U) { *cursor = 0U; ++cursor; --length; }
@@ -83,14 +66,9 @@ static int aula_rtp_queue_is_full(const aula_rtp_send_queue *queue,
 
 static aula_rtp_queue_entry *aula_rtp_queue_entry_create(const aula_rtp_packet *packet) {
   aula_rtp_queue_entry *entry;
-  if (pacing_allocation_fails()) return NULL;
   entry = (aula_rtp_queue_entry *)calloc(1U, sizeof(*entry));
   if (entry == NULL) return NULL;
   if (packet->payload.length != 0U) {
-    if (pacing_allocation_fails()) {
-      free(entry);
-      return NULL;
-    }
     entry->payload = (uint8_t *)malloc(packet->payload.length);
     if (entry->payload == NULL) {
       free(entry);
@@ -124,10 +102,6 @@ aula_status aula_rtp_send_queue_batch_begin(
                           queue->stats.queued_bytes) {
     pacing_account_drops(queue, packet_count);
     return AULA_STATUS_LIMIT_EXCEEDED;
-  }
-  if (pacing_allocation_fails()) {
-    pacing_account_drops(queue, packet_count);
-    return AULA_STATUS_INTERNAL_ERROR;
   }
   batch = (aula_rtp_send_batch *)calloc(1U, sizeof(*batch));
   if (batch == NULL) {

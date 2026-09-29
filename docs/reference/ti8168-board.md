@@ -5,11 +5,6 @@ layout, and commercial relationships are not established in the public source.
 Documented DM8168 platforms below provide architectural comparisons, without
 establishing hardware equivalence or deployment support.
 
-Observations from privately held devices and firmware remain in the research
-corpus with their own evidence and confidence limits. They inform bounded
-models without establishing that the TI8168 media board exactly reproduces a
-physical product.
-
 ## Documented comparison platforms
 
 The following manufacturer-documented examples broaden the architectural
@@ -51,9 +46,9 @@ machine is `ti8168-mediaboard`.
 
 Platform similarity does not establish shared software ownership or permission
 to redistribute SDKs, board-support code, or firmware. Original firmware,
-decompiled implementations, vendor web assets, and vendor documents remain
-private. Independently written models and integrations require provenance
-review before [public source export](../PUBLIC_RELEASE.md).
+decompiled implementations, vendor web assets, and vendor documents are not
+part of this repository. Independently written models and integrations still
+require provenance and license review before distribution.
 
 The references above are external links and short factual summaries; vendor
 manuals, schematics, SDKs, and source packages are not copied into the public

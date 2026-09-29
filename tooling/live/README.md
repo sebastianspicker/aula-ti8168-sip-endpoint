@@ -6,11 +6,10 @@ provider is unavailable in this source tree. Hardware campaigns require
 separately reviewed private identity tooling and action-specific authorization.
 
 The session parser, build and package helpers, ownership checks, peer-pin and
-recovery contracts remain for offline validation. A synthetic session identity
-is a fixture marker only; it does not prove that a physical target is eligible.
-Physical packaging still depends on privately provisioned device readiness and
-root-SSH prerequisites. Those paths need separate provenance review and are
-excluded from public source approval; the source allowlist remains empty.
+recovery contracts remain for offline use. A synthetic session identity does
+not prove that a physical target is eligible. Physical packaging still depends
+on separately provisioned device readiness and root-SSH prerequisites. Those
+inputs need independent provenance review.
 The private root-SSH ownership-marker bytes in the offline reboot check are
 retained for migration compatibility. See the
 [physical private-lab workflow](../../docs/operator/physical-private-lab.md)

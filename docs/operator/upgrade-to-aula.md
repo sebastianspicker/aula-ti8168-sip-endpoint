@@ -69,24 +69,14 @@ An operator with separate authority for the target should follow these steps:
    review are complete. Restore an old installation only with its old tooling
    and matching journal; never combine journals across names.
 
-The host migration tests exercise refusal for each legacy path as a file,
-directory and dangling symlink, twice, while verifying unchanged legacy
-metadata and no new application directory. Existing product persistence tests
-exercise the unchanged JSON schemas. These checks do not establish that an
-operator's physical upgrade or restoration has succeeded.
-
 ## Deliberate compatibility spellings
 
 The old names remain only in this migration document, the legacy-path guards
-in the two installers and their migration test, and the private root-SSH
-ownership-marker contract in the physical installer/remover, their tests, and
-the offline reboot ownership checks in `tooling/live/campaign_transport.py`.
+in the installer, and the root-SSH ownership-marker contract in the physical
+installer/remover and the offline reboot ownership checks in
+`tooling/live/campaign_transport.py`.
 That contract retains `.ls200-root-shell-managed`,
 `managed-by=open-ls200-root-shell.sh` and `ls200-root-ssh-…` cron markers so
-existing privately provisioned overlays can still be identified exactly.
+existing provisioned overlays can still be identified exactly.
 The checks do not create or modify provisioning markers. Their private
 provisioner is outside the maintained source boundary.
-
-Public-source approval records require review again after a path or byte
-change. The source allowlist remains empty; the rename does not authorize
-publication or copying the repository's Git history.

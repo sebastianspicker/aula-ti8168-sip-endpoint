@@ -1,7 +1,7 @@
 # Single source of truth for the preview build's source list: the local
 # preview media core plus the maintained sipd sources it reuses at build time
-# (see ../preview/INTEGRATION.md). Included by ../../Makefile and read by
-# ../../tests/preview/run.sh via `make -s -C product/console print-preview-sources`.
+# (see ../preview/INTEGRATION.md). Included by ../../Makefile and exposed via
+# `make -s -C product/console print-preview-sources` for cross-build tooling.
 PREVIEW_SOURCES := \
 	gateway/preview/preview_reader.c \
 	gateway/preview/preview_reader_protocol.c \

@@ -77,10 +77,6 @@ aula_status endpoint_settings_persist(const aula_endpoint *endpoint,
                                        uint32_t revision,
                                        aula_zoom_profile profile,
                                        int media_managed);
-#if defined(AULA_SIPD_TEST_FAULTS)
-void endpoint_settings_test_fail_next_parent_sync(void);
-void endpoint_settings_test_fail_next_rename(void);
-#endif
 aula_status endpoint_control_settings(aula_endpoint *endpoint,
                                        aula_bytes payload,
                                        aula_mutable_bytes *response);

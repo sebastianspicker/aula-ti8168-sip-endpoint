@@ -84,7 +84,7 @@ if [ -n "${QEMU_BINARY:-}" ]; then
     python3 -B "$SCRIPT_DIR/probe_synthetic_machine.py" "$QEMU_BINARY"
     printf '%s\n' "Built synthetic TI8168 machine verified: $QEMU_BINARY"
 else
-    printf '%s\n' 'QEMU_BINARY not supplied; built-machine qtests skipped.'
+    printf '%s\n' 'QEMU_BINARY not supplied; built-machine probe skipped.'
 fi
 
 printf '%s\n' 'Synthetic TI8168 QEMU checks passed.'

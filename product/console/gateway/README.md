@@ -103,11 +103,10 @@ schema contains an overall state and the five state-only checks
 `renderer_truth`; it accepts no paths, credentials, identifiers, or arbitrary
 diagnostic detail. Renderer truth is `unavailable` until a dedicated runtime
 health interface exists, and media/overall hardware readiness never claim a
-pass from host fixtures. `GET /diagnostics` remains a separately shaped opcode
+pass from synthetic execution. `GET /diagnostics` remains a separately shaped opcode
 1 status projection. Typed LSZ1 originate, DTMF, hangup, media-control,
 credential-update, and event-snapshot routes remain separate daemon operations;
-a successful gateway exchange and
-the host-fixture proxy-registration proof are not provider-issued credential,
+a successful gateway exchange and local proxy registration are not provider-issued credential,
 public Zoom, SRTP, or hardware acceptance.
 
 All protected routes require the configured Origin policy. `allowed_origin` may
@@ -181,10 +180,8 @@ third-party sources. The LSZ1 client reuses the daemon's public
 header size, and frame flags; a gateway-local `GATEWAY_LSZ1_MAX_PAYLOAD`
 enforces the gateway's own tighter payload bound (statically asserted against
 the daemon's wire limit) over network-order flags/request ID/length and
-bounded JSON. Gateway tests cover the capability-unavailable settings response, account and
-directory revision conflicts, v1/v2/v3 persistence, safe recents and event
-history, export expiry, and the typed supported request boundaries; they are
-not a guest deployment or live-device result.
+bounded JSON. These source contracts do not establish a guest deployment or
+live-device result.
 
 For the [TI8168 media board](../../../docs/reference/ti8168-board.md),
 `config/build-gateway-arm.sh` accepts only the explicit reviewed ARM sysroot,
@@ -193,10 +190,9 @@ OpenSSL, and FastCGI static archives and refuses to read or write beneath the
 repository evidence corpus. Generated output must resolve
 strictly beneath the canonical repository `.work` directory.
 
-Run `make test-fastcgi FCGI_PREFIX=/reviewed/native/fcgi` from the repository
-root to exercise the actual workers, request mapping, preview cancellation,
-and lease release. The core gateway and preview unit checks remain
-separate from this optional runtime integration lane.
+Build the optional worker with
+`make console-fastcgi FCGI_PREFIX=/reviewed/native/fcgi` from the repository
+root.
 
 ## Device companion routes
 

@@ -1,7 +1,7 @@
 # Threat model
 
-Status: source-derived control model. Host tests validate selected controls;
-ARM, live target, private-peer, and Zoom evidence remain separate gates.
+Status: source-derived control model. ARM, live-target, private-peer, and Zoom
+behavior require separate validation.
 
 ## Assets and trust boundaries
 
@@ -37,15 +37,3 @@ ARM, live target, private-peer, and Zoom evidence remain separate gates.
    a CRC or isolated lab peer may require it; it is never an implicit fallback
    after protected negotiation and is reported as `rtp` in authenticated
    status.
-
-## Required validation work
-
-- Fuzz the SIP-adapter boundary, SDP, RTP, RTCP, RTSP, Annex-B H.264, and
-  configuration parsers with malformed and limit-boundary corpus inputs.
-- Exercise authorization failures, source changes, child failure/restart caps,
-  Unix-socket permission failures, secret-file permission failures, and
-  symlink/path traversal rejection.
-- Run sanitization positive and negative fixtures before publishing diagnostics
-  or packet summaries.
-- Reassess this model before direct GStreamer/CBox/SysLink/DSP integration,
-  startup activation, TLS introduction, or any live public-network test.

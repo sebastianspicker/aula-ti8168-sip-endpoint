@@ -1,7 +1,7 @@
 # shellcheck shell=sh
 # The single maintained QEMU overlay patch shared by preparation, verification, and apply.
 
-BOARD_PATCH="$PROTO_DIR/patches/ti8168-mediaboard.patch"
+BOARD_PATCH="$PROTO_DIR/patches/ti8168-mediaboard-model.patch"
 
 PATCH_STACK="$BOARD_PATCH"
 

@@ -1,10 +1,7 @@
 # Sanitization policy
 
-Status: normative policy enforced for retained text evidence by
-`tools/sanitize-evidence.py`. The validator is deny-by-default: `check` rejects
-an unsafe candidate and `collect` additionally writes a new, mode-`0600` copy
-outside immutable recovered evidence. Manual review is additional, not a
-substitute.
+Status: normative policy for diagnostic text and operational summaries.
+Automated redaction is not a substitute for human review.
 
 ## Prohibited material
 
@@ -31,30 +28,9 @@ Do not version, print in ordinary logs, or publish any of the following:
 | Credentials | `present`, `absent`, or `redacted`; never length, prefix, suffix, or hash |
 | Paths | approved project-relative path or role token; redact target/home paths where publication could expose identity |
 
-## Validator and review requirements
+## Review requirement
 
-Run `tools/sanitize-evidence.py check --input <candidate>` before a fixture,
-log, packet summary, or discovery report is retained, then use `collect` only
-for an approved private destination. Supply each configured test credential as
-`--known-secret-file <mode-0600-file>` so raw, repeatedly percent-encoded,
-hexadecimal, standard-base64, and URL-safe-base64 padded and unpadded forms
-are rejected without exposing the secret in the process argument list. These
-checks examine each bounded decoded view. The validator opens inputs once with
-no-follow semantics and validates and reads that same descriptor. The validator
-rejects:
-
-- SIP/SIPS URIs; credential-labelled lines including authorization, password,
-  passcode, secret, token, API key, or host key; Call-ID; and cookie headers;
-- IPv4, IPv6, MAC-address, serial-number, absolute target-path, and detected
-  hostname or endpoint patterns;
-- binary/control-byte data, decodable base64-like payloads, and raw SIP/SDP
-  start lines; and
-- percent-encoded values after bounded normalization, including fully encoded
-  labels, compressed and mapped IP literals, and configured-secret encodings.
-
-Positive fixtures must show valid redacted summaries passing. Negative fixtures
-must include each prohibited class, near-miss strings, encoded variants, and
-binary payload markers. Sanitized output is still sensitive operational
-evidence and must receive a human review before external publication. The
-validator is a retention gate, not proof that contextually sensitive material
-is safe to publish.
+Sanitized output remains sensitive operational material. Review it for both
+the prohibited classes above and contextual identifiers before sharing it.
+Do not retain a diagnostic merely because an automated redaction step accepts
+it.

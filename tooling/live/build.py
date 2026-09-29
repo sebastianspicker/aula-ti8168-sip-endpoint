@@ -82,7 +82,7 @@ def exact_json(raw: bytes) -> Any:
 
 
 def _validate_private_manifest_parent(path: Path) -> None:
-    allowed_roots = (WORK, ROOT / "evidence/private")
+    allowed_roots = (WORK,)
     try:
         resolved_parent = path.parent.resolve(strict=True)
     except OSError as error:

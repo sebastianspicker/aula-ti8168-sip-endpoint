@@ -279,39 +279,14 @@ static aula_status settings_close_temporary(int *descriptor,
   return status;
 }
 
-#if defined(AULA_SIPD_TEST_FAULTS)
-static int fail_next_settings_parent_sync;
-static int fail_next_settings_rename;
-void endpoint_settings_test_fail_next_rename(void) {
-  fail_next_settings_rename = 1;
-}
-void endpoint_settings_test_fail_next_parent_sync(void) {
-  fail_next_settings_parent_sync = 1;
-}
-#endif
-
 static aula_status settings_commit_temporary(int parent_descriptor,
                                                const char *temporary,
                                                const char *name) {
-#if defined(AULA_SIPD_TEST_FAULTS)
-  if (fail_next_settings_rename != 0) {
-    fail_next_settings_rename = 0;
-    errno = EIO;
-    return AULA_STATUS_IO_ERROR;
-  }
-#endif
   if (renameat(parent_descriptor, temporary, parent_descriptor, name) != 0) {
     return AULA_STATUS_IO_ERROR;
   }
   /* The rename is the transaction commit point: after it succeeds the new
    * settings are authoritative and may be observed by a restart. */
-#if defined(AULA_SIPD_TEST_FAULTS)
-  if (fail_next_settings_parent_sync != 0) {
-    fail_next_settings_parent_sync = 0;
-    errno = EIO;
-    return AULA_STATUS_PERSISTENCE_UNCERTAIN;
-  }
-#endif
   return fsync(parent_descriptor) == 0 ? AULA_STATUS_OK
                                       : AULA_STATUS_PERSISTENCE_UNCERTAIN;
 }

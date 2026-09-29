@@ -245,21 +245,7 @@ static int created_secret_is_valid(int descriptor) {
          (created.st_mode & 0077U) == 0U;
 }
 
-#if defined(AULA_SIPD_TEST_FAULTS)
-static int fail_next_parent_sync;
-void aula_config_test_fail_next_parent_sync(void) {
-  fail_next_parent_sync = 1;
-}
-#endif
-
 static aula_status sync_secret_parent(int descriptor) {
-#if defined(AULA_SIPD_TEST_FAULTS)
-  if (fail_next_parent_sync != 0) {
-    fail_next_parent_sync = 0;
-    errno = EIO;
-    return AULA_STATUS_IO_ERROR;
-  }
-#endif
   return fsync(descriptor) == 0 ? AULA_STATUS_OK : AULA_STATUS_IO_ERROR;
 }
 

@@ -14,12 +14,10 @@ local preview media core (`preview_reader.c`, `preview_reader_protocol.c`,
 parser/depacketizer implementations, reused at build time without local
 copies: `../../../sipd/src/backends/rtsp_parser.c`,
 `../../../sipd/src/media/h264.c`, and
-`../../../sipd/src/media/h264_depacketizer.c`. `../../tests/preview/run.sh`
-reads the same list via `make -s -C product/console print-preview-sources`
-instead of repeating it.
+`../../../sipd/src/media/h264_depacketizer.c`.
 
 Add include roots `gateway/preview`, `../sipd/include`, and
-`../sipd/src/backends`. The code is C99-compatible and is tested with the
+`../sipd/src/backends`. The code is C99-compatible and builds under the
 repository's C17 warning policy.
 
 ## Worker sequence
@@ -71,6 +69,3 @@ crossing connections.
   bytes are unchanged. B slices and data-partition/extension slices return
   `AULA_STATUS_UNSUPPORTED` with
   `AULA_PREVIEW_FLV_ERROR_UNSUPPORTED_TIMING`; no zero-CTS claim is made.
-
-Run `product/console/tests/preview/run.sh` for the socket-free protocol, recovery,
-byte-preservation, timing, and golden-FLV tests.

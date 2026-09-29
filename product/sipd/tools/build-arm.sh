@@ -139,8 +139,5 @@ cmake -S "$project_dir" -B "$canonical_build" \
     -DAULA_SIPD_SPEEXDSP_LIBRARY="$canonical_speexdsp_library" \
     -DAULA_SIPD_ENABLE_SRTP=ON \
     -DAULA_SIPD_SRTP_INCLUDE_DIR="$canonical_srtp_include" \
-    -DAULA_SIPD_SRTP_LIBRARY="$canonical_srtp_library" \
-    -DAULA_SIPD_BUILD_TESTS=OFF \
-    -DAULA_SIPD_BUILD_FUZZ=OFF \
-    -DAULA_SIPD_ENABLE_SANITIZERS=OFF
+    -DAULA_SIPD_SRTP_LIBRARY="$canonical_srtp_library"
 cmake --build "$canonical_build" --target aula-sipd --parallel "${AULA_BUILD_JOBS:-1}"

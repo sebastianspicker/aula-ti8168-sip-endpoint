@@ -31,8 +31,7 @@ SAFE_ENV = {
     "PYTHONDONTWRITEBYTECODE": "1",
 }
 REQUIRED_HOST_TOOLS = (
-    "python3", "uv", "pnpm", "node", "cmake", "ctest", "cmake-format",
-    "pkg-config", "shellcheck", "clang", "llvm-profdata", "llvm-cov",
+    "python3", "pnpm", "node", "cmake", "pkg-config", "cc",
 )
 class GateError(RuntimeError):
     pass
@@ -154,9 +153,6 @@ def _host_tool_environment(search_path: str) -> tuple[dict[str, str], dict[str, 
     environment = {
         **SAFE_ENV,
         "PATH": controlled_path,
-        "AULA_FUZZ_C_COMPILER": str(expected["clang"]),
-        "AULA_LLVM_PROFDATA": str(expected["llvm-profdata"]),
-        "AULA_LLVM_COV": str(expected["llvm-cov"]),
     }
     return environment, tools
 

@@ -4,9 +4,9 @@
 
 Aula, a SIP endpoint for TI8168 media boards, combines a maintained
 SIP/media endpoint and management console with two independent development environments and a
-firmware-evidence corpus. The product stack builds and packages without importing recovered or
-decompiled firmware. The emulator and QEMU model provide different kinds of
-validation evidence and neither is a production dependency.
+physical-target deployment lane. The product stack builds and packages without importing recovered
+or decompiled firmware. The emulator and QEMU model provide different kinds of
+development evidence and neither is a production dependency.
 
 The hardware discussion uses a TI8168 media board as a
 design reference. Comparisons include the TI DM8168 EVM, Z3-DM8168-RPS, and
@@ -50,25 +50,6 @@ retain their separate unprivileged identities. The gateway is the only
 browser-facing HTTP-to-control adapter. The daemon has no network control
 listener.
 
-```mermaid
-flowchart TB
-    Evidence[Firmware and device evidence]
-    Emulator[Logical emulator]
-    QEMU[Synthetic TI8168 QEMU model]
-    Product[Maintained product services]
-    Package[Manifest-verified payload]
-    Target[Owned target device]
-
-    Evidence -.->|behavioral evidence| Emulator
-    Evidence -.->|protocol and ABI evidence| Product
-    Product --> Package
-    Package --> Target
-    Emulator -.->|contract tests only| Product
-    QEMU -.->|synthetic model tests only| Product
-```
-
-Dashed arrows are evidence relationships, not source or runtime dependencies.
-
 ## Components
 
 | Path | Responsibility | Owned state | Depends on |
@@ -80,11 +61,11 @@ Dashed arrows are evidence relationships, not source or runtime dependencies.
 | `product/console/nginx/` | TLS termination, static assets, FastCGI route allowlist | None | Gateway FastCGI process |
 | [`lab/emulator/`](../lab/emulator/README.md) | Synthetic local recording/stream state and events | Explicit JSON state file below `.work/` | Independent validation lane; not a product runtime dependency |
 | [`lab/qemu/`](../lab/qemu/README.md) | Synthetic TI8168 media-board model | Volatile guest state only | Caller-supplied reviewed ELF/raw image; independent validation lane |
-| [`lab/sip-peer/`](../lab/sip-peer/README.md) | Deterministic SIP/RTP peer for host fixtures and the physical private lab | None | Used by host tests and `tooling/live` |
+| [`lab/sip-peer/`](../lab/sip-peer/README.md) | Deterministic SIP/RTP peer for controlled QEMU and physical-lab use | None | Used by QEMU and `tooling/live` |
 | [`deployment/`](../deployment/README.md) | Payload assembly and physical-target lifecycle | Installed releases and ownership journals (target state) | Reviewed prebuilt binaries |
 | [`dependencies/`](../dependencies/README.md) | Third-party version pins, advisories, and preparation scripts | Immutable dependency records | None |
-| [`tooling/`](../tooling/quality/README.md) | Quality gate, workspace/output guards, console dependency management, live-campaign orchestration, generic device-evidence receiver and RTSP observations, benchmarks | Ignored `.work/` build/report output | Reads product/lab/deployment source; product services do not depend on it |
-| `evidence/` | Sanitized firmware findings, reproducibility records, and private/archive boundaries | Untracked private corpus, present only in checkouts that hold it | Research evidence; never a product dependency |
+| `tooling/console/` | Console dependency installation and lease management | Ignored `.work/` dependency state | Reads console manifests; product services do not depend on it |
+| [`tooling/live/`](../tooling/live/README.md) | Physical-lab build and campaign orchestration | Ignored `.work/` build and session state | Reads product and deployment source; product services do not depend on it |
 
 ## Dependency direction
 
@@ -112,23 +93,23 @@ Dashed arrows are evidence relationships, not source or runtime dependencies.
 
 ## External contracts
 
-| Contract | Defined at | Tested at |
-| --- | --- | --- |
-| LSZ1 wire protocol (opcodes, framing, gateway/companion peer-UID auth) | [`product/sipd/include/aula_sipd/control_protocol.h`](../product/sipd/include/aula_sipd/control_protocol.h) | `product/sipd/tests`; `product/console/tests` (gateway LSZ1 client) |
-| HTTP `/zoom/api/v1/*` routes and the `{"revision":1,"ok":...,"data"|"error":...}` envelope | [`product/console/gateway/gateway.c`](../product/console/gateway/gateway.c) route table; documented in [`gateway/README.md`](../product/console/gateway/README.md) | `product/console/tests`; `product/console/tests/preview`; the gateway/nginx route-parity test (`tests/gateway/test_route_parity.py`) |
-| Device-protocol revisions 1 (status) and 2 (correlated job queries, credentials) | [`product/console/device/wire.c`](../product/console/device/wire.c), `client.c`/`server.c` | `product/console/tests/device`, `product/console/tests/gateway` |
-| `aula-sipd` config grammar | [`product/sipd/src/core/config_parse.c`](../product/sipd/src/core/config_parse.c); reference in [`configuration-reference.md`](../product/sipd/docs/operator/configuration-reference.md) | `product/sipd/tests/unit/test_config_snapshot.c`, `product/sipd/tests/fuzz/fuzz_config.c` |
-| Gateway `gateway.conf` JSON policy | [`product/console/gateway/gateway_account.c`](../product/console/gateway/gateway_account.c) | `product/console/tests` |
-| Accounts store revisions 1-3 | [`product/console/gateway/gateway_account_store.c`](../product/console/gateway/gateway_account_store.c), `gateway_store.c` | `product/console/tests` |
-| Daemon persisted runtime settings | [`product/sipd/src/core/config_persistence.c`](../product/sipd/src/core/config_persistence.c) | `product/sipd/tests` |
-| Device journal (`jobs.json`) and credential store (`oem-credentials.json`) | [`product/console/device/jobs.c`](../product/console/device/jobs.c), `credentials_store.c` | `product/console/tests/device` |
-| Payload manifest and `payload-manifest.sha256` | [`deployment/payload/build-payload.py`](../deployment/payload/build-payload.py) | `deployment/tests` |
-| On-device paths and the retained `managed-by=open-ls200-root-shell.sh` marker | [`deployment/targets/ti8168/install.sh`](../deployment/targets/ti8168/install.sh), [`remove.sh`](../deployment/targets/ti8168/remove.sh) | `deployment/tests`; provisioning is a private prerequisite |
-| Makefile operator targets (`make verify`, `live-*`, `qemu-*`, `package-*`) | [`Makefile`](../Makefile) | `deployment/tests`; described in [`DEVELOPMENT.md`](DEVELOPMENT.md) |
+| Contract | Defined at |
+| --- | --- |
+| LSZ1 wire protocol (opcodes, framing, gateway/companion peer-UID auth) | [`product/sipd/include/aula_sipd/control_protocol.h`](../product/sipd/include/aula_sipd/control_protocol.h) |
+| HTTP `/zoom/api/v1/*` routes and the `{"revision":1,"ok":...,"data"|"error":...}` envelope | [`product/console/gateway/gateway.c`](../product/console/gateway/gateway.c) route table; documented in [`gateway/README.md`](../product/console/gateway/README.md) |
+| Device-protocol revisions 1 (status) and 2 (correlated job queries, credentials) | [`product/console/device/wire.c`](../product/console/device/wire.c), `client.c`/`server.c` |
+| `aula-sipd` config grammar | [`product/sipd/src/core/config_parse.c`](../product/sipd/src/core/config_parse.c); reference in [`configuration-reference.md`](../product/sipd/docs/operator/configuration-reference.md) |
+| Gateway `gateway.conf` JSON policy | [`product/console/gateway/gateway_account.c`](../product/console/gateway/gateway_account.c) |
+| Accounts store revisions 1-3 | [`product/console/gateway/gateway_account_store.c`](../product/console/gateway/gateway_account_store.c), `gateway_store.c` |
+| Daemon persisted runtime settings | [`product/sipd/src/core/config_persistence.c`](../product/sipd/src/core/config_persistence.c) |
+| Device journal (`jobs.json`) and credential store (`oem-credentials.json`) | [`product/console/device/jobs.c`](../product/console/device/jobs.c), `credentials_store.c` |
+| Payload manifest and `payload-manifest.sha256` | [`deployment/payload/build-payload.py`](../deployment/payload/build-payload.py) |
+| On-device paths and the retained `managed-by=open-ls200-root-shell.sh` marker | [`deployment/targets/ti8168/install.sh`](../deployment/targets/ti8168/install.sh), [`remove.sh`](../deployment/targets/ti8168/remove.sh) |
+| Makefile operator targets (`make verify`, `live-*`, `qemu-*`, `package-*`) | [`Makefile`](../Makefile); described in [`DEVELOPMENT.md`](DEVELOPMENT.md) |
 
 Preserve these contracts and the public C headers under
 `product/sipd/include/aula_sipd/` unless an intentional migration is part of
-the change and is tested.
+the change and includes a deliberate compatibility plan.
 
 ## State ownership
 
@@ -141,7 +122,7 @@ the change and is tested.
 | TLS keys, SIP credentials, product configuration | Operator/deployment | External restrictive files; never repository content |
 | Synthetic recording/stream state | Emulator | Explicit JSON state file below `.work/` |
 | Installed releases and ownership journal | Deployment target | Versioned target state |
-| Build, test, package, receipt, and campaign output | Tooling | Ignored `.work/` |
+| Build, package, receipt, and campaign output | Tooling | Ignored `.work/` |
 
 The daemon commits runtime settings with a synced mode-`0600` temporary file and
 atomic rename. Rename is the commit point: the new settings and revision become
@@ -197,8 +178,8 @@ isolated authorized link. See
 payload-mapping, RTCP feedback, RTSP admission, and Zoom Direct CRC
 interoperability detail.
 
-The maintained fake renderer proves the bounded receive contract in host and
-QEMU fixtures. The target vendor renderer factory currently returns
+The maintained fake renderer exercises the bounded receive contract in
+synthetic environments. The target renderer factory currently returns
 unsupported, so this source tree does not yet provide device audio/display
 output.
 
@@ -235,29 +216,14 @@ The name and installation-path migration is documented in the
 ## Repository and data boundaries
 
 The canonical visible roots are `product`, `lab`, `deployment`, `dependencies`,
-`evidence`, `tooling`, and `docs`. The machine-readable layout policy is
-[`tooling/quality/layout-policy.json`](../tooling/quality/layout-policy.json).
+`tooling`, and `docs`.
 
 - `.work/` is the only generated build/cache/distribution/report root.
-- `evidence/` is an entirely gitignored private research corpus. It is never added to
-  git; `make verify` does not need it and `make verify-evidence` requires it.
-- `evidence/private/` holds complete firmware, dumps, extracted filesystems,
-  credentials, keys, raw captures, and authenticated evidence and is ignored.
-- `evidence/archive/` and subtree archives preserve historical non-runtime
-  material that no active command should consume.
-- `evidence/firmware-analysis/` contains sanitized findings and
-  reproducibility records; `evidence/AGENTS.md` (present with the corpus)
-  holds its own rules. Decompiled and reconstructed files are evidence, not
-  maintained source or dependency candidates.
-
-The [public source exporter](../tooling/quality/public_release.py) reads an
-immutable Git commit and emits only files listed with matching hashes and
-provenance/license reviews in its committed approval policy. The initial list
-is empty, so public release fails closed. No evidence, Git history, or private
-build output is exported. The source-boundary check runs in `make verify`;
-passing that check is not release approval. Binary distribution remains blocked
-pending a separate artifact and dependency-closure review. See the
-[public release policy](PUBLIC_RELEASE.md).
+- Recovered firmware, dumps, extracted filesystems, credentials, keys, raw
+  captures, authenticated session material, and private lab payloads are not
+  repository content or product dependencies.
+- Reviewed external inputs may be supplied explicitly to build and deployment
+  tools; generated output still belongs below `.work/`.
 
 ## Security boundaries
 
@@ -271,8 +237,8 @@ These controls do not cover inherited firmware or its management plane. Keep
 that plane isolated from untrusted networks. See [`SECURITY.md`](SECURITY.md) and
 the daemon [threat model](../product/sipd/docs/governance/threat-model.md).
 
-Deployment entrypoints share strict nginx and transaction record parsers
-through packaged sibling helpers; entry points own locks, path checks,
+Physical deployment entrypoints share a strict transaction-record parser;
+entry points own locks, path checks,
 mutation ordering, and recovery decisions. Physical release verification uses
 an installer-owned verifier outside release directories and one
 independently supplied manifest digest per journaled release; candidate code
@@ -281,19 +247,16 @@ never establishes its own verification authority. See
 [`deployment/targets/ti8168/README.md`](../deployment/targets/ti8168/README.md)
 for the full journal, transaction, and recovery contract.
 
-## Verification lanes
+## Build lanes
 
 | Lane | Command | Scope |
 | --- | --- | --- |
-| Baseline | `make verify` | Layout, quality, product, lab, and deployment gates over tracked source; passes from a clean clone |
-| Evidence | `make verify-evidence` | Evidence-corpus quality and reproducibility tests; exits 2 when `evidence/` is absent |
-| Native | `make verify-native NATIVE_INPUTS=...` | PJSIP/libsrtp/FAAD2/SpeexDSP built and tested together against reviewed native inputs |
-| QEMU model | `make verify-qemu-model QEMU_BASE_SOURCE=...` | Rebuilds the patched QEMU machine and runs synthetic qtests against reviewed local QEMU source |
-| Everything | `make verify-all` | `verify` plus the native, QEMU-model, and evidence lanes |
+| Default host | `make verify` | Builds the SIP daemon, device companion, and UI, then queries the synthetic emulator |
+| QEMU model | `make qemu-verify` | Prepares and builds the pinned QEMU model, then runs its structural and model probes |
+| Physical package | `make package-ti8168 ...` | Assembles explicit reviewed binaries and support files into a manifest-verified payload |
 
-Emulator and QEMU results are model or fixture evidence; label them as such.
-See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the complete command reference and
-prerequisites.
+Emulator and QEMU results are synthetic model evidence; label them as such.
+See [`DEVELOPMENT.md`](DEVELOPMENT.md) for commands and prerequisites.
 
 ## Where new code belongs
 
@@ -308,14 +271,12 @@ prerequisites.
   Zoom-facing responsibility.
 - Synthetic local-state changes for host-only validation belong
   in `lab/emulator/`.
-- Synthetic machine-model changes belong in `lab/qemu/`; keep qtest claims
+- Synthetic machine-model changes belong in `lab/qemu/`; keep model claims
   separate from physical-device claims.
-- Deterministic SIP/RTP peer changes belong in `lab/sip-peer/`; host fixtures
-  and physical-lab callers use it.
+- Deterministic SIP/RTP peer changes belong in `lab/sip-peer/`; QEMU and
+  physical-lab callers use it.
 - Payload assembly and install/rollback/removal logic belong in
   `deployment/`; the physical-target ownership and recovery checks stay
-  independent of synthetic QEMU tests.
-- Cross-component quality, workspace, or live-campaign tooling belongs under
+  independent of the synthetic QEMU model.
+- Console dependency or live-campaign tooling belongs under
   `tooling/`; product code must never depend on it at runtime.
-- New sanitized findings belong in `evidence/firmware-analysis/`; raw or
-  private material belongs only in ignored `evidence/private/`.

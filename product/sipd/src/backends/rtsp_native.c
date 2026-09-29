@@ -15,10 +15,6 @@
 #define MSG_NOSIGNAL 0
 #endif
 
-#if defined(AULA_SIPD_TEST_FAULTS) && AULA_SIPD_TEST_FAULTS
-static char native_test_discovered_h264[7];
-#endif
-
 static aula_status native_describe(native_context *c, aula_bytes sdp) {
   aula_rtsp_native_tracks tracks;
   char headers[256];
@@ -424,16 +420,6 @@ aula_status aula_rtsp_native_discover_h264(
   if (config == NULL || out_capability == NULL || deadline.monotonic_ns == 0U)
     return AULA_STATUS_INVALID_ARGUMENT;
   (void)memset(out_capability, 0, sizeof(*out_capability));
-#if defined(AULA_SIPD_TEST_FAULTS) && AULA_SIPD_TEST_FAULTS
-  if (native_test_discovered_h264[0] != '\0') {
-    (void)memcpy(out_capability->profile_level_id,
-                 native_test_discovered_h264,
-                 sizeof(out_capability->profile_level_id));
-    (void)memset(native_test_discovered_h264, 0,
-                 sizeof(native_test_discovered_h264));
-    return AULA_STATUS_OK;
-  }
-#endif
   status = aula_rtsp_native_backend_create(&backend);
   if (status == AULA_STATUS_OK) status = backend.vtable->open(&backend, config);
   context = (native_context *)backend.context;
@@ -448,17 +434,6 @@ aula_status aula_rtsp_native_discover_h264(
   return status;
 }
 
-#if defined(AULA_SIPD_TEST_FAULTS) && AULA_SIPD_TEST_FAULTS
-aula_status aula_rtsp_native_test_set_discovered_h264(
-    const char profile_level_id[7]) {
-  if (!aula_h264_profile_level_id_valid(profile_level_id))
-    return AULA_STATUS_INVALID_ARGUMENT;
-  (void)memcpy(native_test_discovered_h264, profile_level_id,
-               sizeof(native_test_discovered_h264));
-  return AULA_STATUS_OK;
-}
-#endif
-
 aula_status aula_rtsp_native_backend_expect_h264(
     aula_media_backend *backend,
     const aula_rtsp_h264_capability *capability) {
@@ -471,29 +446,6 @@ aula_status aula_rtsp_native_backend_expect_h264(
   context->expected_h264 = *capability;
   context->expected_h264_present = 1;
   return AULA_STATUS_OK;
-}
-
-aula_status aula_rtsp_native_test_set_stream(aula_media_backend *backend,
-                                               uint8_t h264, uint8_t aac) {
-  native_context *c = backend == NULL ? NULL : backend->context;
-  if (backend == NULL || backend->vtable != &NATIVE_VTABLE || c == NULL || c->opened == 0 || h264 > 127U || aac > 127U) return AULA_STATUS_INVALID_ARGUMENT;
-  c->h264_payload_type = h264; c->aac_payload_type = aac; c->started = 1; c->state = NATIVE_STREAMING; return AULA_STATUS_OK;
-}
-
-aula_status aula_rtsp_native_test_dispatch_tcp(aula_media_backend *backend,
-                                                  uint8_t channel, aula_bytes packet) {
-  native_context *c = backend == NULL ? NULL : backend->context; aula_rtsp_message m;
-  if (backend == NULL || backend->vtable != &NATIVE_VTABLE || c == NULL) return AULA_STATUS_INVALID_ARGUMENT;
-  (void)memset(&m, 0, sizeof(m)); m.kind = AULA_RTSP_MESSAGE_INTERLEAVED_RTP;
-  m.channel = channel; m.body = packet; return native_message(c, &m);
-}
-
-aula_status aula_rtsp_native_test_pump(aula_media_backend *backend) {
-  native_context *c = backend == NULL ? NULL : backend->context;
-  if (backend == NULL || backend->vtable != &NATIVE_VTABLE || c == NULL) {
-    return AULA_STATUS_INVALID_ARGUMENT;
-  }
-  return native_pump(c);
 }
 
 aula_status aula_rtsp_gst_process_backend_create(aula_media_backend *out) {

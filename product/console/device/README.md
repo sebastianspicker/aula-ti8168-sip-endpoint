@@ -3,11 +3,9 @@
 The C17 companion provides a protected Unix socket, a strict projected status
 schema, a durable job journal, and revisioned credential state. It does not
 contact firmware. Its default status reports `recording` and `streaming` as
-`unknown`; credential connection state is `unknown`. The former firmware
-HTTP/login and raw recorder mapping implementations are preserved only in the
-private source snapshot under `evidence/private/vendor-compat/`.
+`unknown`; credential connection state is `unknown`.
 
-From the repository root, run `make -C product/console device-control test`.
+From the repository root, run `make -C product/console device-control`.
 The executable is `.work/build/console/aula-device-control`. Product builds
 consume explicit reviewed dependencies and write outputs below `.work/`.
 

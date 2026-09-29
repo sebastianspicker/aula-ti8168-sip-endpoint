@@ -16,9 +16,7 @@ The CMake project builds:
 
 - `aula_sipd_core`, which contains configuration, endpoint, SIP/SDP,
   RTP/RTCP, media, backend, platform, and LSZ1 control modules;
-- `aula-sipd`, the foreground daemon entry point; and
-- unit, integration, fixture-call, corpus-replay, sanitizer, coverage, and fuzz
-  targets when their options and toolchains are available.
+- `aula-sipd`, the foreground daemon entry point.
 
 Public headers live under `include/aula_sipd/`. The gateway-facing control
 server uses bounded `SOCK_SEQPACKET` messages on a Unix socket and authenticates
@@ -138,31 +136,15 @@ Bounded diagnostics recognize an established SIP call even when registration is
 disabled for direct CRC. This signaling check does not certify remote media
 reception or renderer readiness.
 
-## Build and test
+## Build
 
 From the repository root, a focused default host build is:
 
 ```sh
 cmake -S product/sipd -B .work/build/sipd \
-  -DAULA_SIPD_BUILD_TESTS=ON
+  -DCMAKE_BUILD_TYPE=Release
 cmake --build .work/build/sipd
-ctest --test-dir .work/build/sipd --output-on-failure
 ```
-
-The comprehensive verifier is opt-in because it runs coverage, sanitizers, and
-a fuzz smoke test in addition to CMake and repository checks:
-
-```sh
-mkdir -p .work/build .work/cache .work/dist .work/reports
-AULA_SIPD_VERIFY_ENABLE=1 \
-  sh product/sipd/tools/verify-repository.sh --run
-```
-
-The H.264 test parameter sets are synthetic and have a documented generation
-record in [the fixture provenance note](tests/fixtures/h264-parameter-sets.md).
-
-Use `--inventory` to print the verifier recipe without running it. The root
-`make test-product` also runs the console and UI gates.
 
 ## Optional integrations
 

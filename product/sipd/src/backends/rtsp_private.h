@@ -230,29 +230,5 @@ aula_status aula_rtsp_native_prepare_io(native_context *context);
 void aula_rtsp_native_arm_keepalive(native_context *context, uint64_t now_ns);
 int aula_rtsp_stream_parser_session_timeout(
     const aula_rtsp_stream_parser *parser, uint32_t *out_seconds);
-/* Native backend-only deterministic seam.  It is intentionally private to
- * unit tests and permits loopback transport tests without an AAC dependency. */
-aula_status aula_rtsp_native_test_set_stream(aula_media_backend *backend,
-                                               uint8_t h264_payload_type,
-                                               uint8_t aac_payload_type);
-aula_status aula_rtsp_native_test_dispatch_tcp(aula_media_backend *backend,
-                                                  uint8_t channel,
-                                                  aula_bytes packet);
-aula_status aula_rtsp_native_test_open_udp(aula_media_backend *backend);
-aula_status aula_rtsp_native_test_udp_port(const aula_media_backend *backend,
-                                              int video, int rtcp,
-                                              uint16_t *out_port);
-aula_status aula_rtsp_native_test_drain_udp(aula_media_backend *backend);
-aula_status aula_rtsp_native_test_dispatch_udp(aula_media_backend *backend,
-                                                  int video, int rtcp,
-                                                  uint16_t source_port,
-                                                  aula_bytes packet);
-aula_status aula_rtsp_native_test_fail(aula_media_backend *backend,
-                                         aula_status cause);
-aula_status aula_rtsp_native_test_pump(aula_media_backend *backend);
-#if defined(AULA_SIPD_TEST_FAULTS) && AULA_SIPD_TEST_FAULTS
-aula_status aula_rtsp_native_test_set_discovered_h264(
-    const char profile_level_id[7]);
-#endif
 
 #endif

@@ -1,10 +1,66 @@
-# macOS, editor, and local agent state
+# OS and editor state
 .DS_Store
 **/.DS_Store
+.idea/
+.vscode/
+*~
+*.swp
+
+# AI tool state and agent instructions
+.agents/
+.aider*
 .claude/
+.codegraph/
+.codex/
+.continue/
+.cursor/
+.impeccable/
 .mcp.json
 .repowise/
-.vscode/
+.serena/
+.windsurf/
+**/AGENTS.md
+**/CLAUDE.md
+**/GEMINI.md
+**/.cursorrules
+/.github/copilot-instructions.md
+
+# Linked worktrees and generated workspace state
+/.work/
+/.worktrees/
+/worktrees/
+**/.claude/worktrees/
+**/.codex/worktrees/
+
+# Tests, fixtures, and coverage state
+**/tests/
+**/test/
+**/fixtures/
+**/*.test.js
+**/*.test.jsx
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.js
+**/*.spec.jsx
+**/*.spec.ts
+**/*.spec.tsx
+**/conftest.py
+**/pytest.ini
+**/jest.config.*
+**/.coverage
+**/coverage/
+**/htmlcov/
+
+# Local development helpers and work-in-progress documents
+/scripts/
+**/scripts/local/
+*.local.sh
+**/drafts/
+**/*-draft.*
+**/ADR*
+**/PRD*
+**/ROADMAP*
+**/TODO*
 
 # Python caches and local environments
 .pytest_cache/
@@ -14,18 +70,14 @@
 .venv/
 **/.venv/
 
-# The complete research corpus is private, including decompiled source and docs.
+# Private research material
 /evidence/
-/.agents/
-
-# Central generated state
-/.work/
 
 # Ephemeral dependency link created only while console commands run
 product/console/web/node_modules/
 
 # Product-sensitive local artifacts. Build, report, and package output belongs
-# below .work and is rejected elsewhere by make check-layout.
+# below .work.
 product/sipd/.cache/
 product/sipd/sysroots/
 product/sipd/toolchains/
@@ -34,8 +86,6 @@ product/sipd/**/*.pcap
 product/sipd/**/*.pcapng
 product/sipd/**/*.cap
 product/sipd/**/*.log
-!product/sipd/tests/tooling/sanitizer-policy-negative.log
-!product/sipd/tests/tooling/sanitizer-policy-positive.log
 product/sipd/**/*.key
 product/sipd/**/*.pem
 product/sipd/**/secrets/

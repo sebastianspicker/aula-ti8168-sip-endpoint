@@ -80,7 +80,7 @@ class Dependencies:
         manifest = json.loads((self.web / "package.json").read_text())
         packages = set(manifest.get("dependencies", {})) | set(manifest.get("devDependencies", {}))
         paths.extend(self.modules / name / "package.json" for name in sorted(packages))
-        binaries = [self.modules / ".bin" / name for name in ("tsc", "vite", "vitest")]
+        binaries = [self.modules / ".bin" / name for name in ("tsc", "vite")]
         if not all(path.is_file() for path in paths + binaries):
             return None
         return {str(path.relative_to(self.modules)): hashlib.sha256(path.read_bytes()).hexdigest()

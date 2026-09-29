@@ -17,8 +17,7 @@ Keep all target-specific values outside version control. Before contact, the
 operator must have:
 
 - documented ownership and recovery authority for the unit;
-- a mode-`0600`, singly linked `aula-ti8168-sip-endpoint-live-session-v1` JSON file below `.work`
-  or ignored `evidence/private`;
+- a mode-`0600`, singly linked `aula-ti8168-sip-endpoint-live-session-v1` JSON file below `.work`;
 - the approved host interface, target/host addresses, expected MAC, and
   independently verified SSH host-key fingerprint;
 - reviewed version identifiers, port ranges, resource limits, and approved
@@ -130,7 +129,7 @@ project removal is not restoration of the device's original security posture.
 
 ## Acceptance boundary
 
-Local tests and QEMU gates do not establish physical acceptance. A complete
+Host builds and QEMU model results do not establish physical acceptance. A complete
 private-lab campaign requires the ordered install and smoke checks, both soaks,
 graceful reboot recovery, rollback/restart coverage, and verified final
 project-state removal. Forced power-loss durability, trusted production TLS,

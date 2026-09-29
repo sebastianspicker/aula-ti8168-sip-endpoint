@@ -21,9 +21,9 @@ its recovery contract. It adds dedicated non-login service identities through
 that managed mechanism and maintains a separate owned group overlay. It never
 rewrites the root password database, unrelated cron rows, or the vendor
 firmware root. Project removal deliberately preserves the root-SSH substrate.
-The former board-specific access and provisioning scripts are held only in the
-private source snapshot. An operator must establish and review that prerequisite
-through the private authorized workflow before using these deployment tools.
+Board-specific access and provisioning are not included. An operator must
+establish and review that prerequisite through an authorized private workflow
+before using these deployment tools.
 Install and removal retain recognition of the existing
 `managed-by=open-ls200-root-shell.sh` marker for safe ownership checks and
 cleanup; the marker is not a public provisioning command.
@@ -231,8 +231,7 @@ closed. Do not delete preserved paths manually. Neither removal mode removes
 the separately owned root-SSH substrate, so a successful project purge is not
 restoration of the original device security posture.
 
-Repository tests exercise these lifecycle contracts without contacting
-hardware. Physical acceptance requires the separately authorized campaign.
+Physical acceptance requires the separately authorized campaign.
 
 The physical start profile selects `/usr/bin/ffmpeg` through
 `AULA_SIPD_RECEIVE_MONITOR`. It verifies that this firmware executable is a

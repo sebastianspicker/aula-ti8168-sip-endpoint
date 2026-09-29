@@ -52,9 +52,6 @@ aula_status aula_config_key_for(const char *section, const char *key, config_key
 aula_status aula_config_apply_key(aula_config *config, config_key key, const char *value);
 aula_status aula_config_validate(const aula_config *config);
 aula_status aula_config_open_owned_regular_file(const char *path, int secret, int *out_descriptor);
-#if defined(AULA_SIPD_TEST_FAULTS)
-void aula_config_test_fail_next_parent_sync(void);
-#endif
 aula_status aula_config_validate_secret_file(const char *path);
 /* The optional runtime settings state may be absent on first boot.  If it
  * exists, it is an owner-only regular file under a trusted parent. */

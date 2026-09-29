@@ -9,18 +9,11 @@ manifest-verified payload for one owned physical target (`targets/ti8168/`).
 The old QEMU/bootstrap overlay is not a maintained acceptance path for the
 synthetic model.
 
-These payloads are private lab artifacts. Manifest verification establishes
-integrity, not redistribution rights. Public binary releases remain blocked;
-neither `package-ti8168` nor `live-package` is a public release command.
-`package-qemu` is unavailable for the synthetic model. The separate
-[public release policy](../docs/PUBLIC_RELEASE.md)
-requires reviewed provenance and licenses before any publication.
+These payloads are laboratory artifacts. Manifest verification establishes
+integrity, not redistribution rights. `package-qemu` is unavailable for the
+synthetic model. Review provenance and licenses before distributing a payload.
 Existing installations require the stopped-service procedure in the
 [Aula upgrade guide](../docs/operator/upgrade-to-aula.md).
-
-Run `make test-deployment` for payload, target, campaign, and disposable
-runtime purge checks. The aggregate `make verify` runs these suites once
-alongside the product and lab gates.
 
 ## Payload assembly
 
@@ -55,9 +48,8 @@ The privileged device companion (`DEVICE_BINARY`, builder `--device`) is a
 required payload input covered by manifests and build receipts; see the
 [unified console rollout boundary](#unified-console-rollout-boundary) below.
 
-Both installer families share the packaged `nginx-records.sh` helper for
-nginx selector/journal parsing and the audited `atomic-replace` `rename(2)`
-helper. The activation helper requires source and destination symlinks in the
+The physical installer uses the audited `atomic-replace` `rename(2)` helper.
+The activation helper requires source and destination symlinks in the
 same absolute parent directory, rejects a non-symlink destination, uses
 `rename(2)`, and syncs the parent directory. This avoids both BusyBox `mv`
 following the old release link and platform-specific `mv -h` behavior.
@@ -68,7 +60,7 @@ dispatch contract, not embedded production web, gateway, or SIP software: it
 accepts no command text from environment variables and executes only fixed,
 version-owned component paths and fixed configuration paths.
 
-Both installer families seed `aula-sipd.conf` and `gateway.conf` from the
+The installer seeds `aula-sipd.conf` and `gateway.conf` from the
 verified release examples only when their state files are absent; later
 releases never overwrite operator configuration. On a live root, installation
 resolves the dynamically allocated SIP and gateway UIDs into those first-use
@@ -76,7 +68,7 @@ files, enables the local LSZ1 socket, and creates a random root-readable
 bootstrap token. TLS key/certificate material, ARM toolchain/sysroot
 evidence, and third-party ARM closures remain external release gates.
 
-Both installers use the packaged `bootstrap-transaction.sh` helper to recover
+The installer uses the packaged `bootstrap-transaction.sh` helper to recover
 first-use gateway configuration and its matching bootstrap token. A pending
 transaction pins the release digest, SIP UID, and token. Rerunning the
 installer reconciles the pair before checking whether that version is already
@@ -92,8 +84,8 @@ Packaging and local gates reject a missing or changed source digest.
 
 The maintained QEMU model is synthetic and has no recovered guest boot,
 payload overlay, or two-slot product acceptance path. The former QEMU guest
-launcher and its acceptance test are preserved only in the private source
-snapshot. `make package-qemu` and `make qemu-acceptance` fail closed; the
+launcher and product acceptance workflow are not included. `make package-qemu`
+and `make qemu-acceptance` fail closed; the
 physical deployment path below remains subject to its own authorization and
 independent payload trust checks. Legacy overlay scripts are not
 validation evidence for the current synthetic machine model.
@@ -127,47 +119,17 @@ leaving services stopped. Its recovery result is reported separately from
 normal startup and health verification; a failed first installation instead
 deactivates its selector.
 
-The physical profile additionally owns configuration and recovery
-transactions that the QEMU/bootstrap path does not need: `private-lab-v1`
+The physical profile owns configuration and recovery transactions:
+`private-lab-v1`
 publishes initial SIP/TLS state, a separate `private-lab-tls-renew-v1`
 transaction replaces TLS material only while services are stopped, and DHCP
 nameserver handling passes a bounded IPv4 list to the SIP process before
 privileges drop. See [`targets/ti8168/README.md`](targets/ti8168/README.md) for
 the full configuration, rollback, and removal contract.
 
-## Why two lifecycle implementations
-
-The QEMU/bootstrap path and the physical-target path are separate scripts,
-not variants of one installer, because they answer to different install
-roots, journals, and recovery models:
-
-- **Install root.** The QEMU/bootstrap installer (`deployment/payload/*.sh`)
-  owns `/opt/aula-ti8168-sip-endpoint` directly as both the immutable-release root and the
-  active selector. The physical installer
-  (`deployment/targets/ti8168/install.sh`) explicitly rejects any payload that
-  retains an `/opt` prefix; it installs below `/var/lib/cbox/aula-ti8168-sip-endpoint` and
-  exposes the active release to running services only through the
-  `/run/aula-state` bind mount.
-- **Journal.** The QEMU/bootstrap path uses the payload's own ownership
-  journal for releases, the nginx selector, and copied files. The physical
-  path shares that journal grammar through
-  `transaction-records.sh`/`live-transaction-records.sh` but adds its own
-  entry kinds for cron rows, the autostart marker, the root-SSH-adjacent
-  service identities, and the private-lab/TLS-renewal transactions described
-  above.
-- **Recovery model.** QEMU/bootstrap recovery is `rollback.sh` and
-  `remove.sh` acting directly on `/opt/aula-ti8168-sip-endpoint` and
-  `/var/lib/cbox/aula-ti8168-sip-endpoint`, with no autostart, cron, or root-SSH substrate
-  to reconcile. The physical path recovers through `live-rollback.sh` and
-  `live-remove.sh`, both of which must additionally validate autostart state,
-  the cron transaction, the root-SSH-adjacent identity overlay, and (for
-  purge) the `purge-v1` recovery phase before mutating or deleting state.
-
 Transfer assembly archives the canonical `ti8168` target directory. The
-bootstrap installer and remover load the owner-controlled sibling
-`nginx-records.sh`; distribute it with the entrypoints. Overlay assembly
-stages it automatically. The physical profile similarly installs
-`live-transaction-records.sh` before its entrypoints and records it in the
+physical profile installs `live-transaction-records.sh` before its entrypoints
+and records it in the
 ownership journal. Start and rollback validate its ownership and fixed parent
 chain before loading it. Removal retains it for retries and removes it during
 final purge cleanup. Record parsing is shared; locking, path checks, service
@@ -187,6 +149,6 @@ Shutdown and health checks include it; removal retains its credentials and
 job journal. Missing service state is reported as unavailable; the UI does
 not assume that recording or streaming is stopped.
 
-The UI and companion fixture tests do not establish physical acceptance. The
-existing ARM ABI, payload trust, and separately authorized physical acceptance
+The UI and companion do not establish physical acceptance. The existing ARM
+ABI, payload trust, and separately authorized physical acceptance
 and rollback gates remain in force.

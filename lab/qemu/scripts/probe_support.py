@@ -1,4 +1,4 @@
-"""Private qtest/QMP transport and process lifecycle helpers."""
+"""QEMU qtest/QMP transport and process lifecycle helpers."""
 
 from __future__ import annotations
 

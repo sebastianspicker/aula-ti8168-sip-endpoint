@@ -24,7 +24,6 @@ browser job workflows are not connected. See the [companion contract](device/REA
 | `gateway/` | Authentication, authorization, persistence, HTTP schemas, LSZ1 translation, and preview delivery |
 | `nginx/` | TLS, static UI, request limits, browser headers, and explicit FastCGI route allowlist |
 | `device/` | Protected projected status, persistent job journal, and credential state |
-| `tests/` | Gateway, FastCGI mapping, preview, and full request-contract tests |
 
 The browser calls same-origin `/zoom/api/v1/*` routes. nginx forwards only
 listed routes to the gateway. The gateway validates the request, enforces
@@ -36,17 +35,16 @@ The [gateway contract](gateway/README.md) is the API and security source of
 truth. The [preview integration contract](gateway/preview/INTEGRATION.md)
 defines the socket, parser, H.264, and FLV ownership boundary.
 
-## Build and test
+## Build
 
 From the repository root:
 
 ```sh
-make -C product/console test
-make -C product/console ui-install ui-test ui-build
+make -C product/console device-control ui-install ui-build
 ```
 
-Gateway tests require a C compiler plus `pkg-config` metadata and development
-files for Jansson and OpenSSL. UI installation uses the checked-in pnpm lock and
+The device companion requires a C compiler plus `pkg-config` metadata and
+development files for Jansson and OpenSSL. UI installation uses the checked-in pnpm lock and
 stores dependencies below `.work/cache`. Both UI targets declare installation as
 a prerequisite. Concurrent commands retain shared leases and the dependency
 symlink until the last user exits; installation changes and cleanup require
@@ -59,8 +57,7 @@ After `ui-install`, start the UI-only development server with:
 sh tooling/console/with-dependencies.sh vite --host 127.0.0.1
 ```
 
-This does not start nginx, FastCGI, or `aula-sipd`. Run the root
-`make test-product` for the integrated source gate.
+This does not start nginx, FastCGI, or `aula-sipd`.
 
 The optional FastCGI executable requires a separately reviewed FastCGI 2.4.7
 installation:
@@ -128,15 +125,6 @@ login/bootstrap, canceled requests, malformed replies, and persistence-uncertain
 results do not retry. Polling cancels obsolete reads on hide or unmount, refreshes
 once on visibility restoration, and waits five seconds after completion.
 Mutations continue when the tab is hidden.
-
-## UI maintenance
-
-The product intent is documented in
-[`docs/product/PRODUCT.md`](../../docs/product/PRODUCT.md); the visual and
-interaction contract is in
-[`docs/product/DESIGN.md`](../../docs/product/DESIGN.md). Non-shipping concept
-images live under `docs/product/design/concepts/` and must never be bundled as
-runtime media or substituted for live device output.
 
 ## Status snapshots and runtime metrics
 

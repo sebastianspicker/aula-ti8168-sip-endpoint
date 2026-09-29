@@ -7,8 +7,8 @@ adapters.
 | Component | Required version | Boundary |
 | --- | --- | --- |
 | FastCGI | 2.4.7 | Optional FastCGI adapter, `make fastcgi` only |
-| Jansson | 2.14 | JSON parsing/serialization boundary; host tests accept a compatible system library |
-| OpenSSL | 3.5.8 | Production crypto boundary; host tests accept a compatible system library |
+| Jansson | 2.14 | JSON parsing/serialization boundary; host builds accept a compatible system library |
+| OpenSSL | 3.5.8 | Production crypto boundary; host builds accept a compatible system library |
 | nginx | 1.31.4 | HTTPS reverse proxy; source-build profile in `../config/` |
 
 Record source URL, SHA-256, signature result, and local build flags in the
