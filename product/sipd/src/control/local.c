@@ -67,10 +67,31 @@ static aula_status validate_parent_directory(const char *path) {
 }
 
 static aula_status remove_stale_socket(const char *path) {
+  char parent[sizeof(((struct sockaddr_un *)0)->sun_path)];
+  const char *name;
+  char *slash;
   struct stat details;
-  if (lstat(path, &details) != 0) return errno == ENOENT ? AULA_STATUS_OK : AULA_STATUS_IO_ERROR;
-  if (!S_ISSOCK(details.st_mode) || details.st_uid != geteuid() || details.st_nlink != 1) return AULA_STATUS_SECURITY_ERROR;
-  return unlink(path) == 0 ? AULA_STATUS_OK : AULA_STATUS_IO_ERROR;
+  aula_status status;
+  int parent_descriptor;
+  (void)snprintf(parent, sizeof(parent), "%s", path);
+  slash = strrchr(parent, '/');
+  if (slash == NULL || slash == parent || slash[1] == '\0') return AULA_STATUS_CONFIGURATION_ERROR;
+  *slash = '\0';
+  name = path + (slash - parent) + 1;
+  parent_descriptor = open(parent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+  if (parent_descriptor < 0) return AULA_STATUS_IO_ERROR;
+  if (fstat(parent_descriptor, &details) != 0 || !S_ISDIR(details.st_mode) ||
+      details.st_uid != geteuid() || (details.st_mode & 0022U) != 0U) {
+    status = AULA_STATUS_PERMISSION_DENIED;
+  } else if (fstatat(parent_descriptor, name, &details, AT_SYMLINK_NOFOLLOW) != 0) {
+    status = errno == ENOENT ? AULA_STATUS_OK : AULA_STATUS_IO_ERROR;
+  } else if (!S_ISSOCK(details.st_mode) || details.st_uid != geteuid() || details.st_nlink != 1) {
+    status = AULA_STATUS_SECURITY_ERROR;
+  } else {
+    status = unlinkat(parent_descriptor, name, 0) == 0 ? AULA_STATUS_OK : AULA_STATUS_IO_ERROR;
+  }
+  (void)close(parent_descriptor);
+  return status;
 }
 
 static aula_status bind_server_socket(aula_control_server *server) {
