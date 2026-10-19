@@ -108,6 +108,9 @@ int gateway_handle_login(aula_gateway *gateway, const aula_gateway_request *requ
   if (!derived || !gateway_secure_equal(candidate, snapshot.account.password_hash, sizeof(candidate)) ||
       !login_account_unchanged(gateway, authenticated_username, &snapshot)) {
     gateway_write_error(response, 401U, "AUTH_INVALID", "invalid credentials");
+  } else if (!gateway_session_slot_available(gateway, authenticated_username, snapshot.account.role,
+                                             request->now)) {
+    gateway_write_error(response, 503U, "SESSION_LIMIT", "all session slots hold higher-privileged sessions");
   } else if (gateway_new_session(gateway, authenticated_username, snapshot.account.role,
       request->now, response->set_cookie, csrf) == NULL) {
     gateway_write_error(response, 500U, "INTERNAL", "session creation failed");

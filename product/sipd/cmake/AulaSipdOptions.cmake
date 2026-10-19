@@ -2,6 +2,8 @@ include_guard(GLOBAL)
 
 option(AULA_SIPD_BUILD_DAEMON
        "Build the daemon when all owned sources are present" ON)
+option(AULA_SIPD_BUILD_TESTS
+       "Build the host unit tests; never built when cross-compiling" ON)
 option(AULA_SIPD_ENABLE_PJSIP
        "Link a separately acquired, reviewed pjproject source build" OFF)
 option(AULA_SIPD_ENABLE_FAAD2

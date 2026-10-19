@@ -14,17 +14,14 @@ import socket
 import ssl
 import stat
 import subprocess
-import sys
 import tempfile
 import uuid
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Iterator, Sequence
 
 from campaign_evidence import _private_root, _secure_directory
 from campaign_types import (
-    BOOT_ID_COMMAND as _BOOT_ID_COMMAND, BOOT_ID_PATTERN, CampaignError, ROOT,
-    SAFE_ENV, SECRET_PATTERN,
+    BOOT_ID_COMMAND as _BOOT_ID_COMMAND, BOOT_ID_PATTERN, CampaignError, SAFE_ENV,
 )
 from session import LiveSession
 

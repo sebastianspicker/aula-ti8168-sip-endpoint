@@ -77,7 +77,7 @@ static void release_preview(aula_fastcgi_server *server) {
 static int lease_is_valid(aula_fastcgi_server *server,
                           const aula_gateway_preview_lease *lease) {
   return aula_gateway_preview_lease_valid(&server->gateway, lease,
-                                           (uint64_t)time(NULL));
+                                           aula_gateway_clock_seconds());
 }
 
 static int wait_for_descriptor(int descriptor, short events, int timeout_ms) {

@@ -47,7 +47,7 @@ mounted_from() {
 mount_root_for_target() { awk -v target="$1" '$5 == target {count++; root=$4} END {if (count == 1) print root; else print "invalid"}' /proc/self/mountinfo; }
 ROOT_SSH_PROVISION=/var/lib/cbox/root-ssh-provision
 ROOT_SSH_BACKUP=$BASE/root-ssh-passwd.before
-ROOT_PASSWD_SOURCE= ROOT_SSH_APPLY= ROOT_PASSWD_MOUNT=
+ROOT_PASSWD_SOURCE='' ROOT_SSH_APPLY='' ROOT_PASSWD_MOUNT=''
 validate_root_ssh_overlay() {
     ROOT_PASSWD_MOUNT=$(mount_root_for_target /etc/passwd)
     case $ROOT_PASSWD_MOUNT in /root-ssh-provision/account-overlays/*/passwd) ;; *) die 'expected managed root-SSH passwd bind mount is absent' ;; esac
@@ -148,14 +148,14 @@ reconcile_rollback_transaction() {
     current_rollback_version=$(rollback_selector_version)
     require_rollback_release "$current_rollback_version"
     case $rollback_phase:$current_rollback_version in
-        prepared:$rollback_old) clear_transaction "$ROLLBACK_TX" ;;
+        prepared:"$rollback_old") clear_transaction "$ROLLBACK_TX" ;;
         prepared:*) die 'prepared rollback transaction changed the active selector' ;;
-        applied:$rollback_old|applied:$rollback_new)
+        applied:"$rollback_old"|applied:"$rollback_new")
             restore_rollback_selector_and_service
             clear_transaction "$ROLLBACK_TX"
             ;;
         applied:*) die 'applied rollback transaction has an unexpected active selector' ;;
-        healthy:$rollback_new) clear_transaction "$ROLLBACK_TX" ;;
+        healthy:"$rollback_new") clear_transaction "$ROLLBACK_TX" ;;
         healthy:*) die 'healthy rollback transaction has an unexpected active selector' ;;
         *) die 'rollback transaction is unsafe' ;;
     esac
@@ -358,38 +358,41 @@ require_journal_file() {
 validate_entry() {
     entry=$1
     [ "$(grep -Fxc "$entry" "$JOURNAL")" -eq 1 ] || die "duplicate journal entry: $entry"
+    # The cron-job pattern stays unquoted: CRON_JOB begins with "* * * * *",
+    # and existing journals must keep matching exactly as before.
+    # shellcheck disable=SC2254
     case $entry in
         release-sha256:*) validate_release_digest_entry "$entry" ;;
         release:*)
             version=${entry#release:}; case $version in ''|.|..|*[!A-Za-z0-9._-]*) die "unsafe journal release entry: $entry" ;; esac
             [ "$journal_recovery" = 1 ] || { [ -d "$RELEASES/$version" ] && [ ! -L "$RELEASES/$version" ]; } || die "recorded release is absent or unsafe: $RELEASES/$version"
             ;;
-        mount:/run/aula-state:$BASE)
+        mount:/run/aula-state:"$BASE")
             if [ "$journal_recovery" = 0 ] && awk -v target=/run/aula-state '$2 == target { found = 1 } END { exit !found }' /proc/mounts; then mounted_from "$BASE" /run/aula-state || die 'runtime state mount changed outside profile'; fi
             ;;
-        mount:/etc/group:$IDENTITY/group)
+        mount:/etc/group:"$IDENTITY/group")
             [ "$journal_recovery" = 1 ] || { mounted_from "$IDENTITY/group" /etc/group && require_regular "$IDENTITY/group"; } || die 'recorded group bind mount changed outside profile'
             ;;
         root-ssh-passwd:*)
             source=${entry#root-ssh-passwd:}; [ "$source" = "$ROOT_PASSWD_SOURCE" ] || die 'root-SSH passwd journal source does not match active overlay'
             ;;
-        root-ssh-passwd-backup:$ROOT_SSH_BACKUP) require_journal_file "$ROOT_SSH_BACKUP" ;;
+        root-ssh-passwd-backup:"$ROOT_SSH_BACKUP") require_journal_file "$ROOT_SSH_BACKUP" ;;
         root-ssh-apply:*) [ "${entry#root-ssh-apply:}" = "$ROOT_SSH_APPLY" ] || die 'root-SSH apply journal path does not match active overlay' ;;
-        sha256:$BASE/aula-sipd.conf:*|sha256:$BASE/tls/server.crt:*|sha256:$BASE/tls/server.key:*|sha256:$SIP_CA:*)
+        sha256:"$BASE/aula-sipd.conf":*|sha256:"$BASE/tls/server.crt":*|sha256:"$BASE/tls/server.key":*|sha256:"$SIP_CA":*)
             validate_sha256_entry "$entry"
             ;;
-        file:$IDENTITY/group|file:$IDENTITY/group.before|file:$BASE/aula-sipd.conf|file:$BASE/gateway.conf|file:$BASE/bootstrap-token|file:$BASE/tls/server.crt|file:$BASE/tls/server.key|file:$SIP_CA) require_journal_file "${entry#file:}" ;;
-        file:$BASE/live-start.sh|file:$BASE/live-autostart.sh|file:$BASE/live-rollback.sh|file:$BASE/live-remove.sh|file:$BASE/live-transaction-records.sh|file:$BASE/live-verify-payload.sh) require_journal_file "${entry#file:}" ;;
-        file:$MEDIA_GATE_RECORD)
+        file:"$IDENTITY/group"|file:"$IDENTITY/group.before"|file:"$BASE/aula-sipd.conf"|file:"$BASE/gateway.conf"|file:"$BASE/bootstrap-token"|file:"$BASE/tls/server.crt"|file:"$BASE/tls/server.key"|file:"$SIP_CA") require_journal_file "${entry#file:}" ;;
+        file:"$BASE/live-start.sh"|file:"$BASE/live-autostart.sh"|file:"$BASE/live-rollback.sh"|file:"$BASE/live-remove.sh"|file:"$BASE/live-transaction-records.sh"|file:"$BASE/live-verify-payload.sh") require_journal_file "${entry#file:}" ;;
+        file:"$MEDIA_GATE_RECORD")
             require_journal_file "$MEDIA_GATE_RECORD"
             [ "$journal_recovery" = 1 ] || [ "$(cat "$MEDIA_GATE_RECORD")" = /usr/share/media/wait_media_ready ] || die 'media-ready gate record is unsafe'
             ;;
-        file:$AUTOSTART_ENABLED)
+        file:"$AUTOSTART_ENABLED")
             require_journal_file "$AUTOSTART_ENABLED"
             [ "$journal_recovery" = 1 ] || [ "$(cat "$AUTOSTART_ENABLED")" = enabled-v1 ] || die 'autostart marker is unsafe'
             ;;
-        cron-comment:$CRON_COMMENT|cron-job:$CRON_JOB) [ "$journal_recovery" = 1 ] || validate_owned_cron ;;
-        link:$CURRENT)
+        cron-comment:"$CRON_COMMENT"|cron-job:$CRON_JOB) [ "$journal_recovery" = 1 ] || validate_owned_cron ;;
+        link:"$CURRENT")
             [ "$journal_recovery" = 1 ] || { [ -L "$CURRENT" ] && validate_current; } || die 'recorded active release link is absent'
             ;;
         *) die "unsupported journal entry: $entry" ;;
@@ -490,10 +493,10 @@ while IFS= read -r entry; do
                 durability_barrier
             fi
             ;;
-        mount:/run/aula-state:$BASE)
+        mount:/run/aula-state:"$BASE")
             if mounted_from "$BASE" /run/aula-state; then umount /run/aula-state; fi
             ;;
-        mount:/etc/group:$IDENTITY/group)
+        mount:/etc/group:"$IDENTITY/group")
             if mounted_from "$IDENTITY/group" /etc/group; then umount /etc/group || die 'cannot remove managed group bind mount'; fi
             ;;
         root-ssh-passwd:*)

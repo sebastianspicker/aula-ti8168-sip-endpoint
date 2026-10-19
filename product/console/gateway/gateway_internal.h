@@ -78,11 +78,20 @@ int gateway_apply_loaded_account_v1(aula_gateway *gateway, json_t *root);
 int gateway_apply_loaded_accounts_v2(aula_gateway *gateway, json_t *root);
 int gateway_apply_loaded_store_v3(aula_gateway *gateway, json_t *root);
 
+/* ---- gateway_log.c: bounded, redacted per-request log ---- */
+
+void gateway_log_request(aula_gateway *gateway, const aula_gateway_request *request,
+                         const aula_gateway_response *response, int handled,
+                         uint64_t elapsed_milliseconds);
+
 /* ---- gateway_session.c: session lifecycle and request authentication ---- */
 
 aula_gateway_session *gateway_new_session(aula_gateway *gateway, const char *username,
                                            aula_gateway_role role, uint64_t now,
                                            char cookie[256], char csrf[65]);
+/* Whether gateway_new_session can find a slot for `role` (see its eviction rule). */
+int gateway_session_slot_available(aula_gateway *gateway, const char *username,
+                                   aula_gateway_role role, uint64_t now);
 int gateway_request_origin_is_allowed(const aula_gateway *gateway,
                                       const aula_gateway_request *request);
 int gateway_request_token_hash(const aula_gateway_request *request,
@@ -167,6 +176,9 @@ typedef struct {
   int has_request_hash;
   uint32_t control_request_id;
   uint8_t request_hash[AULA_GATEWAY_HASH_BYTES];
+  /* The matched route (NULL for diagnostics export), kept so the body schema
+   * can be checked after authentication. */
+  const route_spec *route;
 } route_plan;
 
 /* ---- gateway_route_schema.c: HTTP request-body schema validators ---- */
@@ -218,8 +230,13 @@ int gateway_handle_login(aula_gateway *gateway, const aula_gateway_request *requ
 
 /* ---- gateway.c: the route table and per-request dispatch plan ---- */
 
-int gateway_dispatch_route(const aula_gateway_request *request, aula_gateway_response *response,
-                           route_plan *plan);
+int gateway_dispatch_route(const aula_gateway_request *request, route_plan *plan);
+/* Checks the request body against the matched route's schema (or requires an
+ * empty object for routes without one). Runs after authentication so an
+ * unauthenticated caller learns nothing about the schema. Returns 1 when the
+ * body is acceptable, otherwise writes the error and returns 0. */
+int gateway_validate_route_body(const aula_gateway_request *request, const route_plan *plan,
+                                aula_gateway_response *response);
 int gateway_preflight(aula_gateway *gateway, aula_gateway_session *session,
                       const aula_gateway_request *request, route_plan *plan,
                       aula_gateway_response *response);

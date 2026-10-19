@@ -2,35 +2,98 @@ SHELL := /bin/sh
 
 WORK := $(CURDIR)/.work
 SIPD_BUILD := $(WORK)/build/sipd
+SIPD_HOST_CONFIG := $(WORK)/config/aula-sipd.conf
+SIPD_HOST_RUN := $(WORK)/run/aula-sipd
 EMULATOR_STATE := $(WORK)/cache/emulator-run/synthetic-state.json
 PAYLOAD := $(WORK)/dist/aula-ti8168-sip-endpoint/runtime
 QEMU_WORK := $(WORK)/build/qemu
 QEMU_BINARY := $(QEMU_WORK)/build-aula-v11.0.3/qemu-system-arm
 export PYTHONPYCACHEPREFIX := $(WORK)/cache/python
 
-.PHONY: build verify sipd-build emulator-status console-device \
-	console-fastcgi ui-install ui-build package-ti8168 package-qemu \
+# The console sub-makes (device, gateway, test) compile the same object files
+# under .work/build/console, so targets must not run concurrently under -j.
+.NOTPARALLEL:
+
+.PHONY: build verify test sipd-build sipd-test sipd-host-config sipd-pjsip emulator-status emulator-test \
+	console-device console-gateway console-test console-fastcgi-host \
+	console-fastcgi ui-install ui-build ui-test package-ti8168 package-qemu \
 	qemu-build qemu-verify qemu-run qemu-acceptance live-build \
 	live-package live-preflight live-install live-gates live-smoke \
 	live-soak-15 live-soak-30 live-soak-60 live-reboot live-remove
 
-build: sipd-build console-device ui-build
+build: sipd-build console-device console-gateway ui-build
 
-verify: build emulator-status
-	@echo "Maintained host build and synthetic emulator entry point verified."
+verify: build test sipd-host-config emulator-status
+	@echo "Maintained host build, unit tests, and synthetic emulator entry point verified."
+
+test: sipd-test console-test emulator-test ui-test
 
 sipd-build:
 	@mkdir -p $(SIPD_BUILD)
 	cmake -S product/sipd -B $(SIPD_BUILD) -DCMAKE_BUILD_TYPE=Release
 	cmake --build $(SIPD_BUILD)
 
+# Opt-in: downloads and builds the pinned pjproject (digest-checked) and
+# links a daemon that can run --foreground. Never part of build or verify.
+sipd-pjsip:
+	sh dependencies/scripts/build-pjproject-host.sh
+	cmake -C $(WORK)/build/pjproject/aula-sipd-pjsip.cmake -S product/sipd \
+		-B $(WORK)/build/sipd-pjsip -DCMAKE_BUILD_TYPE=Release
+	cmake --build $(WORK)/build/sipd-pjsip
+	@echo "PJSIP-linked daemon: $(WORK)/build/sipd-pjsip/aula-sipd"
+
+sipd-test: sipd-build
+	cd $(SIPD_BUILD) && ctest --output-on-failure
+
+# The device example names /run and /var/lib/aula-sipd, which a developer
+# host lacks; the committed host example moves those two paths to
+# /tmp/aula-sipd. Check that the host example differs from the device example
+# only there (and in its "# host:" comments), then validate a copy whose
+# private directory lives below .work.
+SIPD_EXAMPLE := product/sipd/config/aula-sipd.example.conf
+SIPD_HOST_EXAMPLE := product/sipd/config/aula-sipd.host.example.conf
+
+# The run directory reaches the rewrite through the environment so any path
+# character survives (a sed replacement would need escaping).
+sipd-host-config: export SIPD_HOST_RUN := $(SIPD_HOST_RUN)
+sipd-host-config: sipd-build
+	@mkdir -p $(dir $(SIPD_HOST_CONFIG)) $(SIPD_HOST_RUN)
+	@chmod 700 $(dir $(SIPD_HOST_CONFIG)) $(SIPD_HOST_RUN)
+	@sed -e 's|^pid_file = .*|pid_file = /tmp/aula-sipd/aula-sipd.pid|' \
+		-e 's|^settings_file = .*|settings_file = /tmp/aula-sipd/settings.json|' \
+		$(SIPD_EXAMPLE) > $(SIPD_HOST_CONFIG).expected
+	@grep -v '^# host:' $(SIPD_HOST_EXAMPLE) | cmp -s - $(SIPD_HOST_CONFIG).expected || \
+		{ echo "$(SIPD_HOST_EXAMPLE) has drifted from $(SIPD_EXAMPLE)" >&2; exit 1; }
+	python3 -c 'import os, sys; run = os.environ["SIPD_HOST_RUN"].encode() + b"/"; sys.stdout.buffer.write(b"".join(line.replace(b"/tmp/aula-sipd/", run, 1) for line in open(sys.argv[1], "rb")))' \
+		$(SIPD_HOST_EXAMPLE) > $(SIPD_HOST_CONFIG).tmp
+	@chmod 600 $(SIPD_HOST_CONFIG).tmp
+	@mv -f $(SIPD_HOST_CONFIG).tmp $(SIPD_HOST_CONFIG)
+	$(SIPD_BUILD)/aula-sipd --check-config $(SIPD_HOST_CONFIG)
+
 emulator-status:
 	@mkdir -p $(dir $(EMULATOR_STATE))
 	PYTHONPATH=lab/emulator/src python3 -m aula_emulator status \
 		--state-file $(EMULATOR_STATE)
 
+emulator-test:
+	PYTHONPATH=lab/emulator/src python3 -m unittest discover \
+		-s lab/emulator/tests -t lab/emulator
+
 console-device:
 	$(MAKE) -C product/console device-control
+
+console-gateway:
+	$(MAKE) -C product/console gateway-check
+
+console-test:
+	$(MAKE) -C product/console test
+
+# Opt-in: downloads and builds the pinned, digest-checked FastCGI 2.4.7
+# library below .work, then links the real FastCGI gateway against it.
+console-fastcgi-host:
+	sh dependencies/scripts/build-fastcgi-host.sh
+	$(MAKE) -C product/console fastcgi FCGI_PREFIX="$(WORK)/build/fastcgi/prefix"
+	@echo "FastCGI gateway: $(WORK)/build/console/aula-gateway-fcgi"
 
 console-fastcgi:
 	@test -n "$(FCGI_PREFIX)" || { echo "set FCGI_PREFIX to a vetted FastCGI 2.4.7 installation" >&2; exit 2; }
@@ -41,6 +104,9 @@ ui-install:
 
 ui-build:
 	$(MAKE) -C product/console ui-build
+
+ui-test:
+	$(MAKE) -C product/console ui-test
 
 package-ti8168:
 	@test -n "$(SIPD_BINARY)" -a -n "$(GATEWAY_BINARY)" -a -n "$(NGINX_BINARY)" \

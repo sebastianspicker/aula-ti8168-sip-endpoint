@@ -31,7 +31,7 @@ def main() -> int:
     try:
         abi_text = abi_raw.decode("utf-8")
     except UnicodeDecodeError as error:
-        raise SystemExit(f"generate-arm-report: invalid ABI text: {error}")
+        raise SystemExit(f"generate-arm-report: invalid ABI text: {error}") from error
     documents = {
         "abi": {
             "format": "aula-sipd-check-arm-abi-text-v1",
@@ -45,7 +45,7 @@ def main() -> int:
     try:
         documents["interface"] = json.loads(raw)
     except json.JSONDecodeError as error:
-        raise SystemExit(f"generate-arm-report: invalid interface JSON: {error}")
+        raise SystemExit(f"generate-arm-report: invalid interface JSON: {error}") from error
     documents["interface_sha256"] = hashlib.sha256(raw).hexdigest()
     status = "pass" if documents["interface"].get("status") == "pass" and documents["abi"]["status"] == "pass" else "incomplete-or-fail"
     report = {"format": "aula-sipd-arm-report-v1", "status": status, "gates": documents, "unproven": ["qemu-arm confined execution", "fixture private-lab call", "hardware media behavior"]}

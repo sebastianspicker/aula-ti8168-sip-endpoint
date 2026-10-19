@@ -6,15 +6,13 @@ import contextlib
 import json
 import os
 import select
-import secrets
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any, Callable
 
-from campaign_evidence import _private_root
-from campaign_transport import _api, _run
+from campaign_transport import _api
 from campaign_types import (
     ACTIVE_CALL_STATUS_KEYS, DTMF_SETTLE_SECONDS, INITIAL_CALL_STATES,
     MAX_PEER_TIMEOUT_SECONDS, MEDIA_SETTLE_SECONDS, PEER_READY_SIGNAL as _PEER_READY_SIGNAL,

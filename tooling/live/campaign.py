@@ -5,53 +5,31 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import dataclasses
-import getpass
-import hashlib
-import http.client
-import json
 import os
 import re
 import resource
-import select
-import secrets
-import socket
-import ssl
-import stat
-import struct
-import subprocess
 import sys
-import tarfile
 import tempfile
 import time
-import uuid
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator
 
 from session import ALLOWED_ACTIONS, LiveSession, SessionError, load_session
 
 
 
 from campaign_types import (
-    ACTIVE_CALL_STATUS_KEYS, BOOT_ID_PATTERN, BOOT_ID_COMMAND as _BOOT_ID_COMMAND,
-    DTMF_SETTLE_SECONDS,
-    INITIAL_CALL_STATES, LIVE_TARGET, MAX_PEER_TIMEOUT_SECONDS, MEDIA_SETTLE_SECONDS,
-    MUTATING_ACTIONS, PAYLOAD, PEER_STARTUP_TIMEOUT_SECONDS, PEER_READY_SIGNAL as _PEER_READY_SIGNAL,
-    RETRY_EVIDENCE_CALL_STATES, ROOT, SAFE_ENV, SECRET_PATTERN,
-    WITHHELD_FINAL_RECONNECT_POLL_SECONDS, WITHHELD_FINAL_RECONNECT_TIMEOUT_SECONDS,
-    CampaignError, PeerCompletionError, require_private_identity_provider as _require_private_identity_provider,
+    LIVE_TARGET, MUTATING_ACTIONS, PAYLOAD, CampaignError, PeerCompletionError, require_private_identity_provider as _require_private_identity_provider,
 )
 from campaign_evidence import (
-    PhaseEvidence, _fsync_directory, _journal_root, _new_path, _private_root,
-    _publish, _reconcile_journal, _record_journal, _secure_directory, _session_root,
-    _write_json_new, _session_lock,
+    PhaseEvidence, _private_root,
+    _publish, _reconcile_journal, _record_journal, _session_lock,
 )
 import campaign_transport as _transport
 import campaign_calls as _calls
 import campaign_actions as _actions
 from campaign_transfer import (
-    _payload_kib, _snapshot_transfer_archive, _tar_transfer, _transfer_member_name,
-    _verified_payload_digest,
+    _payload_kib, _tar_transfer, _verified_payload_digest,
 )
 
 _run = _transport._run

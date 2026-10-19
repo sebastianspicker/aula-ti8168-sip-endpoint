@@ -11,7 +11,7 @@ valid_private_unicast_ipv4() {
     printf '%s\n' "$1" | awk -F. 'NF != 4 { exit 1 } { for (i=1;i<=4;i++) if ($i !~ /^(0|[1-9][0-9]*)$/ || $i > 255) exit 1 } ($1 == 10 && ($2 != 0 || $3 != 0 || $4 != 0) && ($2 != 255 || $3 != 255 || $4 != 255)) || ($1 == 172 && $2 >= 16 && $2 <= 31 && ($2 != 16 || $3 != 0 || $4 != 0) && ($2 != 31 || $3 != 255 || $4 != 255)) || ($1 == 192 && $2 == 168 && ($3 != 0 || $4 != 0) && ($3 != 255 || $4 != 255)) { exit 0 } { exit 1 }'
 }
 
-target= payload= version= user= interface= expected_mac= host_key= manifest_sha= port=5100 start=0 apply=0
+target='' payload='' version='' user='' interface='' expected_mac='' host_key='' manifest_sha='' port=5100 start=0 apply=0
 while [ "$#" -gt 0 ]; do
     case $1 in
         --target) [ "$#" -ge 2 ] || usage; target=$2; shift 2 ;;

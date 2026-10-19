@@ -257,6 +257,15 @@ static int runtime_limits_are_valid(const aula_config *config) {
   const aula_config_limits *limits = &config->view.limits;
   return config->view.foreground && config->view.rtp_mtu >= 256U && config->view.rtp_mtu <= limits->rtp_packet_bytes && (config->view.local_rtp_port_min & 1U) == 0U && (config->view.local_rtp_port_max & 1U) == 0U && config->view.local_rtp_port_min <= 65532U && config->view.local_rtp_port_max >= config->view.local_rtp_port_min + 2U && limit_is_within(limits->video_queue_frames, 1U, 128U) && limit_is_within(limits->audio_queue_frames, 1U, 128U) && limit_is_within(limits->log_events_per_interval, 1U, 10000U) && (config->view.local_control_socket_mode == 0600U || config->view.local_control_socket_mode == 0660U) && config->view.control_gateway_uid != UINT32_MAX && aec_settings_are_valid(config);
 }
+/* Peer UID is the control socket's only authorisation, so an enabled socket
+ * must name the gateway's dedicated account: never root, and never the
+ * shared nobody identity (65534) that unrelated services also run as. */
+static int control_identity_is_valid(const aula_config *config) {
+  return config->view.enable_local_control == 0 ||
+      (config->view.control_gateway_uid != 0U &&
+       config->view.control_gateway_uid != 65534U);
+}
+
 static int backend_settings_are_valid(const aula_config *config) {
   uint8_t authorized_rtsp[4];
   if (!aula_config_parse_ipv4_literal(config->authorized_rtsp_ipv4, authorized_rtsp) ||
@@ -281,43 +290,110 @@ static int crc_route_settings_are_valid(const aula_config *config) {
       aula_sip_crc_address_is_valid(config->crc_address);
 }
 
-static int structural_settings_are_valid(const aula_config *config) {
-  return network_settings_are_valid(config) && crc_route_settings_are_valid(config) &&
-         media_addresses_are_valid(config) &&
-         media_security_policy_is_valid(config->view.media_security_policy) &&
-         packet_limits_are_valid(config) && runtime_limits_are_valid(config) &&
-         backend_settings_are_valid(config);
+/* Returns 1 when every cross-setting check passes; otherwise names the
+ * first failing group of settings. */
+static int structural_settings_are_valid(const aula_config *config,
+                                         const char **setting,
+                                         const char **reason) {
+  if (!network_settings_are_valid(config)) {
+    *setting = "[sip] network settings";
+    *reason = "profile, transport, enable_tls, uri, registrar_uri, enable_public_network "
+              "and media.security are inconsistent";
+  } else if (!crc_route_settings_are_valid(config)) {
+    *setting = "sip.crc_address";
+    *reason = "requires zoom_direct over TLS on the public network with required SRTP";
+  } else if (!media_addresses_are_valid(config)) {
+    *setting = "media.bind_address";
+    *reason = "bind and advertised addresses must be equal IPv4 literals, loopback "
+              "unless enable_public_network is set";
+  } else if (!media_security_policy_is_valid(config->view.media_security_policy)) {
+    *setting = "media.security";
+    *reason = "invalid media security policy";
+  } else if (!packet_limits_are_valid(config)) {
+    *setting = "[limits]";
+    *reason = "a limit is outside its supported range";
+  } else if (!runtime_limits_are_valid(config)) {
+    *setting = "runtime, media and control limits";
+    *reason = "foreground, rtp_mtu, RTP port range, queue sizes, log rate, socket mode, "
+              "gateway_uid or AEC settings are out of range";
+  } else if (!control_identity_is_valid(config)) {
+    *setting = "control.gateway_uid";
+    *reason = "with local control enabled it must be the gateway's dedicated UID, "
+              "not 0 (root) or 65534 (nobody)";
+  } else if (!backend_settings_are_valid(config)) {
+    *setting = "media.backend";
+    *reason = "backend, child identity, video source or authorized RTSP target is invalid";
+  } else {
+    return 1;
+  }
+  return 0;
 }
 
-static aula_status validate_runtime_paths(const aula_config *config) {
+static const char *output_path_reason(aula_status status) {
+  return status == AULA_STATUS_SECURITY_ERROR
+      ? "must not be a symbolic link"
+      : "must be an absolute path whose parent directory exists and is not group or "
+        "world writable";
+}
+
+static aula_status validate_runtime_paths(const aula_config *config,
+                                          aula_config_diagnostic *diagnostic) {
   aula_status status = validate_output_path(config->pid_file);
-  if (status != AULA_STATUS_OK) return status;
-  status = aula_config_validate_runtime_settings_path(
-      config->runtime_settings_file);
-  if (status != AULA_STATUS_OK || !config->view.enable_local_control) {
+  if (status != AULA_STATUS_OK) {
+    aula_config_diagnose(diagnostic, status, 0U, "runtime.pid_file",
+                         output_path_reason(status));
     return status;
   }
-  return validate_output_path(config->local_control_socket);
+  status = aula_config_validate_runtime_settings_path(
+      config->runtime_settings_file);
+  if (status != AULA_STATUS_OK) {
+    aula_config_diagnose(diagnostic, status, 0U, "runtime.settings_file",
+                         "parent directory must exist, be owned by root or the daemon user "
+                         "and not be group or world writable; an existing file must be a "
+                         "0600 regular file");
+    return status;
+  }
+  if (!config->view.enable_local_control) return AULA_STATUS_OK;
+  status = validate_output_path(config->local_control_socket);
+  if (status != AULA_STATUS_OK)
+    aula_config_diagnose(diagnostic, status, 0U, "control.unix_socket_path",
+                         output_path_reason(status));
+  return status;
 }
 
-static aula_status validate_credential_files(const aula_config *config) {
+static aula_status validate_credential_files(const aula_config *config,
+                                             aula_config_diagnostic *diagnostic) {
   aula_status status;
   if (config->auth_secret_file[0] != '\0') {
     status = aula_config_validate_secret_file(config->auth_secret_file);
-    if (status != AULA_STATUS_OK) return status;
+    if (status != AULA_STATUS_OK) {
+      aula_config_diagnose(diagnostic, status, 0U, "sip.auth_secret_file",
+                           "must be an owner-only regular file owned by the daemon user");
+      return status;
+    }
   }
   if (config->tls_ca_file[0] != '\0') {
-    return validate_regular_file(config->tls_ca_file);
+    status = validate_regular_file(config->tls_ca_file);
+    if (status != AULA_STATUS_OK)
+      aula_config_diagnose(diagnostic, status, 0U, "sip.tls_ca_file",
+                           "must be a regular file owned by root or the daemon user");
+    return status;
   }
   return AULA_STATUS_OK;
 }
 
-aula_status aula_config_validate(const aula_config *config) {
+aula_status aula_config_validate(const aula_config *config,
+                                   aula_config_diagnostic *diagnostic) {
   aula_status status;
+  const char *setting = NULL;
+  const char *reason = NULL;
   if (config == NULL) return AULA_STATUS_INVALID_ARGUMENT;
-  if (!structural_settings_are_valid(config)) {
+  if (!structural_settings_are_valid(config, &setting, &reason)) {
+    aula_config_diagnose(diagnostic, AULA_STATUS_CONFIGURATION_ERROR, 0U,
+                         setting, reason);
     return AULA_STATUS_CONFIGURATION_ERROR;
   }
-  status = validate_runtime_paths(config);
-  return status == AULA_STATUS_OK ? validate_credential_files(config) : status;
+  status = validate_runtime_paths(config, diagnostic);
+  return status == AULA_STATUS_OK ? validate_credential_files(config, diagnostic)
+                                  : status;
 }

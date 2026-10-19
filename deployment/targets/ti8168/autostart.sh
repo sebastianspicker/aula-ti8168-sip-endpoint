@@ -10,7 +10,6 @@ CURRENT=$BASE/current
 STARTER=$BASE/live-start.sh
 MEDIA_GATE_RECORD=$BASE/media-ready-gate
 VENDOR_MEDIA_WAIT=/usr/share/media/wait_media_ready
-LOCK=/var/run/aula-ti8168-sip-endpoint-operation.lock
 SENTINEL=/run/aula-ti8168-sip-endpoint-autostart.ok
 STARTUP_LOG=/run/aula-ti8168-sip-endpoint-autostart.log
 AUTOSTART_ENABLED=$BASE/autostart-enabled

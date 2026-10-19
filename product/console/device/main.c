@@ -68,12 +68,36 @@ static int inherited_listener_valid(int fd, gid_t gateway_group) {
       (info.st_mode & 0777) == 0660;
 }
 
+static void usage(FILE *stream) {
+  fputs("usage: aula-device-control --launch | --socket-activation\n"
+        "Privileged device companion for the console gateway. It must run as\n"
+        "root, needs the aula-gateway account, serves " AULA_DEVICE_SOCKET "\n"
+        "(--launch creates it; --socket-activation expects it on descriptor 3),\n"
+        "and keeps its state in /run/aula-state/device. These paths are fixed:\n"
+        "the companion is meant for the device, not a developer host.\n", stream);
+}
+
 static int prepare_listener(int argc, char **argv, uid_t *gateway_uid) {
-  struct passwd *gateway = getpwnam("aula-gateway");
-  if (geteuid() != 0 || gateway == NULL || gateway->pw_uid == 0 || argc != 2) return 0;
+  struct passwd *gateway;
+  if (argc != 2) {
+    usage(stderr);
+    return 0;
+  }
+  if (geteuid() != 0) {
+    fputs("device-control: must run as root\n", stderr);
+    return 0;
+  }
+  gateway = getpwnam("aula-gateway");
+  if (gateway == NULL || gateway->pw_uid == 0) {
+    fputs("device-control: the aula-gateway account is missing or is root\n", stderr);
+    return 0;
+  }
   *gateway_uid = gateway->pw_uid;
   gid_t gateway_group = gateway->pw_gid;
-  if (strcmp(argv[1], "--launch") == 0 && aula_device_listener(gateway_group) != 3) return 0;
+  if (strcmp(argv[1], "--launch") == 0 && aula_device_listener(gateway_group) != 3) {
+    fputs("device-control: cannot create the listener on " AULA_DEVICE_SOCKET "\n", stderr);
+    return 0;
+  }
   if ((strcmp(argv[1], "--socket-activation") != 0 && strcmp(argv[1], "--launch") != 0) ||
       !inherited_listener_valid(3, gateway_group)) {
     fputs("device-control: requires an owned listener on descriptor 3\n", stderr);
@@ -85,6 +109,10 @@ static int prepare_listener(int argc, char **argv, uid_t *gateway_uid) {
 int main(int argc, char **argv) {
   int directory;
   uid_t gateway_uid;
+  if (argc == 2 && strcmp(argv[1], "--help") == 0) {
+    usage(stdout);
+    return 0;
+  }
   if (!prepare_listener(argc, argv, &gateway_uid)) return 2;
   directory = open_state_directory();
   if (directory < 0 || !aula_device_jobs_open(&jobs, directory) ||

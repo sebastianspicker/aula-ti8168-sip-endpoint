@@ -21,6 +21,9 @@ typedef struct aula_pjsip_driver_options {
   /* CA bundle used by the low-level TLS transport. It remains private to the
    * adapter and is never exposed through the portable SIP contract. */
   const char *tls_ca_file;
+  /* Optional IPv4 literal every SIP listener binds to. NULL keeps the
+   * historical wildcard bind on all interfaces. */
+  const char *bind_address;
 } aula_pjsip_driver_options;
 
 /* Validates and materializes the low-level backend configuration without

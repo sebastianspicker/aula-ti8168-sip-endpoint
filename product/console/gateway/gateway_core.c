@@ -18,6 +18,7 @@
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,6 +63,12 @@ void gateway_install_secure_json_allocator(void) {
   /* Gateway initialization precedes FastCGI worker creation. Reinstalling
    * these identical process-global callbacks is safe in unit fixtures too. */
   json_set_alloc_funcs(secure_json_malloc, gateway_secure_json_free);
+}
+
+uint64_t aula_gateway_clock_seconds(void) {
+  struct timespec now;
+  if (clock_gettime(CLOCK_MONOTONIC, &now) != 0 || now.tv_sec < 0) return 0U;
+  return (uint64_t)now.tv_sec + 1U;
 }
 
 int aula_gateway_parse_content_length(const char *text, size_t maximum, size_t *length_out) {

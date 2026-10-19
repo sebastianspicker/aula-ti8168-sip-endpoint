@@ -1,0 +1,61 @@
+# Runs the documented host verification lane (docs/DEVELOPMENT.md): build
+# the daemon, gateway, device companion and UI, run the unit tests, validate
+# the host configuration and query the emulator. Linux exercises gcc and the
+# SOCK_SEQPACKET control lane; macOS exercises clang and SOCK_STREAM.
+name: verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      # Actions are pinned to full commit SHAs; the comment names the tag.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: Install native dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            cmake pkg-config libjansson-dev libssl-dev
+
+      - name: Install native dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install jansson openssl pkgconf
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl)/lib/pkgconfig:$(brew --prefix jansson)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Install pnpm
+        run: npm install --global pnpm@10.34.7
+
+      - name: Install locked UI dependencies
+        run: make ui-install
+
+      - name: Build, test and verify
+        run: make verify
+
+      # Compiles and links the real FastCGI adapter (fastcgi_main.c,
+      # fastcgi_preview.c) against the pinned, digest-checked libfcgi.
+      - name: Build the FastCGI gateway
+        run: make console-fastcgi-host

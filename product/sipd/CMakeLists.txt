@@ -9,8 +9,9 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+  # Match the documented builds (root Makefile and README use Release).
   set(CMAKE_BUILD_TYPE
-      "Debug"
+      "Release"
       CACHE
         STRING
         "Choose the type of build: Debug, Release, RelWithDebInfo, or MinSizeRel"
@@ -221,6 +222,13 @@ if(AULA_SIPD_BUILD_DAEMON)
   target_link_libraries(aula-sipd PRIVATE aula_sipd_core)
   aula_sipd_apply_platform_libraries(aula-sipd)
   install(TARGETS aula-sipd RUNTIME DESTINATION bin)
+endif()
+
+if(AULA_SIPD_BUILD_DAEMON
+   AND AULA_SIPD_BUILD_TESTS
+   AND NOT CMAKE_CROSSCOMPILING)
+  enable_testing()
+  add_subdirectory(tests)
 endif()
 
 install(DIRECTORY include/ DESTINATION include)

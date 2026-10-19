@@ -3,6 +3,9 @@
 `aula-sipd.example.conf` is a safe template, not a runnable deployment file.
 It intentionally has an empty SIP URI and credentials, uses the fixture
 backend, disables local control, and disables public-network access.
+`aula-sipd.host.example.conf` is the same template for a developer host: only
+`pid_file` and `settings_file` differ, pointing at `/tmp/aula-sipd/` (create
+it with `mkdir -m 700 /tmp/aula-sipd`); `make sipd-host-config` enforces that.
 
 The configuration parser is strict:
 

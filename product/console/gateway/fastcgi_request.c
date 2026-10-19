@@ -47,7 +47,8 @@ static int bounded_optional(const char *value, size_t maximum) {
 static int method_is_supported(const char *method) {
   return method != NULL &&
       (strcmp(method, "GET") == 0 || strcmp(method, "POST") == 0 ||
-       strcmp(method, "PATCH") == 0 || strcmp(method, "DELETE") == 0);
+       strcmp(method, "PATCH") == 0 || strcmp(method, "PUT") == 0 ||
+       strcmp(method, "DELETE") == 0);
 }
 
 static int path_prefix_and_length_are_valid(const char *path, size_t length) {

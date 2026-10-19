@@ -5,7 +5,7 @@
 
 static char aula_h264_hex(uint8_t value) {
   value &= 0x0fU;
-  return (char)(value < 10U ? ('0' + value) : ('a' + value - 10U));
+  return (char)(value < 10U ? '0' + value : 'a' + (value - 10));
 }
 
 static void aula_h264_set_profile_level_id(aula_h264_parameter_sets *sets,
@@ -81,7 +81,7 @@ aula_status aula_h264_annexb_iterator_init(aula_h264_annexb_iterator *iterator,
 
 aula_status aula_h264_annexb_iterator_next(aula_h264_annexb_iterator *iterator,
                                              aula_h264_nal *out_nal) {
-  size_t start_length;
+  size_t start_length = 0U;
   size_t nal_start;
   size_t cursor;
   size_t next_length;

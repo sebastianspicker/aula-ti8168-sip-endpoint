@@ -51,8 +51,8 @@ int aula_rtp_payload_is_accepted(const aula_rtp_session *session, uint8_t payloa
 int aula_rtp_payload_is_sendable(const aula_rtp_session *session,
                                   uint8_t payload_type);
 int aula_rtp_mux_payloads_are_safe(const aula_rtp_session *session);
-aula_status aula_rtp_policy_is_valid(const aula_rtp_session_policy *policy,
-                                       const aula_rtp_identity *identity);
+int aula_rtp_policy_is_valid(const aula_rtp_session_policy *policy,
+                              const aula_rtp_identity *identity);
 void aula_rtp_close_sockets(aula_rtp_session *session);
 size_t aula_rtp_session_get_descriptors_internal(
     const aula_rtp_session *session, int *descriptors, size_t capacity);

@@ -31,7 +31,8 @@ GATEWAY_SOURCES := \
 	gateway/gateway_route_request.c \
 	gateway/gateway_device.c \
 	gateway/gateway_transaction.c \
-	gateway/gateway_control.c
+	gateway/gateway_control.c \
+	gateway/gateway_log.c
 
 # The unprivileged gateway links only the device protocol's client half:
 # transport, wire framing, the client exchange, the recorder projection, and

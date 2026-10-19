@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import json
 import os
 import re
 import stat
 import subprocess
 import tarfile
 from pathlib import Path
-from typing import Any
 
 from campaign_evidence import _fsync_directory, _new_path, _private_root
 from campaign_transport import _run, _ssh_options
@@ -144,9 +142,9 @@ def _write_transfer_archive(descriptor: int, collector: _TransferCollector) -> b
                 digest = hashlib.sha256()
 
                 class _DigestReader:
-                    def read(self, count: int = -1) -> bytes:
-                        block = os.read(source_descriptor, count if count >= 0 else 1024 * 1024)
-                        digest.update(block)
+                    def read(self, count: int = -1, *, _descriptor: int = source_descriptor, _digest: "hashlib._Hash" = digest) -> bytes:
+                        block = os.read(_descriptor, count if count >= 0 else 1024 * 1024)
+                        _digest.update(block)
                         return block
 
                 output.addfile(member, _DigestReader())

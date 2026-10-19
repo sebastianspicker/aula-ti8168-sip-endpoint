@@ -50,12 +50,17 @@ int aula_config_ipv4_is_private_or_loopback(const uint8_t octets[4]);
 int aula_config_ipv4_is_authorized_rtsp_target(const uint8_t octets[4]);
 aula_status aula_config_key_for(const char *section, const char *key, config_key *out_key);
 aula_status aula_config_apply_key(aula_config *config, config_key key, const char *value);
-aula_status aula_config_validate(const aula_config *config);
+/* Records the failing setting and reason in `diagnostic` when non-NULL. */
+aula_status aula_config_validate(const aula_config *config,
+                                   aula_config_diagnostic *diagnostic);
 aula_status aula_config_open_owned_regular_file(const char *path, int secret, int *out_descriptor);
 aula_status aula_config_validate_secret_file(const char *path);
 /* The optional runtime settings state may be absent on first boot.  If it
  * exists, it is an owner-only regular file under a trusted parent. */
 aula_status aula_config_validate_runtime_settings_path(const char *path);
-aula_status aula_config_load_descriptor(int descriptor, int require_unlinked_snapshot, aula_config **out_config);
+aula_status aula_config_load_descriptor(int descriptor, int require_unlinked_snapshot, aula_config **out_config,
+                                           aula_config_diagnostic *diagnostic);
+void aula_config_diagnose(aula_config_diagnostic *diagnostic, aula_status status,
+                          unsigned int line, const char *setting, const char *reason);
 
 #endif

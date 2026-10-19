@@ -1,8 +1,9 @@
 """Validated, opt-in JSON snapshot persistence for emulator state.
 
-This module deliberately does not know about :class:`DeviceState`.  Callers can
-provide a small mapping assembled from their state and reconstruct that state
-after loading it.  A ``None`` path disables persistence, which is the default.
+This module deliberately does not know about the state it stores
+(:class:`~aula_emulator.runtime.SyntheticRuntime` passes a plain mapping).
+Callers provide a small mapping assembled from their state and reconstruct
+that state after loading it.  A ``None`` path disables persistence, which is the default.
 """
 
 from __future__ import annotations

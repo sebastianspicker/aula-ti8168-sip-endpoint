@@ -55,6 +55,7 @@ read_rollback_values() {
 }
 
 reconcile_pending_autostart() {
+    # shellcheck disable=SC2154 # phase is assigned by the sourcing caller (start.sh) before this is called
     case $phase in enable-v1:prepared|enable-v1:applied) ;; *) die 'autostart transaction is unsafe' ;; esac
     if [ -e "$AUTOSTART_ENABLED" ] || [ -L "$AUTOSTART_ENABLED" ]; then
         "$1"

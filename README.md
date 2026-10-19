@@ -73,10 +73,14 @@ fail closed until a reviewed guest workflow exists. See the [QEMU README](lab/qe
 Safe templates are committed at:
 
 - [`product/sipd/config/aula-sipd.example.conf`](product/sipd/config/aula-sipd.example.conf)
+  and its developer-host copy
+  [`aula-sipd.host.example.conf`](product/sipd/config/aula-sipd.host.example.conf)
 - [`product/console/gateway/config/aula-console.example.conf`](product/console/gateway/config/aula-console.example.conf)
 - [`docs/operator/live-build-inputs.example.json`](docs/operator/live-build-inputs.example.json)
 
-Templates are not production configuration. The SIP template is inert and
+Templates are not production configuration. The SIP template names device
+paths; the host copy uses `/tmp/aula-sipd/` (create it with
+`mkdir -m 700 /tmp/aula-sipd`). The SIP template is inert and
 selects plaintext compatibility only for an isolated private-lab profile; the
 daemon's compiled media-security default is `prefer_srtp`. Runtime credentials,
 certificates, device identifiers, captures, and complete firmware artifacts do

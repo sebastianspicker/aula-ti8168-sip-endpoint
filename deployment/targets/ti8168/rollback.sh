@@ -94,16 +94,16 @@ reconcile_rollback_transaction() {
     current_version=$(selector_version)
     require_release "$current_version"
     case $TX_PHASE:$current_version in
-        prepared:$TX_OLD) clear_rollback_tx ;;
+        prepared:"$TX_OLD") clear_rollback_tx ;;
         prepared:*) die 'prepared rollback transaction changed the active selector' ;;
-        applied:$TX_OLD|applied:$TX_NEW)
+        applied:"$TX_OLD"|applied:"$TX_NEW")
             # `applied` is durable before the selector swap.  Either selector is
             # therefore recoverable to the known old release after a reset.
             restore_selector_and_service "$TX_OLD" || die 'cannot recover interrupted rollback'
             clear_rollback_tx
             ;;
         applied:*) die 'applied rollback transaction has an unexpected active selector' ;;
-        healthy:$TX_NEW) clear_rollback_tx ;;
+        healthy:"$TX_NEW") clear_rollback_tx ;;
         healthy:*) die 'healthy rollback transaction has an unexpected active selector' ;;
         *) die 'rollback transaction is unsafe' ;;
     esac

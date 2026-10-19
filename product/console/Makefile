@@ -17,7 +17,7 @@ include gateway/sources.mk
 PREVIEW_CPPFLAGS := -Igateway/preview -I../sipd/include \
 	-I../sipd/src/backends
 
-.PHONY: all clean fastcgi ui-install ui-build device-control \
+.PHONY: all clean fastcgi ui-install ui-build ui-test device-control test gateway-check \
 	print-preview-sources print-gateway-sources print-device-client-sources
 
 all: device-control
@@ -79,6 +79,9 @@ ui-build: ui-install
 	sh $(DEPENDENCY_RUNNER) vite build \
 		--outDir ../../../.work/dist/console-web --emptyOutDir
 
+ui-test: ui-install
+	sh $(DEPENDENCY_RUNNER) vitest run
+
 clean:
 	sh $(DEPENDENCY_RUNNER) --clean
 
@@ -86,6 +89,47 @@ device-control: $(BUILD)/aula-device-control
 
 $(BUILD)/aula-device-control: $(DEVICE_COMPANION_OBJECTS) $(BUILD)/obj/device/main.o $(BUILD)/obj/device/jobs.o $(BUILD)/obj/device/launcher.o $(BUILD)/obj/device/commands.o
 	$(CC) $(CFLAGS) $^ $(LDLIBS) -o $@
+
+# Compile-only check of every gateway translation unit that does not need
+# fcgiapp.h, so the default build catches compile rot without FastCGI.
+# fastcgi_main.c and fastcgi_preview.c compile only in the opt-in fastcgi
+# target above.
+GATEWAY_CHECK_SOURCES := gateway/fastcgi_request.c $(PREVIEW_SOURCES)
+GATEWAY_CHECK_OBJECTS := $(patsubst %.c,$(BUILD)/check/%.o,$(subst ../sipd/,sipd/,$(GATEWAY_CHECK_SOURCES)))
+
+gateway-check: $(patsubst %.c,$(BUILD)/obj/%.o,$(GATEWAY_SOURCES)) $(GATEWAY_CHECK_OBJECTS)
+
+$(BUILD)/check/%.o: %.c
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(PREVIEW_CPPFLAGS) $(CFLAGS) -pthread -MMD -MP -c $< -o $@
+
+$(BUILD)/check/sipd/%.o: ../sipd/%.c
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(PREVIEW_CPPFLAGS) $(CFLAGS) -pthread -MMD -MP -c $< -o $@
+
+-include $(GATEWAY_CHECK_OBJECTS:.o=.d)
+
+# Host unit tests: standalone C programs linked against the pure gateway and
+# the device client half, compiled without FastCGI. A non-zero exit fails.
+CONSOLE_TESTS := test_gateway_basics test_gateway_session_renewal test_gateway_auth \
+	test_gateway_idempotency test_gateway_logging test_gateway_auth_limits test_fastcgi_request
+GATEWAY_OBJECTS := $(patsubst %.c,$(BUILD)/obj/%.o,$(GATEWAY_SOURCES))
+CONSOLE_TEST_BINARIES := $(addprefix $(BUILD)/tests/,$(CONSOLE_TESTS))
+CONSOLE_TEST_OBJECTS := $(CONSOLE_TESTS:%=$(BUILD)/obj/tests/%.o)
+# Keep objects built through the pattern chain for incremental rebuilds.
+.SECONDARY: $(GATEWAY_OBJECTS) $(CONSOLE_TEST_OBJECTS)
+
+test: $(CONSOLE_TEST_BINARIES)
+	@for binary in $(CONSOLE_TEST_BINARIES); do $$binary || exit 1; done
+
+$(BUILD)/tests/%: $(BUILD)/obj/tests/%.o $(GATEWAY_OBJECTS) $(DEVICE_CLIENT_OBJECTS)
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -pthread $^ $(LDLIBS) -o $@
+
+# The request-mapping test also links the FastCGI adapter's pure mapping unit.
+$(BUILD)/tests/test_fastcgi_request: $(BUILD)/obj/gateway/fastcgi_request.o
+
+-include $(GATEWAY_OBJECTS:.o=.d) $(CONSOLE_TEST_OBJECTS:.o=.d)
 
 -include $(DEVICE_COMPANION_OBJECTS:.o=.d) \
 	$(BUILD)/obj/device/main.d \

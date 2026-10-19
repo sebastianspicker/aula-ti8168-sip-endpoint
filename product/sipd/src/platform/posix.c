@@ -159,7 +159,8 @@ aula_status aula_platform_reap_child(aula_child_process *child, int *out_exit_st
   if (child == NULL || out_exit_status == NULL || child->pid <= 0) return AULA_STATUS_INVALID_ARGUMENT;
   if (aula_platform_validate_child_identity(child) != AULA_STATUS_OK) return AULA_STATUS_SECURITY_ERROR;
   do { result = waitpid((pid_t)child->pid, &status, WNOHANG); } while (result < 0 && errno == EINTR);
-  if (result == 0) return AULA_STATUS_AGAIN; if (result < 0) return errno == ECHILD ? AULA_STATUS_END : AULA_STATUS_IO_ERROR;
+  if (result == 0) return AULA_STATUS_AGAIN;
+  if (result < 0) return errno == ECHILD ? AULA_STATUS_END : AULA_STATUS_IO_ERROR;
   *out_exit_status = status; child->pid = -1; return AULA_STATUS_OK;
 }
 static aula_status wait_for_child_stop(aula_child_process *child, aula_deadline deadline, int *out_status) {

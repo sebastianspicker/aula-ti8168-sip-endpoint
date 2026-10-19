@@ -82,7 +82,7 @@ static void handle_fastcgi_request(FCGX_Request *request,
     FCGX_FPrintF(request->out, "Status: 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"revision\":1,\"ok\":false,\"error\":{\"code\":\"BAD_JSON\",\"message\":\"body is too large or incomplete\"}}");
     goto cleanup;
   }
-  now = (uint64_t)time(NULL);
+  now = aula_gateway_clock_seconds();
   if (!aula_fastcgi_request_map(request->envp, body, now, &api_request)) {
     FCGX_FPrintF(request->out, "Status: 400 Bad Request\r\nContent-Type: application/json\r\nCache-Control: no-store\r\n\r\n{\"revision\":1,\"ok\":false,\"error\":{\"code\":\"REQUEST_INVALID\",\"message\":\"FastCGI request parameters are invalid\"}}");
     goto cleanup;

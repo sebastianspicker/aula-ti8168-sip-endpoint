@@ -130,9 +130,16 @@ static int foreground_runtime_config(aula_config *config) {
   view = aula_config_get_view(config);
   if (view == NULL || !view->foreground) { aula_config_destroy(config); return EXIT_CONFIG; }
   if (!aula_pjsip_driver_is_available()) {
-    (void)fprintf(stderr, "foreground startup refused: no approved SIP driver is linked\n");
+    (void)fprintf(stderr, "foreground startup refused: no approved SIP driver is linked; "
+                  "build one with 'make sipd-pjsip' (see product/sipd/README.md)\n");
     aula_config_destroy(config);
     return EXIT_RUNTIME;
+  }
+  if (view->sip_uri == NULL || view->sip_uri[0] == '\0') {
+    (void)fprintf(stderr, "foreground startup refused: sip.uri is empty; a SIP endpoint needs "
+                  "a local URI, which requires enable_public_network = true\n");
+    aula_config_destroy(config);
+    return EXIT_CONFIG;
   }
   (void)memset(&pjsip_options, 0, sizeof(pjsip_options));
   (void)memset(&driver_config, 0, sizeof(driver_config));
@@ -144,6 +151,9 @@ static int foreground_runtime_config(aula_config *config) {
   pjsip_options.local_uri = view->sip_uri;
   pjsip_options.tls_ca_file = view->tls_ca_file[0] == '\0'
       ? NULL : view->tls_ca_file;
+  /* SIP listens on the same validated address as media (loopback unless
+   * the public network is enabled). */
+  pjsip_options.bind_address = view->media_bind_address;
   status = aula_pjsip_driver_configure_route(&pjsip_options,
       aula_config_crc_address(config), &driver_config);
   if (status != AULA_STATUS_OK) goto cleanup;
@@ -171,10 +181,37 @@ cleanup:
   return result;
 }
 
+static const char *config_status_text(aula_status status) {
+  switch (status) {
+    case AULA_STATUS_INVALID_DATA: return "malformed entry";
+    case AULA_STATUS_CONFIGURATION_ERROR: return "invalid setting";
+    case AULA_STATUS_LIMIT_EXCEEDED: return "limit exceeded";
+    case AULA_STATUS_PERMISSION_DENIED: return "unsafe ownership or permissions";
+    case AULA_STATUS_SECURITY_ERROR: return "unsafe file type";
+    case AULA_STATUS_IO_ERROR: return "cannot read";
+    case AULA_STATUS_UNSUPPORTED: return "unsupported on this platform";
+    default: return "rejected";
+  }
+}
+
+/* Names the failing line and setting, never a configured value. */
+static int report_config_failure(const aula_config_diagnostic *diagnostic) {
+  const char *reason = diagnostic->reason != NULL
+      ? diagnostic->reason : config_status_text(diagnostic->status);
+  const char *setting = diagnostic->setting[0] != '\0' ? diagnostic->setting : "configuration";
+  if (diagnostic->line != 0U)
+    (void)fprintf(stderr, "aula-sipd: configuration rejected: line %u: %s: %s\n",
+                  diagnostic->line, setting, reason);
+  else
+    (void)fprintf(stderr, "aula-sipd: configuration rejected: %s: %s\n", setting, reason);
+  return EXIT_CONFIG;
+}
+
 static int foreground_runtime(const char *path) {
   aula_config *config = NULL;
-  if (aula_config_load_file(path, &config) != AULA_STATUS_OK)
-    return EXIT_CONFIG;
+  aula_config_diagnostic diagnostic;
+  if (aula_config_load_file_diagnosed(path, &config, &diagnostic) != AULA_STATUS_OK)
+    return report_config_failure(&diagnostic);
   return foreground_runtime_config(config);
 }
 
@@ -183,15 +220,17 @@ static int foreground_runtime_fd(const char *value) {
   const char *cursor;
   unsigned long parsed;
   aula_config *config = NULL;
+  aula_config_diagnostic diagnostic;
   if (value == NULL || value[0] == '\0') return EXIT_CONFIG;
   for (cursor = value; *cursor != '\0'; ++cursor) {
     if (*cursor < '0' || *cursor > '9') return EXIT_CONFIG;
   }
   errno = 0;
   parsed = strtoul(value, &end, 10);
-  if (errno != 0 || end == value || *end != '\0' || parsed > INT_MAX ||
-      aula_config_load_fd((int)parsed, &config) != AULA_STATUS_OK)
+  if (errno != 0 || end == value || *end != '\0' || parsed > INT_MAX)
     return EXIT_CONFIG;
+  if (aula_config_load_fd_diagnosed((int)parsed, &config, &diagnostic) != AULA_STATUS_OK)
+    return report_config_failure(&diagnostic);
   return foreground_runtime_config(config);
 }
 
@@ -204,8 +243,9 @@ static int command_matches(int argc, char **argv, int expected_argc,
 
 static int check_config(const char *path) {
   aula_config *config = NULL;
-  aula_status status = aula_config_load_file(path, &config);
-  if (status != AULA_STATUS_OK) return EXIT_CONFIG;
+  aula_config_diagnostic diagnostic;
+  aula_status status = aula_config_load_file_diagnosed(path, &config, &diagnostic);
+  if (status != AULA_STATUS_OK) return report_config_failure(&diagnostic);
   aula_config_destroy(config);
   (void)puts("configuration: valid");
   return 0;

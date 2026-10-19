@@ -5,6 +5,9 @@
 #include <sys/un.h>
 
 #define AULA_CONTROL_COMPLETED_CACHE_ENTRIES 16U
+/* A completed command is replayable only long enough to recover a lost
+ * reply; after this the request ID may be reused. */
+#define AULA_CONTROL_COMPLETED_TTL_NS (UINT64_C(120) * UINT64_C(1000000000))
 #define AULA_CONTROL_CLIENT_LIMIT 64U
 #define AULA_CONTROL_CONNECTION_TIMEOUT_NS UINT64_C(1000000000)
 #define AULA_CONTROL_READINESS_DESCRIPTOR_LIMIT 8U
@@ -28,6 +31,8 @@ typedef struct aula_control_completed_request {
   size_t request_length;
   size_t response_length;
   uint16_t response_flags;
+  /* Monotonic time after which the entry no longer replays. */
+  uint64_t expires_at_ns;
   uint64_t request_fingerprint[2];
   uint8_t response_payload[AULA_SIPD_MAX_CONTROL_MESSAGE_BYTES];
 } aula_control_completed_request;

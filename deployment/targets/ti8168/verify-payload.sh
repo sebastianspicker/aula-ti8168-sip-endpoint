@@ -11,7 +11,7 @@ sha256_file() {
     elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk 'NR == 1 {print $1}';
     else die 'sha256sum or shasum is required'; fi
 }
-payload= manifest_sha=
+payload='' manifest_sha=''
 while [ "$#" -gt 0 ]; do
     case $1 in
         --payload) payload=$2; shift 2 ;;
@@ -20,10 +20,9 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 case $payload in /*) ;; *) die 'payload must be absolute' ;; esac
-for digest in "$manifest_sha"; do
-    case $digest in ''|*[!0-9a-f]*) die 'expected digest is unsafe' ;; esac
-    [ "${#digest}" = 64 ] || die 'expected digest must be SHA-256'
-done
+digest=$manifest_sha
+case $digest in ''|*[!0-9a-f]*) die 'expected digest is unsafe' ;; esac
+[ "${#digest}" = 64 ] || die 'expected digest must be SHA-256'
 [ -d "$payload" ] && [ ! -L "$payload" ] || die 'payload directory is unsafe'
 manifest=$payload/payload-manifest.tsv
 [ -f "$manifest" ] && [ ! -L "$manifest" ] || die 'payload manifest is unsafe'

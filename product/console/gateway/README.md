@@ -41,6 +41,7 @@ interfaces.
 | `gateway_device.c` | Unprivileged passthrough to the device companion's credential/status protocol |
 | `gateway_transaction.c` | Copies and revalidates a request across control I/O; `aula_gateway_handle` |
 | `gateway_control.c` | The LSZ1 wire transport to `aula-sipd` |
+| `gateway_log.c` | Bounded, redacted per-request log (see "Request log" below) |
 
 Request handling uses a state mutex and separate serialized read and mutation
 control lanes. At most one read and one mutation exchange may run concurrently. Bounded
@@ -82,8 +83,9 @@ settings file through a synced temporary file and atomic rename. Rename publishe
 the settings and revision. Pre-rename failures preserve the old state; a later
 parent-directory sync failure returns `503 PERSISTENCE_UNCERTAIN` with the new
 state authoritative. The gateway retains that exact uncertainty response for
-idempotent replay. Stale revisions return `409 REVISION_CONFLICT`. Empty settings
-reads are never served from the daemon's mutation deduplication cache. This
+idempotent replay. Stale revisions return `409 REVISION_CONFLICT`. Status,
+diagnostics, event, metrics, and empty settings reads are never served from
+the daemon's mutation deduplication cache. This
 contract does not establish target-filesystem power-loss durability.
 
 The diagnostics status response
@@ -127,17 +129,29 @@ plaintext secret-bearing request or executing a completed command twice. The
 cache is deliberately bounded and volatile across daemon restarts. Schemas reject duplicate/unknown keys and
 non-object values. Sessions are 256-bit random values retained as
 server-side SHA-256 hashes, capped at four concurrent sessions, idle-expire in
-15 minutes, absolute-expire in eight hours, and rotate at 15 minutes. Up to
+15 minutes, absolute-expire in eight hours, and rotate after 7.5 minutes, so an
+active browser receives a renewed 15-minute cookie before the old one lapses. Up to
 eight prior token hashes remain valid for a bounded 60-second delivery grace, and a rotated
 cookie is retained when downstream route processing returns an error. Cookies
 are always `Secure; HttpOnly; SameSite=Strict; Path=/zoom/`. Cookie parsing accepts
 only exact semicolon-delimited `aula_session` pairs and rejects duplicates;
-unrelated cookie names and values cannot supply a session token.
+unrelated cookie names and values cannot supply a session token. One account
+holds at most two live sessions: a further login replaces that account's
+oldest session. Otherwise a new login takes a free or expired slot, then the
+account's own oldest session, then the least-recently-seen session whose role
+is lower than or equal to its own, so a viewer login can never evict an
+operator or admin session. When every slot holds another account's live
+higher-role session the login (after a correct password) is refused with
+`503 SESSION_LIMIT`.
 
 Passwords use PBKDF2-HMAC-SHA256 with exactly 600000 iterations, a 16-byte
 salt, and a 32-byte output. Login and bootstrap spend that work only after
-application-side account, source, and global token budgets admit the request;
-429 responses carry `Retry-After`. The FastCGI adapter accepts the source only
+application-side source, global, and account token budgets (checked in that
+order, so a refused source never allocates an account bucket) admit the request;
+429 responses carry `Retry-After`. The account and source tables hold 16 buckets
+each; when full, only a fully refilled bucket (no penalty), the one refilled
+longest ago, is evicted, and if every bucket is still penalised the attempt is
+refused with the same 429, so cycling keys cannot reset a budget. The FastCGI adapter accepts the source only
 from nginx's `AULA_CLIENT_ID` parameter, not client JSON or forwarding headers.
 Credential failures perform the same PBKDF2 work for configured and absent
 accounts. Login snapshots credentials and their revision under the state mutex,
@@ -152,7 +166,8 @@ The fixed 0600 `gateway.conf` policy is strict JSON and requires
 environment secrets. `allowed_origin` is either `device` or one exact HTTPS
 origin; missing or malformed server address/port metadata is rejected only for
 the `device` policy. An optional `control_timeout_milliseconds` may reduce the
-fixed two-second maximum. One monotonic end-to-end deadline covers nonblocking
+fixed two-second maximum. An optional `bootstrap_code` enables first-account
+bootstrap (below). One monotonic end-to-end deadline covers nonblocking
 connect, complete send, and complete reply; stalled, partial, trailing, or
 truncated LSZ1 traffic closes the socket and becomes `503 BACKEND_UNAVAILABLE`.
 Descriptor-walked no-symlink ancestors and final files are
@@ -193,6 +208,58 @@ strictly beneath the canonical repository `.work` directory.
 Build the optional worker with
 `make console-fastcgi FCGI_PREFIX=/reviewed/native/fcgi` from the repository
 root.
+
+## First-account bootstrap
+
+`POST /zoom/api/v1/auth/bootstrap` creates the first (admin) account and is
+available only while no account exists and the `gateway.conf` policy carries
+`bootstrap_code`. The key is optional: when it is absent, or once an account
+exists, bootstrap answers `409 BOOTSTRAP_DISABLED`. The value must be a JSON
+string of at least 16 and at most 128 bytes; any other type or length makes the
+whole policy fail to load. It is a shared secret, so keep `gateway.conf` at
+0600, and it is not in `config/aula-console.example.conf` because that file is
+strict JSON and a real code must not be committed. Add it by hand, for example
+`"bootstrap_code": "replace-with-a-long-random-string"`.
+
+The request body is exactly `{"username", "password", "bootstrap_code"}`; the
+Origin must match, the attempt consumes the same account, source and global
+login budgets, and the code is compared in constant time. A wrong code returns
+`403 BOOTSTRAP_INVALID`. On success (`201`) the account is stored as an admin, the code
+is cleared from memory, bootstrap is disabled, and the operator should remove
+`bootstrap_code` from `gateway.conf`. The route does not itself open a session;
+sign in afterwards through `/auth/login`.
+
+## Request limits and time
+
+Request bodies are limited to 1 KiB: nginx answers larger bodies with `413`
+before they reach the gateway, whose FastCGI buffer is the same size. Request
+time (`aula_gateway_request.now`) comes from a monotonic clock
+(`aula_gateway_clock_seconds`), so session expiry, login budgets and preview
+leases are not disturbed when the device's wall clock is set or steps
+backwards. nginx also limits each source address to 16 concurrent
+connections and closes clients that send headers slower than 5 seconds.
+
+## Request log
+
+Every request handled by `aula_gateway_handle` writes one line to standard
+error (the service log on the device), for example:
+
+```text
+aula-gateway: request method=POST route=/zoom/api/v1/auth/login status=401 code=AUTH_INVALID client=192.0.2.10 ms=412
+```
+
+Lines never contain request bodies, cookies, CSRF tokens, idempotency keys,
+usernames, query strings, or diagnostics export identifiers, and
+request-supplied text is reduced to a fixed character set so it cannot split
+or forge a line. Volume is bounded per minute by two budgets: 30 lines for
+state-changing and refused or failed requests, and a separate 12 lines (about one
+polling console tab) for
+successful reads, so console polling cannot crowd out the audit lines. The
+first line written in the next minute reports how many lines were
+suppressed. `client` is the nginx-supplied address, present only on the
+login and bootstrap routes. Requests the FastCGI adapter rejects before the
+gateway sees them (oversized or malformed requests) and the preview stream
+are not logged here.
 
 ## Device companion routes
 

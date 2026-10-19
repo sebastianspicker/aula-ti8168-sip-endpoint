@@ -29,7 +29,7 @@ usage() { printf '%s\n' "usage: $0 --payload ABSOLUTE_PATH --version VERSION --m
 durability_barrier() { sync || die 'filesystem durability barrier failed'; }
 clear_transaction() { rm -f "$1"; durability_barrier; }
 
-payload= version= manifest_sha= start=0 dry_run=0
+payload='' version='' manifest_sha='' start=0 dry_run=0
 while [ "$#" -gt 0 ]; do
     case $1 in
         --payload) [ "$#" -ge 2 ] || usage; payload=$2; shift 2 ;;
@@ -247,11 +247,17 @@ record() {
 BOOTSTRAP_HELPER=$SCRIPT_DIR/bootstrap-transaction.sh
 require_secure_path_chain "$BOOTSTRAP_HELPER"
 require_secure_file "$BOOTSTRAP_HELPER"
+# shellcheck disable=SC2034 # BOOTSTRAP_* are read by the sourced bootstrap-transaction.sh
 BOOTSTRAP_ROOT=$BASE
+# shellcheck disable=SC2034 # BOOTSTRAP_* are read by the sourced bootstrap-transaction.sh
 BOOTSTRAP_RELEASES=$RELEASES
+# shellcheck disable=SC2034 # BOOTSTRAP_* are read by the sourced bootstrap-transaction.sh
 BOOTSTRAP_JOURNAL=$JOURNAL
+# shellcheck disable=SC2034 # BOOTSTRAP_* are read by the sourced bootstrap-transaction.sh
 BOOTSTRAP_ROOT_UID=0
+# shellcheck disable=SC2034 # BOOTSTRAP_* are read by the sourced bootstrap-transaction.sh
 BOOTSTRAP_ROOT_GID=0
+# shellcheck disable=SC2034 # BOOTSTRAP_* are read by the sourced bootstrap-transaction.sh
 BOOTSTRAP_GATEWAY_OWNER=aula-gateway
 bootstrap_release_identity() {
     [ "$(release_manifest_digest "$1")" = "$2" ] || die 'bootstrap transaction release identity changed'
@@ -299,7 +305,7 @@ mounted_from() {
 mount_root_for_target() { awk -v target="$1" '$5 == target {count++; root=$4} END {if (count == 0) print "none"; else if (count == 1) print root; else print "invalid"}' /proc/self/mountinfo; }
 ROOT_SSH_PROVISION=/var/lib/cbox/root-ssh-provision
 ROOT_SSH_BACKUP=$BASE/root-ssh-passwd.before
-ROOT_PASSWD_SOURCE= ROOT_PASSWD_MOUNT= ROOT_SSH_APPLY= ROOT_SSH_USER=
+ROOT_PASSWD_SOURCE='' ROOT_PASSWD_MOUNT='' ROOT_SSH_APPLY='' ROOT_SSH_USER=''
 
 validate_root_ssh_overlay() {
     ROOT_PASSWD_MOUNT=$(mount_root_for_target /etc/passwd)

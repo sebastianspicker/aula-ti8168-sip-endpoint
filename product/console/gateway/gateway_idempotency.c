@@ -67,5 +67,15 @@ void gateway_save_idempotency(aula_gateway *gateway, const aula_gateway_session 
   (void)memcpy(entry->request_hash, request_hash, sizeof(entry->request_hash));
   (void)snprintf(entry->key, sizeof(entry->key), "%s", key);
   (void)snprintf(entry->route, sizeof(entry->route), "%s", route);
-  (void)snprintf(entry->response, sizeof(entry->response), "%s", response->body);
+  /* A reply too large to retain would replay as truncated JSON; a retry
+   * gets an explicit error instead of a broken body or a second execution. */
+  if (strlen(response->body) >= sizeof(entry->response)) {
+    entry->status = 409U;
+    (void)snprintf(entry->response, sizeof(entry->response),
+                   "{\"revision\":1,\"ok\":false,\"error\":{\"code\":\"REPLAY_UNAVAILABLE\","
+                   "\"message\":\"the original response was too large to retain\"}}");
+    return;
+  }
+  (void)snprintf(entry->response, sizeof(entry->response), "%.*s",
+                 (int)(sizeof(entry->response) - 1U), response->body);
 }

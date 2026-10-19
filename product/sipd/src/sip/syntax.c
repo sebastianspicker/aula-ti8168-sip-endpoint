@@ -157,7 +157,7 @@ aula_status aula_sip_parse_dial_target(const char *uri,
   const char *at;
   const char *host_end;
   const char *cursor;
-  unsigned long port;
+  unsigned long port = 0UL;
   if (out_target == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   (void)memset(out_target, 0, sizeof(*out_target));
   if (!validate_uri(uri)) return AULA_STATUS_INVALID_DATA;

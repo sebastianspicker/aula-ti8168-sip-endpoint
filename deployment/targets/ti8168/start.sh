@@ -114,7 +114,7 @@ record_media_ready_marker() {
 }
 
 action=${1:-start}; shift || true
-rollback= internal_lock=0 activation_attempt=0
+rollback='' internal_lock=0 activation_attempt=0
 while [ "$#" -gt 0 ]; do
     case $1 in
         --rollback-to) [ "$#" -ge 2 ] || usage; rollback=$2; shift 2 ;;
@@ -197,14 +197,14 @@ reconcile_rollback_transaction() {
     read_rollback_transaction
     current_rollback_version=$(rollback_selector_version)
     case $rollback_phase:$current_rollback_version in
-        prepared:$rollback_old) clear_rollback_transaction ;;
+        prepared:"$rollback_old") clear_rollback_transaction ;;
         prepared:*) die 'prepared rollback transaction changed the active selector' ;;
-        applied:$rollback_old)
+        applied:"$rollback_old")
             # `applied` is durable before the swap. A reset or rollback
             # recovery may therefore legitimately leave the old selector.
             clear_rollback_transaction
             ;;
-        applied:$rollback_new)
+        applied:"$rollback_new")
             # A validated internal child belongs to the rollback operation
             # that wrote this transaction, so leave its selected release and
             # transaction for that owner to health-check and commit.
@@ -221,7 +221,7 @@ reconcile_rollback_transaction() {
             clear_rollback_transaction
             ;;
         applied:*) die 'applied rollback transaction has an unexpected active selector' ;;
-        healthy:$rollback_new) clear_rollback_transaction ;;
+        healthy:"$rollback_new") clear_rollback_transaction ;;
         healthy:*) die 'healthy rollback transaction has an unexpected active selector' ;;
         *) die 'rollback transaction is unsafe' ;;
     esac
@@ -232,7 +232,9 @@ record() {
 
 reconcile_autostart_transaction() {
     if [ -e "$AUTOSTART_TX" ] || [ -L "$AUTOSTART_TX" ]; then
-        require_secure_file "$AUTOSTART_TX"; phase=$(cat "$AUTOSTART_TX")
+        require_secure_file "$AUTOSTART_TX"
+        # shellcheck disable=SC2034 # phase is read by reconcile_pending_autostart in the sourced transaction-records.sh
+        phase=$(cat "$AUTOSTART_TX")
         reconcile_pending_autostart require_secure_autostart_marker
         return
     fi

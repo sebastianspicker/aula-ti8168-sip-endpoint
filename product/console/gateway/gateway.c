@@ -83,8 +83,7 @@ static const route_spec ROUTES[] = {
       gateway_schema_diagnostics_request}
 };
 
-int gateway_dispatch_route(const aula_gateway_request *request, aula_gateway_response *response,
-                           route_plan *plan) {
+int gateway_dispatch_route(const aula_gateway_request *request, route_plan *plan) {
   size_t index;
   const route_spec *route = NULL;
   for (index = 0U; index < sizeof(ROUTES) / sizeof(ROUTES[0]); ++index)
@@ -99,14 +98,26 @@ int gateway_dispatch_route(const aula_gateway_request *request, aula_gateway_res
     return 1;
   }
   if (route == NULL) return 0;
-  if (route->schema != NULL && !route->schema(request->body)) {
-    gateway_write_error(response, route->status, route->code, route->message);
-    return -1;
-  }
+  plan->route = route;
   plan->opcode = route->opcode;
   plan->role = route->role;
   plan->flags = route->flags;
   if ((route->flags & R_BODY) != 0U) plan->payload = request->body;
+  return 1;
+}
+
+int gateway_validate_route_body(const aula_gateway_request *request, const route_plan *plan,
+                                aula_gateway_response *response) {
+  const route_spec *route = plan->route;
+  if (route != NULL && route->schema != NULL && !route->schema(request->body)) {
+    gateway_write_error(response, route->status, route->code, route->message);
+    return 0;
+  }
+  if (plan->payload != request->body && (plan->flags & R_REDACT) == 0U &&
+      !gateway_no_body_schema(request->body)) {
+    gateway_write_error(response, 400U, "SCHEMA_INVALID", "body schema is invalid");
+    return 0;
+  }
   return 1;
 }
 

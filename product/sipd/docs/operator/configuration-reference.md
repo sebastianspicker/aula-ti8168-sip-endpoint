@@ -146,7 +146,7 @@ created. These gates do not authorize a live test.
 | `control.enable_local_control` | `false` | Enables a Unix-domain socket only. It never creates a network listener. |
 | `control.unix_socket_path` | `/run/aula-sipd/control.sock` | Required absolute output path when control is enabled; no `..`, controls, or symlink target. |
 | `control.unix_socket_mode` | `0660` | `0600` or `0660`; deployment uses `0660` with the dedicated control group. |
-| `control.gateway_uid` | `65534` | Unsigned numeric UID authorized to connect as the gateway. It must not be `4294967295`; Unix peer credentials must match it. |
+| `control.gateway_uid` | `65534` | Unsigned numeric UID authorized to connect as the gateway. It must not be `4294967295`; Unix peer credentials must match it. With `enable_local_control = true` it must be the gateway's dedicated UID: `0` (root) and `65534` (nobody) are rejected. |
 
 The local LSZ1 protocol has typed status, originate, hangup, DTMF,
 credential-replacement, diagnostics, and subscribe opcodes. Originate accepts

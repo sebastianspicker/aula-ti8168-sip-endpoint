@@ -354,7 +354,7 @@ complete_private_lab_transaction() {
     esac
 }
 
-peer_ip= peer_port= device_ip= tls_cert= tls_key= dry_run=0 replace_tls=0
+peer_ip='' peer_port='' device_ip='' tls_cert='' tls_key='' dry_run=0 replace_tls=0
 while [ "$#" -gt 0 ]; do
     case $1 in
         --sip-peer-ip) [ "$#" -ge 2 ] || usage; peer_ip=$2; shift 2 ;;

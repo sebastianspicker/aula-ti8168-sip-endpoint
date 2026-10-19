@@ -117,20 +117,16 @@ static enum gateway_prepare_result prepare_gateway_transaction(aula_gateway *gat
   aula_gateway_session *session;
   int route;
   if (gateway_dispatch_auth(gateway, transaction->request, response)) return GATEWAY_PREPARE_COMPLETE;
-  route = gateway_dispatch_route(transaction->request, response, &transaction->plan);
-  if (route < 0) return GATEWAY_PREPARE_COMPLETE;
+  route = gateway_dispatch_route(transaction->request, &transaction->plan);
   if (route == 0) {
     gateway_write_error(response, 404U, "ROUTE_NOT_FOUND", "route is not available");
-    return GATEWAY_PREPARE_COMPLETE;
-  }
-  if (transaction->plan.payload != transaction->request->body &&
-      (transaction->plan.flags & R_REDACT) == 0U && !gateway_no_body_schema(transaction->request->body)) {
-    gateway_write_error(response, 400U, "SCHEMA_INVALID", "body schema is invalid");
     return GATEWAY_PREPARE_COMPLETE;
   }
   session = gateway_authenticate(gateway, transaction->request, response,
                                  (transaction->plan.flags & R_MUTATION) != 0U);
   if (session == NULL || !gateway_require_role(session, transaction->plan.role, response))
+    return GATEWAY_PREPARE_COMPLETE;
+  if (!gateway_validate_route_body(transaction->request, &transaction->plan, response))
     return GATEWAY_PREPARE_COMPLETE;
   copy_gateway_principal(transaction, session);
   if (gateway_preflight(gateway, session, transaction->request, &transaction->plan, response) ||
@@ -224,8 +220,8 @@ static int execute_gateway_transaction(aula_gateway *gateway, gateway_transactio
   return 1;
 }
 
-int aula_gateway_handle(aula_gateway *gateway, const aula_gateway_request *request,
-                         aula_gateway_control_fn control, void *context, aula_gateway_response *response) {
+static int handle_request(aula_gateway *gateway, const aula_gateway_request *request,
+                          aula_gateway_control_fn control, void *context, aula_gateway_response *response) {
   gateway_transaction transaction;
   enum gateway_prepare_result prepared;
   int result = 1;
@@ -264,5 +260,17 @@ int aula_gateway_handle(aula_gateway *gateway, const aula_gateway_request *reque
     result = execute_gateway_transaction(gateway, &transaction, control, context, response);
 cleanup:
   OPENSSL_cleanse(&transaction, sizeof(transaction));
+  return result;
+}
+
+int aula_gateway_handle(aula_gateway *gateway, const aula_gateway_request *request,
+                         aula_gateway_control_fn control, void *context, aula_gateway_response *response) {
+  uint64_t started = 0U;
+  uint64_t finished = 0U;
+  int result;
+  (void)gateway_monotonic_milliseconds(&started);
+  result = handle_request(gateway, request, control, context, response);
+  if (!gateway_monotonic_milliseconds(&finished) || finished < started) finished = started;
+  gateway_log_request(gateway, request, response, result, finished - started);
   return result;
 }

@@ -24,15 +24,50 @@ static int client_identity_is_safe(const char *identity) {
   return 1;
 }
 
+static void refill_auth_bucket(aula_gateway_auth_bucket *bucket, unsigned int capacity, uint64_t now) {
+  if (now >= bucket->last_refill_at) {
+    uint64_t refill = (now - bucket->last_refill_at) / AUTH_REFILL_SECONDS;
+    if (refill > 0U) {
+      bucket->tokens = (unsigned int)((refill >= capacity || bucket->tokens + refill >= capacity) ?
+          capacity : bucket->tokens + refill);
+      bucket->last_refill_at += refill * AUTH_REFILL_SECONDS;
+    }
+  }
+}
+
+/* Returns the bucket for `key`, a free slot, or, when the table is full, the
+ * fully refilled bucket (no penalty) that was refilled longest ago. A
+ * penalised bucket is never evicted, so cycling keys cannot reset a budget;
+ * when every bucket is penalised NULL is returned and `retry_after` is the
+ * time until the first one refills (the caller refuses the attempt). */
 static aula_gateway_auth_bucket *find_auth_bucket(aula_gateway_auth_bucket *buckets,
-                                                    size_t bucket_count, const char *key) {
-  aula_gateway_auth_bucket *bucket = NULL;
+                                                    size_t bucket_count, const char *key,
+                                                    unsigned int capacity, uint64_t now,
+                                                    unsigned int *retry_after) {
+  aula_gateway_auth_bucket *free_slot = NULL;
+  aula_gateway_auth_bucket *evictable = NULL;
+  unsigned int soonest = AUTH_REFILL_SECONDS;
   size_t index;
   for (index = 0U; index < bucket_count; ++index) {
-    if (buckets[index].used && strcmp(buckets[index].key, key) == 0) { bucket = &buckets[index]; break; }
-    if (bucket == NULL && !buckets[index].used) bucket = &buckets[index];
+    if (!buckets[index].used) {
+      if (free_slot == NULL) free_slot = &buckets[index];
+    } else if (strcmp(buckets[index].key, key) == 0) {
+      return &buckets[index];
+    }
   }
-  return bucket == NULL ? &buckets[0] : bucket;
+  if (free_slot != NULL) return free_slot;
+  for (index = 0U; index < bucket_count; ++index) {
+    refill_auth_bucket(&buckets[index], capacity, now);
+    if (buckets[index].tokens >= capacity) {
+      if (evictable == NULL || buckets[index].last_refill_at < evictable->last_refill_at)
+        evictable = &buckets[index];
+    } else if (now >= buckets[index].last_refill_at &&
+               AUTH_REFILL_SECONDS - (now - buckets[index].last_refill_at) < soonest) {
+      soonest = (unsigned int)(AUTH_REFILL_SECONDS - (now - buckets[index].last_refill_at));
+    }
+  }
+  if (evictable == NULL && retry_after != NULL) *retry_after = soonest;
+  return evictable;
 }
 
 static void initialize_auth_bucket(aula_gateway_auth_bucket *bucket, const char *key,
@@ -46,23 +81,13 @@ static void initialize_auth_bucket(aula_gateway_auth_bucket *bucket, const char 
   }
 }
 
-static void refill_auth_bucket(aula_gateway_auth_bucket *bucket, unsigned int capacity, uint64_t now) {
-  if (now >= bucket->last_refill_at) {
-    uint64_t refill = (now - bucket->last_refill_at) / AUTH_REFILL_SECONDS;
-    if (refill > 0U) {
-      bucket->tokens = (unsigned int)((refill >= capacity || bucket->tokens + refill >= capacity) ?
-          capacity : bucket->tokens + refill);
-      bucket->last_refill_at += refill * AUTH_REFILL_SECONDS;
-    }
-  }
-}
-
 static int auth_bucket_take(aula_gateway_auth_bucket *buckets, size_t bucket_count,
                             const char *key, unsigned int capacity, uint64_t now,
                             unsigned int *retry_after) {
   aula_gateway_auth_bucket *bucket;
   if (now == 0U || key == NULL || strlen(key) >= sizeof(buckets[0].key)) return 0;
-  bucket = find_auth_bucket(buckets, bucket_count, key);
+  bucket = find_auth_bucket(buckets, bucket_count, key, capacity, now, retry_after);
+  if (bucket == NULL) return 0;
   initialize_auth_bucket(bucket, key, capacity, now);
   refill_auth_bucket(bucket, capacity, now);
   if (bucket->tokens == 0U) {
@@ -77,12 +102,15 @@ int gateway_auth_budget_take(aula_gateway *gateway, const char *account_key,
                              const aula_gateway_request *request, unsigned int *retry_after) {
   static const char global_key[] = "global";
   if (gateway == NULL || request == NULL || !client_identity_is_safe(request->client_identity)) return 0;
-  if (!auth_bucket_take(gateway->account_buckets, AULA_GATEWAY_AUTH_BUCKETS, account_key,
-                        AUTH_BUCKET_CAPACITY, request->now, retry_after) ||
-      !auth_bucket_take(gateway->source_buckets, AULA_GATEWAY_AUTH_BUCKETS, request->client_identity,
+  /* Source and global budgets first: a refused source never allocates an
+   * account bucket, so a few addresses cannot fill the account table with
+   * penalised entries and lock every account out. */
+  if (!auth_bucket_take(gateway->source_buckets, AULA_GATEWAY_AUTH_BUCKETS, request->client_identity,
                         AUTH_BUCKET_CAPACITY, request->now, retry_after) ||
       !auth_bucket_take(&gateway->global_bucket, 1U, global_key, AUTH_GLOBAL_CAPACITY, request->now,
-                        retry_after)) return 0;
+                        retry_after) ||
+      !auth_bucket_take(gateway->account_buckets, AULA_GATEWAY_AUTH_BUCKETS, account_key,
+                        AUTH_BUCKET_CAPACITY, request->now, retry_after)) return 0;
   return 1;
 }
 

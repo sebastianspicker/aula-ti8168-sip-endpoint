@@ -10,6 +10,7 @@
 #include "pjsip_readiness.h"
 #include "resolver_internal.h"
 
+#include <arpa/inet.h>
 #include <string.h>
 
 #define AULA_PJSIP_REGISTRAR_BYTES 512U
@@ -22,6 +23,8 @@ typedef struct aula_pjsip_context {
   char local_uri[AULA_PJSIP_REGISTRAR_BYTES];
   char tls_ca_file[AULA_PJSIP_TLS_CA_BYTES];
   char crc_address[16];
+  /* Empty means wildcard; otherwise a canonical IPv4 literal. */
+  char bind_address[16];
 } aula_pjsip_context;
 
 static aula_pjsip_context pjsip_context;
@@ -92,6 +95,12 @@ static aula_status pjsip_validate_options(
   if (status != AULA_STATUS_OK) return status;
   if (options->tls_ca_file != NULL && options->tls_ca_file[0] == '\0')
     return AULA_STATUS_INVALID_DATA;
+  if (options->bind_address != NULL) {
+    struct in_addr parsed;
+    if (strlen(options->bind_address) >= sizeof(pjsip_context.bind_address) ||
+        inet_pton(AF_INET, options->bind_address, &parsed) != 1)
+      return AULA_STATUS_INVALID_DATA;
+  }
   return pjsip_validate_text_option(options->tls_ca_file,
                                     sizeof(pjsip_context.tls_ca_file), 0);
 }
@@ -107,6 +116,7 @@ static void pjsip_configure_context(const aula_pjsip_driver_options *options) {
   pjsip_copy_option(pjsip_context.registrar_uri, options->registrar_uri);
   pjsip_copy_option(pjsip_context.local_uri, options->local_uri);
   pjsip_copy_option(pjsip_context.tls_ca_file, options->tls_ca_file);
+  pjsip_copy_option(pjsip_context.bind_address, options->bind_address);
 }
 
 aula_status aula_pjsip_driver_configure_route(

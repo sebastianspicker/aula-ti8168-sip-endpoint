@@ -66,7 +66,6 @@ canonical_compiler=$(python3 "$path_guard" --input "$repo_dir" "$compiler") || e
   --without-http_access_module \
   --without-http_auth_basic_module \
   --without-http_mirror_module \
-  --without-http_limit_conn_module \
   --without-http_map_module \
   --without-http_memcached_module \
   --without-http_proxy_module \

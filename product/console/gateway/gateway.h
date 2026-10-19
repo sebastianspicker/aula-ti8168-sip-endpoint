@@ -11,10 +11,13 @@
 #define AULA_GATEWAY_HASH_BYTES 32U
 #define AULA_GATEWAY_SESSION_IDLE_SECONDS (15U * 60U)
 #define AULA_GATEWAY_SESSION_ABSOLUTE_SECONDS (8U * 60U * 60U)
-#define AULA_GATEWAY_SESSION_ROTATE_SECONDS (15U * 60U)
+/* Rotate well before the cookie's Max-Age (the idle timeout) runs out, so an
+ * active browser always holds a renewed cookie before the old one expires. */
+#define AULA_GATEWAY_SESSION_ROTATE_SECONDS (AULA_GATEWAY_SESSION_IDLE_SECONDS / 2U)
 #define AULA_GATEWAY_SESSION_TOKEN_GRACE_SECONDS 60U
 #define AULA_GATEWAY_SESSION_GRACE_TOKENS 8U
 #define AULA_GATEWAY_MAX_SESSIONS 4U
+#define AULA_GATEWAY_SESSIONS_PER_USER 2U
 #define AULA_GATEWAY_MAX_ACCOUNTS 8U
 #define AULA_GATEWAY_MAX_DIRECTORY_ENTRIES 16U
 #define AULA_GATEWAY_MAX_RECENTS 16U
@@ -87,6 +90,10 @@ typedef struct aula_gateway_idempotency {
   char response[1024];
 } aula_gateway_idempotency;
 
+/* Receives one complete operational log line without a trailing newline.
+ * Called from every request-handling thread, so it must be thread-safe. */
+typedef void (*aula_gateway_log_fn)(void *context, const char *line);
+
 typedef struct aula_gateway_config {
   const char *allowed_origin;
   const char *control_socket_path;
@@ -103,6 +110,9 @@ typedef struct aula_gateway_config {
   /* Operator-owned numeric private/loopback target; never request-derived. */
   const char *preview_rtsp_ipv4;
   uint16_t preview_rtsp_port;
+  /* Request log sink; NULL writes to standard error. */
+  aula_gateway_log_fn log_line;
+  void *log_context;
 } aula_gateway_config;
 
 typedef struct aula_gateway_auth_bucket {
@@ -142,6 +152,11 @@ typedef struct aula_gateway {
   aula_gateway_auth_bucket source_buckets[AULA_GATEWAY_AUTH_BUCKETS];
   aula_gateway_auth_bucket global_bucket;
   size_t next_idempotency;
+  /* Request-log rate limits, guarded by state_mutex. */
+  uint64_t log_window;
+  unsigned int log_lines;
+  unsigned int log_read_lines;
+  unsigned int log_suppressed;
   pthread_mutex_t state_mutex;
   /* Daemon reads and mutations use independent serialized connections. */
   pthread_mutex_t read_control_mutex;
@@ -221,6 +236,10 @@ int aula_gateway_control_socket_is_safe(
     const aula_gateway_config *config);
 int aula_gateway_backend_response_normalize(uint8_t opcode, const char *input,
                                              char *output, size_t output_capacity);
+/* Request time for aula_gateway_request.now: whole seconds of a monotonic
+ * clock, never 0, so sessions, login budgets and leases are unaffected by
+ * wall-clock steps (the device has no RTC). Returns 0 if the clock fails. */
+uint64_t aula_gateway_clock_seconds(void);
 int aula_gateway_parse_content_length(const char *text, size_t maximum,
                                        size_t *length_out);
 void aula_gateway_redact(char *destination, size_t capacity, const char *source);

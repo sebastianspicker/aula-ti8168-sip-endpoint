@@ -411,8 +411,19 @@ static aula_status pjsip_start_transports(
     aula_pjsip_instance *instance, const aula_pjsip_context *settings,
     const aula_sip_endpoint_config *endpoint) {
   pj_status_t status;
+  pj_sockaddr_in bound;
+  const pj_sockaddr_in *local = NULL;
   if (instance == NULL || settings == NULL || endpoint == NULL)
     return AULA_STATUS_INVALID_ARGUMENT;
+  /* Listen only on the configured address (the validated media address),
+   * never on every interface, when one is configured. Port 0 stays
+   * ephemeral. */
+  if (settings->bind_address[0] != '\0') {
+    pj_str_t address = pj_str((char *)settings->bind_address);
+    if (pj_sockaddr_in_init(&bound, &address, 0U) != PJ_SUCCESS)
+      return AULA_STATUS_CONFIGURATION_ERROR;
+    local = &bound;
+  }
   if (settings->profile == AULA_ZOOM_PROFILE_PROXY_REGISTRATION &&
       (endpoint->enable_tls == 0 ||
        endpoint->preferred_transport != AULA_TRANSPORT_TLS))
@@ -438,7 +449,7 @@ static aula_status pjsip_start_transports(
     tls.proto = PJ_SSL_SOCK_PROTO_TLS1_2 | PJ_SSL_SOCK_PROTO_TLS1_3;
     tls.timeout.sec = (long)(endpoint->transaction_timeout_ms / 1000U);
     tls.timeout.msec = (long)(endpoint->transaction_timeout_ms % 1000U);
-    status = pjsip_tls_transport_start(instance->endpoint, &tls, NULL, NULL, 1U,
+    status = pjsip_tls_transport_start(instance->endpoint, &tls, local, NULL, 1U,
                                        &instance->tls_factory);
     return pjsip_status(status);
 #else
@@ -449,10 +460,10 @@ static aula_status pjsip_start_transports(
   /* Bind one ephemeral local listener for each cleartext transport. The
    * selected peer transport still controls every outbound acquire; both
    * factories are needed to receive an in-dialog request on either lab path. */
-  status = pjsip_udp_transport_start(instance->endpoint, NULL, NULL, 1U,
+  status = pjsip_udp_transport_start(instance->endpoint, local, NULL, 1U,
                                      &instance->udp_transport);
   if (status != PJ_SUCCESS) return pjsip_status(status);
-  status = pjsip_tcp_transport_start(instance->endpoint, NULL, 1U,
+  status = pjsip_tcp_transport_start(instance->endpoint, local, 1U,
                                      &instance->tcp_factory);
   return pjsip_status(status);
 }

@@ -10,6 +10,47 @@
 #include <stdio.h>
 #include <string.h>
 
+static int session_is_expired(const aula_gateway_session *session, uint64_t now);
+
+/* Slot choice for a new session of `username`:
+ * 1. once the user holds AULA_GATEWAY_SESSIONS_PER_USER live sessions, their
+ *    own least-recently-seen one, so one account cannot hold every slot;
+ * 2. else a free or expired slot;
+ * 3. else the user's own oldest session, if any;
+ * 4. else the least-recently-seen live session whose role is lower than or
+ *    equal to `role`, so a lower-privileged login never evicts a
+ *    higher-privileged session.
+ * NULL when every slot holds another user's live higher-role session. */
+static aula_gateway_session *session_slot_for_role(aula_gateway *gateway, const char *username,
+                                                   aula_gateway_role role, uint64_t now) {
+  aula_gateway_session *available = NULL;
+  aula_gateway_session *candidate = NULL;
+  aula_gateway_session *own = NULL;
+  unsigned int own_count = 0U;
+  size_t index;
+  for (index = 0U; index < gateway->config.max_sessions; ++index) {
+    aula_gateway_session *session = &gateway->sessions[index];
+    if (!session->used || session_is_expired(session, now)) {
+      if (available == NULL) available = session;
+      continue;
+    }
+    if (username != NULL && strcmp(session->username, username) == 0) {
+      ++own_count;
+      if (own == NULL || session->last_seen_at < own->last_seen_at) own = session;
+    }
+    if (session->role <= role && (candidate == NULL || session->last_seen_at < candidate->last_seen_at))
+      candidate = session;
+  }
+  if (own != NULL && own_count >= AULA_GATEWAY_SESSIONS_PER_USER) return own;
+  if (available != NULL) return available;
+  return own != NULL ? own : candidate;
+}
+
+int gateway_session_slot_available(aula_gateway *gateway, const char *username,
+                                   aula_gateway_role role, uint64_t now) {
+  return session_slot_for_role(gateway, username, role, now) != NULL;
+}
+
 aula_gateway_session *gateway_new_session(aula_gateway *gateway, const char *username,
                                            aula_gateway_role role, uint64_t now,
                                            char cookie[256], char csrf[65]) {
@@ -17,13 +58,8 @@ aula_gateway_session *gateway_new_session(aula_gateway *gateway, const char *use
   char encoded_token[65] = {0};
   aula_gateway_session *candidate = NULL;
   aula_gateway_session *result = NULL;
-  size_t index;
   csrf[0] = '\0';
-  for (index = 0U; index < gateway->config.max_sessions; ++index) {
-    if (!gateway->sessions[index].used) { candidate = &gateway->sessions[index]; break; }
-    if (candidate == NULL || gateway->sessions[index].last_seen_at < candidate->last_seen_at)
-      candidate = &gateway->sessions[index];
-  }
+  candidate = session_slot_for_role(gateway, username, role, now);
   if (candidate == NULL || !gateway_is_safe_username(username) ||
       RAND_bytes(token, sizeof(token)) != 1) goto cleanup;
   OPENSSL_cleanse(candidate, sizeof(*candidate));

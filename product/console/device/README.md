@@ -9,6 +9,11 @@ From the repository root, run `make -C product/console device-control`.
 The executable is `.work/build/console/aula-device-control`. Product builds
 consume explicit reviewed dependencies and write outputs below `.work/`.
 
+It runs only on the device: it must be root, needs the `aula-gateway`
+account, and uses the fixed paths `/run/aula-device/control.sock` and
+`/run/aula-state/device`. On a developer host it refuses to start and says
+which requirement is missing (exit status 2); `--help` describes the modes.
+
 ## Local contract
 
 The gateway connects to `/run/aula-device/control.sock`, verifies a root peer,

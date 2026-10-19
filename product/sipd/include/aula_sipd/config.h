@@ -127,12 +127,31 @@ typedef struct aula_call_config aula_call_config;
 struct aula_backend_config;
 struct aula_sip_endpoint_config;
 
+/* Why a configuration was rejected, for operator diagnostics. `line` is the
+ * 1-based line of a parse error, or 0 when the failure concerns the file or
+ * a cross-setting check. `setting` names the file, section, key, or check
+ * that failed; `reason` is a fixed explanation or NULL. Neither ever
+ * carries a configured value. */
+typedef struct aula_config_diagnostic {
+  aula_status status;
+  unsigned int line;
+  char setting[64];
+  const char *reason;
+} aula_config_diagnostic;
+
 /* Rejects unknown keys, duplicate keys, unsafe paths, and invalid limits. */
 aula_status aula_config_load_file(const char *path, aula_config **out_config);
+/* As aula_config_load_file; on failure also fills `diagnostic` if non-NULL. */
+aula_status aula_config_load_file_diagnosed(const char *path,
+                                              aula_config **out_config,
+                                              aula_config_diagnostic *diagnostic);
 /* Linux-only: parses a retained anonymous regular-file descriptor only after
  * verifying WRITE/GROW/SHRINK/SEAL kernel seals. The caller retains ownership
  * of descriptor; other platforms fail closed with UNSUPPORTED. */
 aula_status aula_config_load_fd(int descriptor, aula_config **out_config);
+aula_status aula_config_load_fd_diagnosed(int descriptor,
+                                            aula_config **out_config,
+                                            aula_config_diagnostic *diagnostic);
 const aula_config_view *aula_config_get_view(const aula_config *config);
 aula_status aula_config_get_log_config(const aula_config *config,
                                          aula_log_config *out_config);

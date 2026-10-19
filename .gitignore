@@ -32,21 +32,8 @@
 **/.claude/worktrees/
 **/.codex/worktrees/
 
-# Tests, fixtures, and coverage state
-**/tests/
-**/test/
+# Test fixtures and coverage state
 **/fixtures/
-**/*.test.js
-**/*.test.jsx
-**/*.test.ts
-**/*.test.tsx
-**/*.spec.js
-**/*.spec.jsx
-**/*.spec.ts
-**/*.spec.tsx
-**/conftest.py
-**/pytest.ini
-**/jest.config.*
 **/.coverage
 **/coverage/
 **/htmlcov/
@@ -57,10 +44,6 @@
 *.local.sh
 **/drafts/
 **/*-draft.*
-**/ADR*
-**/PRD*
-**/ROADMAP*
-**/TODO*
 
 # Python caches and local environments
 .pytest_cache/

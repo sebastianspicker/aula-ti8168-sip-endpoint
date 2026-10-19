@@ -6,6 +6,7 @@
 #define _GNU_SOURCE 1
 #endif
 
+#include "aula_sipd/platform.h"
 #include "control_private.h"
 #include "request_decode.h"
 
@@ -126,8 +127,8 @@ int aula_control_peer_is_authorized(const aula_control_server *server,
   return uid == server->config.authorized_gateway_uid;
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
 static int append_json(char *response, size_t capacity, size_t *length,
                        const char *format, ...) {
   int written;
@@ -140,7 +141,7 @@ static int append_json(char *response, size_t capacity, size_t *length,
   *length += (size_t)written;
   return 1;
 }
-#pragma clang diagnostic pop
+#pragma GCC diagnostic pop
 
 static int format_status(const aula_endpoint_status *status,
                          char *response, size_t capacity, size_t *out_length) {
@@ -236,9 +237,13 @@ static void send_error(aula_control_server *server, int descriptor,
                request_id, (const uint8_t *)payload, (size_t)length);
 }
 
+/* Only state-changing commands are deduplicated. Diagnostics and event
+ * snapshots are reads that the gateway repeats with request ID 0 and an
+ * identical payload, so caching them would replay stale state. */
 static int opcode_is_idempotent_command(aula_control_opcode opcode) {
-  return opcode >= AULA_CONTROL_OPCODE_ORIGINATE &&
-      opcode <= AULA_CONTROL_OPCODE_SETTINGS;
+  return (opcode >= AULA_CONTROL_OPCODE_ORIGINATE &&
+          opcode <= AULA_CONTROL_OPCODE_REPLACE_CREDENTIAL) ||
+      opcode == AULA_CONTROL_OPCODE_SETTINGS;
 }
 
 static int request_is_settings_read(const aula_control_frame *request) {
@@ -256,12 +261,18 @@ static aula_control_completed_request *find_completed(
     int *conflict) {
   size_t index;
   uint64_t fingerprint[2];
+  uint64_t now;
+  int have_now = aula_platform_monotonic_now(&now) == AULA_STATUS_OK;
   *conflict = 0;
   aula_control_request_fingerprint(server->completed_cache_key,
                                     request->payload, fingerprint);
   for (index = 0U; index < AULA_CONTROL_COMPLETED_CACHE_ENTRIES; ++index) {
     aula_control_completed_request *entry = &server->completed[index];
     if (!entry->used || entry->request_id != request->request_id) continue;
+    if (have_now && now > entry->expires_at_ns) {
+      protocol_secure_zero(entry, sizeof(*entry));
+      continue;
+    }
     if (entry->opcode == request->opcode &&
         entry->request_length == request->payload.length &&
         entry->request_fingerprint[0] == fingerprint[0] &&
@@ -276,9 +287,18 @@ static int cache_completed(aula_control_server *server,
                            const aula_control_frame *request,
                            uint16_t response_flags, const uint8_t *payload,
                            size_t payload_length) {
+  /* A reply too large to retain is still delivered to this client; a retry
+   * then gets this error instead of executing the command a second time. */
+  static const uint8_t unavailable[] =
+      "{\"ok\":false,\"error\":{\"code\":\"REPLAY_UNAVAILABLE\"}}";
   aula_control_completed_request *entry;
-  if (request->payload.length > AULA_SIPD_MAX_CONTROL_MESSAGE_BYTES ||
-      payload_length > AULA_SIPD_MAX_CONTROL_MESSAGE_BYTES) return 0;
+  uint64_t now;
+  if (request->payload.length > AULA_SIPD_MAX_CONTROL_MESSAGE_BYTES) return 0;
+  if (payload_length > AULA_SIPD_MAX_CONTROL_MESSAGE_BYTES) {
+    payload = unavailable;
+    payload_length = sizeof(unavailable) - 1U;
+    response_flags = AULA_CONTROL_FRAME_RESPONSE | AULA_CONTROL_FRAME_ERROR;
+  }
   entry = &server->completed[
       server->next_completed++ % AULA_CONTROL_COMPLETED_CACHE_ENTRIES];
   (void)memset(entry, 0, sizeof(*entry));
@@ -288,6 +308,13 @@ static int cache_completed(aula_control_server *server,
   entry->request_length = request->payload.length;
   entry->response_length = payload_length;
   entry->response_flags = response_flags;
+  /* Without a clock reading the entry never expires: losing replay
+   * protection would be worse than holding a slot until it is reused. */
+  entry->expires_at_ns =
+      aula_platform_monotonic_now(&now) == AULA_STATUS_OK &&
+              now <= UINT64_MAX - AULA_CONTROL_COMPLETED_TTL_NS
+          ? now + AULA_CONTROL_COMPLETED_TTL_NS
+          : UINT64_MAX;
   aula_control_request_fingerprint(server->completed_cache_key,
                                     request->payload,
                                     entry->request_fingerprint);

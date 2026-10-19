@@ -34,9 +34,16 @@ static void control_json_wipe(void *memory, size_t length) {
   }
 }
 
+/* JSON whitespace only (RFC 8259): not the vertical tab or form feed that
+ * isspace() also accepts. */
+static int is_json_space(uint8_t byte) {
+  return byte == (uint8_t)' ' || byte == (uint8_t)'\t' ||
+      byte == (uint8_t)'\n' || byte == (uint8_t)'\r';
+}
+
 static void skip_space(control_json_cursor *cursor) {
   while (cursor->offset < cursor->length &&
-         isspace((unsigned char)cursor->data[cursor->offset]))
+         is_json_space(cursor->data[cursor->offset]))
     ++cursor->offset;
 }
 
@@ -93,7 +100,8 @@ static int parse_member(control_json_cursor *cursor, control_json_object *object
       if (used + 1U >= sizeof(member->value)) return 0;
       member->value[used++] = (char)cursor->data[cursor->offset++];
     }
-    if (used == 0U) return 0;
+    /* JSON numbers have no leading zeros. */
+    if (used == 0U || (used > 1U && member->value[0] == '0')) return 0;
     member->value[used] = '\0';
   }
   ++object->count;

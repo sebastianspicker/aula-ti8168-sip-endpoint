@@ -19,8 +19,9 @@ The CMake project builds:
 - `aula-sipd`, the foreground daemon entry point.
 
 Public headers live under `include/aula_sipd/`. The gateway-facing control
-server uses bounded `SOCK_SEQPACKET` messages on a Unix socket and authenticates
-the configured peer UID. It has no TCP or UDP control listener. Supported
+server uses bounded `SOCK_SEQPACKET` messages on a Unix socket (the macOS host
+lane uses `SOCK_STREAM`, which has no `AF_UNIX` seqpacket support; LSZ1
+framing is identical) and authenticates the configured peer UID. It has no TCP or UDP control listener. Supported
 operations are typed status, call, DTMF, media, settings, credentials,
 diagnostics, event, and read-only metrics requests; the protocol does not
 accept raw SIP URIs, commands, or arbitrary paths. Metrics use opcode 10 and
@@ -28,6 +29,19 @@ do not alter the legacy opcode-1 status payload. Stream counters reset with a
 media session and poll-lateness counters reset with the process. The current
 backend health contract is session-wide, so its drop and restart counters are
 repeated for both stream entries.
+
+State-changing commands (originate, hangup, DTMF, media, credential
+replacement, and settings writes) are deduplicated: the daemon keeps the last
+16 completed replies keyed by request ID, opcode, and a keyed payload
+fingerprint for 120 seconds, so a retried request whose reply was lost gets
+the original reply instead of running twice. Reusing a live request ID for a
+different payload returns `REQUEST_ID_CONFLICT`. A reply too large to retain
+is delivered once; a retry then gets `REPLAY_UNAVAILABLE`. Reads (status,
+diagnostics, events, metrics, and empty settings reads) are never cached.
+Request payloads are a strict JSON subset: JSON whitespace only, no leading
+zeros, and printable ASCII strings without escapes, so non-ASCII credentials
+are rejected by design. Only the configured gateway UID can connect, so the
+bounded connection slots are not defended against that trusted peer.
 
 The standalone RS-232 observation-to-call bridge and its public header were
 removed from this maintained source. Existing LSZ1 call operations remain;
@@ -146,6 +160,37 @@ cmake -S product/sipd -B .work/build/sipd \
 cmake --build .work/build/sipd
 ```
 
+### Host build with PJSIP
+
+The default build cannot run `--foreground`: it refuses to start because no SIP
+driver is linked. To run the daemon on a developer host, build the pinned
+pjproject and a PJSIP-linked daemon from the repository root:
+
+```sh
+make sipd-pjsip
+```
+
+This is the one lane that downloads a dependency, and only when invoked. It
+fetches the pjproject commit recorded in `dependencies/dependency-lock.json`,
+refuses the archive unless its SHA-256 matches, applies the reviewed
+signaling-only patch, builds pjlib, pjlib-util, pjsip (core, UA, simple) and
+the minimal pjmedia with TLS through the host OpenSSL (set `OPENSSL_PREFIX` to
+choose one), and links `.work/build/sipd-pjsip/aula-sipd`. Everything stays
+below `.work/`. It needs `curl`, `make`, a C compiler, and OpenSSL development
+files.
+
+The SIP endpoint needs a local URI, which the configuration accepts only with
+`enable_public_network = true`. For a loopback private-lab run, copy the host
+example and set, under `[sip]`:
+
+```ini
+uri = sip:aula@127.0.0.1
+enable_public_network = true
+```
+
+The SIP listeners (UDP, TCP, and TLS) bind to the same address as media,
+`[media] bind_address`, so this run stays on `127.0.0.1`.
+
 ## Optional integrations
 
 The default build uses the fixture adapter and performs no dependency download
@@ -230,6 +275,21 @@ and read the complete
 The parser rejects unknown or duplicate keys, unsafe paths, malformed values,
 over-limit inputs, and inconsistent network/security profiles.
 
+The example names device paths: `pid_file` needs an existing `/run` and
+`settings_file` an existing `/var/lib/aula-sipd` owned by the daemon user, so
+it does not validate unchanged on a developer host. Use
+[`config/aula-sipd.host.example.conf`](config/aula-sipd.host.example.conf)
+there instead; it moves both paths to `/tmp/aula-sipd/`:
+
+```sh
+mkdir -m 700 /tmp/aula-sipd
+aula-sipd --check-config "$PWD/product/sipd/config/aula-sipd.host.example.conf"
+```
+
+`make sipd-host-config` (part of `make verify`) checks that the host copy
+differs from the example only in those two paths, then validates it with the
+private directory moved below `.work/`.
+
 The precedence is:
 
 1. compiled defaults;
@@ -300,6 +360,13 @@ aula-sipd --check-config /path/to/aula-sipd.conf
 ```
 
 The fixture call does not prove SIP, RTP, hardware, or Zoom interoperability.
+
+`--check-config` takes an absolute path. A rejected configuration exits with
+status 3 and prints one line on standard error naming the line (for parse
+errors), the setting or check that failed, and why, for example
+`aula-sipd: configuration rejected: line 2: runtime.bogus: unknown or duplicate key`.
+Configured values are never printed. `--foreground` reports configuration
+failures the same way.
 
 ## State and failure semantics
 
