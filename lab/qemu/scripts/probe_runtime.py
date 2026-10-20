@@ -10,7 +10,7 @@ from probe_support import qtest_command
 
 
 EXPECTED_BASE_REGISTERS = (
-    ("readl 0x48200000", "OK 0x0000000000000040", "INTC revision"),
+    ("readl 0x48200000", "OK 0x0000000000000000", "INTC revision"),
     ("readl 0x48200014", "OK 0x0000000000000001", "INTC reset complete"),
     ("readl 0x48140600", "OK 0x0000000000000000", "synthetic device ID"),
     ("readl 0x50000000", "OK 0x0000000000000050", "GPMC revision"),

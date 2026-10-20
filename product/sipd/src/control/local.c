@@ -1,3 +1,6 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE 1
+#endif
 #if defined(__APPLE__)
 #define _DARWIN_C_SOURCE 1
 #endif

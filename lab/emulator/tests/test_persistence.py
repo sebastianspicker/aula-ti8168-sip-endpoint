@@ -8,9 +8,11 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from aula_emulator.persistence import (
     JsonStateStore,
+    PersistenceError,
     PersistenceLoadError,
     PersistenceValidationError,
     SchemaVersionError,
@@ -52,7 +54,8 @@ class JsonStateStoreTest(unittest.TestCase):
             json.loads(self.path.read_text()),
             {"schema_version": 2, "state": {"a": 1}},
         )
-        self.assertEqual([p.name for p in self.path.parent.iterdir()], ["state.json"])
+        self.assertEqual(sorted(p.name for p in self.path.parent.iterdir()),
+                         ["state.json", "state.json.lock"])
 
     def test_schema_version_mismatch(self) -> None:
         JsonStateStore(self.path, schema_version=1).save({"a": 1})
@@ -156,6 +159,63 @@ class JsonStateStoreTest(unittest.TestCase):
         nested = Path(self._directory.name) / "x" / "y" / "state.json"
         self.assertTrue(JsonStateStore(nested).save({"a": 1}))
         self.assertEqual(JsonStateStore(nested).load(), {"a": 1})
+        for directory in (nested.parent, nested.parent.parent):
+            self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o700)
+
+    def test_fifo_snapshot_and_unsafe_lock_are_refused_without_blocking(self) -> None:
+        os.mkfifo(self.path)
+        with self.assertRaises(PersistenceLoadError):
+            JsonStateStore(self.path).load()
+        self.path.unlink()
+        lock = self.path.with_name(self.path.name + ".lock")
+        for kind in ("fifo", "symlink", "writable"):
+            with self.subTest(kind=kind):
+                if kind == "fifo":
+                    os.mkfifo(lock)
+                elif kind == "symlink":
+                    lock.symlink_to(self.path)
+                else:
+                    lock.write_text("")
+                    lock.chmod(0o666)
+                with self.assertRaises(PersistenceError):
+                    JsonStateStore(self.path).save({"a": 1})
+                self.assertFalse(self.path.exists())
+                lock.unlink()
+
+    def test_lock_inode_persists_between_transactions(self) -> None:
+        store = JsonStateStore(self.path)
+        store.save({"a": 1})
+        lock = self.path.with_name(self.path.name + ".lock")
+        inode = lock.stat().st_ino
+        store.save({"a": 2})
+        self.assertEqual(lock.stat().st_ino, inode)
+        self.assertEqual(stat.S_IMODE(lock.stat().st_mode), 0o600)
+
+    def test_wrong_owner_is_refused(self) -> None:
+        self._write('{"schema_version":1,"state":{}}')
+        with patch("aula_emulator.persistence.os.getuid", return_value=os.getuid() + 1):
+            with self.assertRaises(PersistenceError):
+                JsonStateStore(self.path).load()
+            with self.assertRaises(PersistenceError):
+                JsonStateStore(self.path).save({"a": 1})
+
+    def test_io_errors_are_persistence_errors(self) -> None:
+        for operation in ("os.open", "tempfile.mkstemp", "os.replace", "os.fsync"):
+            with (self.subTest(operation=operation),
+                  patch("aula_emulator.persistence." + operation, side_effect=OSError("failure")),
+                  self.assertRaises(PersistenceError)):
+                JsonStateStore(self.path).save({"a": 1})
+        with patch("aula_emulator.persistence.os.open", side_effect=PermissionError("denied")), self.assertRaises(PersistenceError):
+            JsonStateStore(self.path).load()
+
+    def test_unpaired_surrogates_are_validation_errors_on_read_and_write(self) -> None:
+        for state in ({"a": "\ud800"}, {"\ud800": "a"}):
+            with self.subTest(state=ascii(state)):
+                with self.assertRaises(PersistenceValidationError):
+                    JsonStateStore(self.path).save(state)
+                self._write(json.dumps({"schema_version": 1, "state": state}))
+                with self.assertRaises(PersistenceLoadError):
+                    JsonStateStore(self.path).load()
 
 
 if __name__ == "__main__":

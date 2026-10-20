@@ -3,7 +3,15 @@ include_guard(GLOBAL)
 option(AULA_SIPD_BUILD_DAEMON
        "Build the daemon when all owned sources are present" ON)
 option(AULA_SIPD_BUILD_TESTS
-       "Build the host unit tests; never built when cross-compiling" ON)
+       "Build unit tests (cross builds also require explicit opt-in)" ON)
+option(AULA_SIPD_ENABLE_CROSS_TESTS
+       "Build and execute cross tests using an explicit CMAKE_CROSSCOMPILING_EMULATOR" OFF)
+if(AULA_SIPD_ENABLE_CROSS_TESTS)
+  if(NOT CMAKE_CROSSCOMPILING OR NOT CMAKE_CROSSCOMPILING_EMULATOR)
+    message(FATAL_ERROR
+      "Cross tests require a cross build and an explicit CMAKE_CROSSCOMPILING_EMULATOR")
+  endif()
+endif()
 option(AULA_SIPD_ENABLE_PJSIP
        "Link a separately acquired, reviewed pjproject source build" OFF)
 option(AULA_SIPD_ENABLE_FAAD2

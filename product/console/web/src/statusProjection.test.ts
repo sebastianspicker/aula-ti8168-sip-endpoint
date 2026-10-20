@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import { connectionLabel, directionLabel, previewLabel, projectMedia } from './statusProjection'
+import { connectionLabel, directionLabel, previewLabel, projectCallState, projectMedia } from './statusProjection'
+
+describe('projectCallState', () => {
+  it('keeps a completed hang-up distinct from missing status', () => {
+    expect(projectCallState('terminated')).toEqual({
+      active: false, emptyTitle: 'No active call',
+      emptyDescription: 'The call has ended. You can join another meeting.'
+    })
+    expect(projectCallState('idle').emptyTitle).toBe('No active call')
+    for (const state of [undefined, null, 'future_state']) {
+      expect(projectCallState(state)).toMatchObject({ active: false, emptyTitle: 'Call state unavailable' })
+    }
+  })
+
+  it('retains cancellation controls during retries and distinguishes terminal states', () => {
+    for (const state of ['resolving', 'inviting', 'early', 'establishing_media',
+      'established', 'terminating', 'failed', 'backing_off', 'connected', 'active', 'connecting']) {
+      expect(projectCallState(state).active).toBe(true)
+    }
+    expect(projectCallState('stopped')).toMatchObject({ active: false, emptyTitle: 'Calling stopped' })
+    expect(projectCallState('terminal_failure')).toMatchObject({ active: false, emptyTitle: 'Call failed' })
+  })
+})
 
 describe('connectionLabel', () => {
   it('names established, idle, other and missing call states', () => {

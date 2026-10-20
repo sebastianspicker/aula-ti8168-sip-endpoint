@@ -56,7 +56,8 @@ if [ -f "$BUILD_DIR/config-host.mak" ]; then
         die "build directory belongs to $configured_source, expected $expected_source"
 fi
 
-if [ ! -f "$BUILD_DIR/config-host.mak" ] || [ "${QEMU_RECONFIGURE:-0}" = 1 ]; then
+if [ ! -f "$BUILD_DIR/config-host.mak" ] || [ ! -f "$BUILD_DIR/build.ninja" ] || \
+        [ "${QEMU_RECONFIGURE:-0}" = 1 ]; then
     [ -d "$BUILD_DIR" ] || mkdir -p "$BUILD_DIR"
     printf '%s\n' "Configuring QEMU in $BUILD_DIR"
     (

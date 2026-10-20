@@ -97,6 +97,11 @@ typedef void (*aula_gateway_log_fn)(void *context, const char *line);
 typedef struct aula_gateway_config {
   const char *allowed_origin;
   const char *control_socket_path;
+  /* Defaults to the production companion socket. Operator-owned only. */
+  const char *device_socket_path;
+  /* Non-root peers require the explicit development-only switch. */
+  uint32_t expected_device_uid;
+  int development_device_provider;
   const char *policy_path;
   /* Fixed operator-owned path; never sourced from request, argv, or environment. */
   const char *account_store_path;
@@ -132,6 +137,7 @@ typedef struct aula_gateway {
   aula_gateway_config config;
   char policy_origin[128];
   char policy_control_socket[108];
+  char policy_device_socket[108];
   char policy_account_store[256];
   char policy_bootstrap_code[129];
   char policy_preview_rtsp_ipv4[16];

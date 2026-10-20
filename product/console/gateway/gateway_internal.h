@@ -298,7 +298,7 @@ typedef struct gateway_transaction {
 
 /* ---- gateway_device.c: unprivileged device credential passthrough ---- */
 
-int gateway_device_backend_reply(const gateway_transaction *transaction, char *backend, size_t capacity);
+int gateway_device_backend_reply(const aula_gateway_config *config, const gateway_transaction *transaction, char *backend, size_t capacity);
 void gateway_finish_device_reply(int code, const char *backend, aula_gateway_response *response);
 
 /* ---- gateway_control.c: LSZ1 wire transport to aula-sipd ---- */

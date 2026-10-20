@@ -1,0 +1,29 @@
+{
+  "schema": "aula-legacy-debian-inputs-v1",
+  "archive": "https://archive.debian.org/debian",
+  "suite": "squeeze",
+  "architecture": "armel",
+  "release_sha256": "728c30b7d49a3c47a6652c7d89db403f47e0a51b5bc0c252ae4010c450431b26",
+  "package_index_sha256": "6bfc501c8cf4bf5daadb29902c91dd6abb7815d4f0ed584f8c38f2ace4493fd2",
+  "packages": [
+    {
+      "name": "libc6",
+      "version": "2.11.3-4",
+      "filename": "pool/main/e/eglibc/libc6_2.11.3-4_armel.deb",
+      "sha256": "4c564d8c9a84e3e4a1043d1a6e0077bf9c8f0f96eeb2883248c42bc03aa6e90e"
+    },
+    {
+      "name": "libc6-dev",
+      "version": "2.11.3-4",
+      "filename": "pool/main/e/eglibc/libc6-dev_2.11.3-4_armel.deb",
+      "sha256": "675b74fe32f46630445a089fdf528eeb92b64f4cc8491adff7349c8e1f0973e8"
+    },
+    {
+      "name": "linux-libc-dev",
+      "version": "2.6.32-48squeeze6",
+      "filename": "pool/main/l/linux-2.6/linux-libc-dev_2.6.32-48squeeze6_armel.deb",
+      "sha256": "73dd727bf8af814f15b378c2d40e7265b01be81b952bf9ac5ceee575db84504f"
+    }
+  ],
+  "note": "Historical compatibility build inputs, verified through archived Debian signatures and SHA256 metadata; no freshness or current-security claim."
+}

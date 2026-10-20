@@ -1,0 +1,441 @@
+{
+  "schema": 1,
+  "scopes": [
+    "lab/qemu",
+    "lab/emulator",
+    "lab/arm-userspace"
+  ],
+  "boundary": "Exact reviewed source paths, classes and stated provenance prevent accidental generated/private artifact inclusion. This guard does not establish that authored text contains no secrets; source/provenance review remains required.",
+  "files": [
+    {
+      "path": "lab/arm-userspace/LEGACY.md",
+      "class": "doc",
+      "provenance": "Repository-authored documentation of model behavior, source provenance, generated tests, and declared fidelity limits; no firmware payload is authorized by this entry."
+    },
+    {
+      "path": "lab/arm-userspace/README.md",
+      "class": "doc",
+      "provenance": "Repository-authored documentation of model behavior, source provenance, generated tests, and declared fidelity limits; no firmware payload is authorized by this entry."
+    },
+    {
+      "path": "lab/arm-userspace/acquire_legacy_sysroot.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/arm-userspace/legacy-debian-lock.json",
+      "class": "public-dependency-lock",
+      "provenance": "Public Debian archive release/package identifiers and SHA256 metadata, independently authenticated by the legacy input acquisition helper; https://archive.debian.org/debian/."
+    },
+    {
+      "path": "lab/arm-userspace/pjsip.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/arm-userspace/prepare_legacy_runtime.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/arm-userspace/run.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/arm-userspace/run_legacy.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/arm-userspace/sip_smoke.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/arm-userspace/tests/test_legacy.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/arm-userspace/tests/test_runner.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/.gitignore",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/FIDELITY.md",
+      "class": "doc",
+      "provenance": "Repository-authored documentation of model behavior, source provenance, generated tests, and declared fidelity limits; no firmware payload is authorized by this entry."
+    },
+    {
+      "path": "lab/emulator/LSZ1_INVENTORY.md",
+      "class": "doc",
+      "provenance": "Repository-authored documentation of model behavior, source provenance, generated tests, and declared fidelity limits; no firmware payload is authorized by this entry."
+    },
+    {
+      "path": "lab/emulator/README.md",
+      "class": "doc",
+      "provenance": "Repository-authored documentation of model behavior, source provenance, generated tests, and declared fidelity limits; no firmware payload is authorized by this entry."
+    },
+    {
+      "path": "lab/emulator/examples/console.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/examples/host.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/pyproject.toml",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/src/aula_emulator/__init__.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/src/aula_emulator/__main__.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/src/aula_emulator/device_server.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/src/aula_emulator/events.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/src/aula_emulator/lsz1.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/src/aula_emulator/persistence.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/src/aula_emulator/runtime.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/__init__.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/device_contract.c",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/lsz1_contract.c",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/smoke_cli.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/test_cli.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/test_cli_servers.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/test_console_launcher.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/test_device_server.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/test_events.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/test_lsz1.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/test_lsz1_contract.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/test_persistence.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/emulator/tests/test_runtime.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/.gitignore",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/FIDELITY.md",
+      "class": "doc",
+      "provenance": "Repository-authored documentation of model behavior, source provenance, generated tests, and declared fidelity limits; no firmware payload is authorized by this entry."
+    },
+    {
+      "path": "lab/qemu/PROVENANCE.md",
+      "class": "doc",
+      "provenance": "Repository-authored documentation of model behavior, source provenance, generated tests, and declared fidelity limits; no firmware payload is authorized by this entry."
+    },
+    {
+      "path": "lab/qemu/README.md",
+      "class": "doc",
+      "provenance": "Repository-authored documentation of model behavior, source provenance, generated tests, and declared fidelity limits; no firmware payload is authorized by this entry."
+    },
+    {
+      "path": "lab/qemu/WATCHDOG.md",
+      "class": "doc",
+      "provenance": "Repository-authored documentation of model behavior, source provenance, generated tests, and declared fidelity limits; no firmware payload is authorized by this entry."
+    },
+    {
+      "path": "lab/qemu/firmware/README.md",
+      "class": "doc",
+      "provenance": "Repository-authored documentation of model behavior, source provenance, generated tests, and declared fidelity limits; no firmware payload is authorized by this entry."
+    },
+    {
+      "path": "lab/qemu/firmware/compose_nand.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/firmware/private_output.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/firmware/rescue_initramfs.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/firmware/run_original.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/firmware/tests/test_compose_nand.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/firmware/tests/test_private_output.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/firmware/tests/test_rescue_initramfs.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/guest/LEGACY_SIP_SMOKE.md",
+      "class": "doc",
+      "provenance": "Repository-authored documentation of model behavior, source provenance, generated tests, and declared fidelity limits; no firmware payload is authorized by this entry."
+    },
+    {
+      "path": "lab/qemu/guest/README.md",
+      "class": "doc",
+      "provenance": "Repository-authored documentation of model behavior, source provenance, generated tests, and declared fidelity limits; no firmware payload is authorized by this entry."
+    },
+    {
+      "path": "lab/qemu/guest/build_guest.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/guest/guest.ld",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/guest/legacy_sip_smoke.c",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/guest/timer_irq.S",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/patches/ti8168-mediaboard-model.patch",
+      "class": "patch",
+      "provenance": "Repository-authored QEMU model using public TI SPRUGX8C hardware facts and pinned public QEMU integration context; GPL-2.0-or-later model units and retained upstream notices. See lab/qemu/PROVENANCE.md."
+    },
+    {
+      "path": "lab/qemu/scripts/build.sh",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/check_public_sources.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/fetch-qemu.sh",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/lib/common.sh",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/lib/patch-stack.sh",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/prepare-qemu.sh",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_boot.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_bootstrap.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_emac.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_emac_chains.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_gpio.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_guest.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_hardware.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_phy.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_prcm.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_runtime.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_support.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_synthetic_machine.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/probe_watchdog.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/verify.sh",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/scripts/verify_prepared_source.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    },
+    {
+      "path": "lab/qemu/tests/test_public_sources.py",
+      "class": "authored-source",
+      "provenance": "Repository-authored implementation or generated-input test/tool, not a firmware image, extracted filesystem, capture, recovered vendor implementation, or runtime receipt. See lab/qemu/PROVENANCE.md for the model source boundary."
+    }
+  ],
+  "qemu_patch_targets": [
+    "hw/arm/Kconfig",
+    "hw/arm/meson.build",
+    "hw/arm/ti8168_bootstrap.c",
+    "hw/arm/ti8168_emac.c",
+    "hw/arm/ti8168_emac_regs.inc",
+    "hw/arm/ti8168_gpmc.c",
+    "hw/arm/ti8168_intc.c",
+    "hw/arm/ti8168_internal.h",
+    "hw/arm/ti8168_mediaboard.c",
+    "hw/arm/ti8168_mediaboard.h",
+    "hw/arm/ti8168_nand.c",
+    "hw/arm/ti8168_nand_device.inc",
+    "hw/arm/ti8168_prcm.c",
+    "hw/arm/ti8168_probe_regs.c",
+    "hw/arm/ti8168_timer.c",
+    "hw/arm/ti8168_watchdog.c",
+    "hw/char/serial-mm.c",
+    "hw/gpio/meson.build",
+    "hw/gpio/ti8168_gpio.c",
+    "include/hw/char/serial-mm.h",
+    "include/hw/gpio/ti8168_gpio.h"
+  ],
+  "retired_index_paths": [
+    {
+      "path": "lab/emulator/uv.lock",
+      "git_blob": "68985e692b27cea6a3b8afa83531af6f7d65e793",
+      "provenance": "Historical public empty-dependency emulator lock from repository HEAD, intentionally removed from the working tree. Only this exact old public Git blob may remain indexed during the unstaged-deletion transition; a restored or changed file is rejected."
+    }
+  ]
+}

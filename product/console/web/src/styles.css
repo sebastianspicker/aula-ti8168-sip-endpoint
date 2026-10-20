@@ -114,3 +114,10 @@ details > p { margin-top: .75rem; }
 .activity-bar__device { display: flex; flex-wrap: wrap; gap: 1rem; }
 .activity-bar__device .room-activity { flex: 1 1 12rem; margin: 0; padding-top: .5rem; }
 .activity-bar__device h2 { font-size: .875rem; }
+
+/* Present only in the separate emulator build; appliance builds omit the notice. */
+.emulator-session { min-height: 100vh; display: flex; flex-direction: column; }
+.emulator-session > .app-shell, .emulator-session > .auth-page,
+.emulator-session > .session-loading { flex: 1; min-height: 0; }
+.emulator-notice { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .8rem; padding: .6rem 1rem; background: oklch(.97 .025 75); border-bottom: 1px solid oklch(.83 .1 75); font-size: .8125rem; }
+.emulator-notice strong { white-space: nowrap; }

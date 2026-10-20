@@ -52,12 +52,22 @@ until that support is verified on the target.
 The console build script applies this patch
 before configuring the minimal HTTPS/FastCGI module set.
 
-Builds consume only explicitly supplied local inputs. They do not download,
-select a host package silently, or treat a version string as integrity proof.
-The one exception is the opt-in `make sipd-pjsip` developer lane:
+Release builds consume only explicitly supplied local inputs. They do not
+download or treat a version string as integrity proof. Optional host developer
+lanes acquire explicitly pinned archives:
+
+The opt-in `make sipd-pjsip` developer lane uses
 `scripts/build-pjproject-host.sh` downloads the pjproject archive named in
 `dependency-lock.json`, refuses it unless the recorded SHA-256 matches, applies
 `prepare-pjproject-signaling.sh`, and builds a signaling-only host library set
 below `.work/`. It is a host convenience, not a release or ARM build input.
+`make console-fastcgi-host` similarly acquires and builds FastCGI 2.4.7.
+`make emulator-ui` uses that helper and `scripts/build-nginx-host.sh` to
+build nginx 1.31.4 for the local HTTPS console. Both helpers verify the locked
+archive digest and install only below `.work/build`. Native nginx uses the
+host OpenSSL development installation via `pkg-config`; its build receipt
+records source/binary hashes and configure output. These host results do not
+certify the ARM dependency closure.
+
 When reviewed archives are acquired, record their SHA-256 values here and emit
 the package records into the deployment SBOM before enabling a release build.

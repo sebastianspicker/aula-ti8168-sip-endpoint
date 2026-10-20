@@ -1,5 +1,5 @@
 diff --git a/hw/arm/Kconfig b/hw/arm/Kconfig
-index 4e50fb1..5c05821 100644
+index 4e50fb1..e7fb520 100644
 --- a/hw/arm/Kconfig
 +++ b/hw/arm/Kconfig
 @@ -140,6 +140,13 @@ config OMAP
@@ -17,7 +17,7 @@ index 4e50fb1..5c05821 100644
      bool
      default y
 diff --git a/hw/arm/meson.build b/hw/arm/meson.build
-index b187b94..d37a0b4 100644
+index b187b94..4e2cc08 100644
 --- a/hw/arm/meson.build
 +++ b/hw/arm/meson.build
 @@ -23,6 +23,16 @@ arm_common_ss.add(when: 'CONFIG_ARM_V7M', if_true: files('armv7m.c'))
@@ -27,7 +27,7 @@ index b187b94..d37a0b4 100644
 +arm_common_ss.add(when: 'CONFIG_TI8168_MEDIABOARD', if_true: files(
 +  'ti8168_mediaboard.c',
 +  'ti8168_intc.c',
-+  'ti8168_timer.c',
++  'ti8168_timer.c', 'ti8168_watchdog.c', 'ti8168_prcm.c',
 +  'ti8168_nand.c',
 +  'ti8168_gpmc.c',
 +  'ti8168_bootstrap.c',
@@ -447,14 +447,14 @@ index 0000000..bd8c337
 +type_init(ti8168_bootstrap_register_types)
 diff --git a/hw/arm/ti8168_emac.c b/hw/arm/ti8168_emac.c
 new file mode 100644
-index 0000000..4720b37
+index 0000000..95af6e3
 --- /dev/null
 +++ b/hw/arm/ti8168_emac.c
-@@ -0,0 +1,528 @@
+@@ -0,0 +1,690 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +/*
 + * Partial TI81xx DaVinci EMAC, CPDMA, and MDIO model.
-+ * The two PHY slots use synthetic addresses 0 and 1.
++ * Two caller-configurable PHY slots default to synthetic addresses 0 and 1.
 + */
 +
 +#include "qemu/osdep.h"
@@ -471,11 +471,7 @@ index 0000000..4720b37
 +#define TI8168_DMA_DIRECT_BASE          0x41000000U
 +#define TI8168_DMA_DIRECT_END           0x61000000U
 +#define TI8168_DMA_QEMU_OFFSET          0x3f000000U
-+#define TI8168_EMAC_PHY_ADDR_ETH0       0
-+#define TI8168_EMAC_PHY_ADDR_ETH1       1
 +#define TI8168_EMAC_PHY_COUNT            2
-+#define TI8168_EMAC_PHY_ALIVE            \
-+    (BIT(TI8168_EMAC_PHY_ADDR_ETH0) | BIT(TI8168_EMAC_PHY_ADDR_ETH1))
 +
 +#define MDIO_VERSION                    0x000
 +#define MDIO_CONTROL                    0x004
@@ -549,6 +545,7 @@ index 0000000..4720b37
 +#define RXMBP_MULTICAST                 BIT(5)
 +#define EMAC_DEFAULT_RX_MAX_LEN         1518
 +#define EMAC_MAX_FRAME                  2048
++#define CPDMA_MAX_PACKET_DESCRIPTORS    64
 +
 +typedef struct TI8168CPDMADesc {
 +    uint32_t next;
@@ -574,6 +571,9 @@ index 0000000..4720b37
 +    uint32_t mdio_int_raw;
 +    uint32_t mdio_int_mask;
 +    uint16_t phy[TI8168_EMAC_PHY_COUNT][32];
++    uint32_t phy0_address;
++    uint32_t phy1_address;
++    bool legacy_dma_alias;
 +    uint32_t tx_control;
 +    uint32_t rx_control;
 +    uint32_t dma_control;
@@ -606,28 +606,29 @@ index 0000000..4720b37
 +static void ti8168_emac_update_irqs(TI8168EMACState *s)
 +{
 +    qemu_set_irq(s->rx_thresh_irq, 0);
-+    /*
-+     * TI8168 routes the v0 CPDMA RX and TX events to separate SoC IRQ
-+     * inputs.  The modeled interrupt registers enable those inputs through
-+     * platform-style callbacks, rather than CPDMA's v1 mask
-+     * registers.  Do not suppress a pending v0 event when those optional
-+     * diagnostic masks remain clear.
-+     */
-+    qemu_set_irq(s->rx_irq, !!(s->rx_int_enable & s->rx_raw & BIT(0)));
-+    qemu_set_irq(s->tx_irq, !!(s->tx_int_enable & s->tx_raw & BIT(0)));
++    /* Per-channel masks and control-module routing enables are independent
++     * gates (SPRUGX8C section 6.2.5.3). Raw status remains visible masked. */
++    qemu_set_irq(s->rx_irq,
++                 !!(s->rx_int_enable & s->rx_mask & s->rx_raw & BIT(0)));
++    qemu_set_irq(s->tx_irq,
++                 !!(s->tx_int_enable & s->tx_mask & s->tx_raw & BIT(0)));
 +    qemu_set_irq(s->misc_irq, !!s->dma_raw);
 +}
 +
-+static int ti8168_emac_phy_index(unsigned phy)
++static int ti8168_emac_phy_index(TI8168EMACState *s, unsigned phy)
 +{
-+    switch (phy) {
-+    case TI8168_EMAC_PHY_ADDR_ETH0:
++    if (phy == s->phy0_address) {
 +        return 0;
-+    case TI8168_EMAC_PHY_ADDR_ETH1:
-+        return 1;
-+    default:
-+        return -1;
 +    }
++    if (phy == s->phy1_address) {
++        return 1;
++    }
++    return -1;
++}
++
++static uint32_t ti8168_emac_phy_mask(TI8168EMACState *s)
++{
++    return BIT(s->phy0_address) | BIT(s->phy1_address);
 +}
 +
 +static void ti8168_emac_seed_mac(TI8168EMACState *s)
@@ -721,10 +722,11 @@ index 0000000..4720b37
 +    return true;
 +}
 +
-+/* The TI81xx kernel supplies CPDMA buffer addresses in its direct-map view. */
-+static dma_addr_t ti8168_emac_buffer_addr(uint32_t addr)
++/* Unverified historical compatibility mapping, never architectural default. */
++static dma_addr_t ti8168_emac_buffer_addr(TI8168EMACState *s, uint32_t addr)
 +{
-+    if (addr >= TI8168_DMA_DIRECT_BASE && addr < TI8168_DMA_DIRECT_END) {
++    if (s->legacy_dma_alias && addr >= TI8168_DMA_DIRECT_BASE &&
++        addr < TI8168_DMA_DIRECT_END) {
 +        return (dma_addr_t)addr + TI8168_DMA_QEMU_OFFSET;
 +    }
 +    return addr;
@@ -732,15 +734,16 @@ index 0000000..4720b37
 +
 +static bool ti8168_emac_write_desc(dma_addr_t addr, const TI8168CPDMADesc *desc)
 +{
-+    TI8168CPDMADesc le_desc = {
-+        .next = cpu_to_le32(desc->next),
-+        .buffer = cpu_to_le32(desc->buffer),
-+        .buflen = cpu_to_le32(desc->buflen),
-+        .mode = cpu_to_le32(desc->mode),
++    uint32_t result[2] = {
++        cpu_to_le32(desc->buflen),
++        cpu_to_le32(desc->mode),
 +    };
 +
-+    return !dma_memory_write(&address_space_memory, addr, &le_desc,
-+                             sizeof(le_desc), MEMTXATTRS_UNSPECIFIED);
++    /* Never rewrite next/buffer: software may append to a NULL queue tail
++     * while hardware completes it (SPRUGX8C 6.2.5.2). The cached next still
++     * determines whether this transaction reached EOQ. */
++    return !dma_memory_write(&address_space_memory, addr + 8, result,
++                             sizeof(result), MEMTXATTRS_UNSPECIFIED);
 +}
 +
 +static void ti8168_emac_host_error(TI8168EMACState *s, const char *what)
@@ -752,48 +755,162 @@ index 0000000..4720b37
 +
 +static void ti8168_emac_schedule_tx(TI8168EMACState *s);
 +
++typedef struct TI8168CPDMAEntry {
++    uint32_t address;
++    TI8168CPDMADesc desc;
++    dma_addr_t buffer;
++    uint32_t length;
++    uint32_t offset;
++} TI8168CPDMAEntry;
++
++/* Read-only preflight keeps malformed chains from publishing partial success.
++ * The descriptor cap is a model work bound, not a silicon descriptor limit. */
++static bool ti8168_emac_chain_entry(TI8168EMACState *s,
++                                   TI8168CPDMAEntry *entries, unsigned count,
++                                   uint32_t address)
++{
++    unsigned i;
++
++    if (!address || (address & 3) || address > UINT32_MAX - 15 ||
++        count == CPDMA_MAX_PACKET_DESCRIPTORS) {
++        ti8168_emac_host_error(s, "unaligned or overlong descriptor chain");
++        return false;
++    }
++    for (i = 0; i < count; i++) {
++        if (entries[i].address == address) {
++            ti8168_emac_host_error(s, "cyclic descriptor chain");
++            return false;
++        }
++    }
++    entries[count].address = address;
++    if (!ti8168_emac_read_desc(address, &entries[count].desc) ||
++        !dma_memory_valid(&address_space_memory, address,
++                          sizeof(TI8168CPDMADesc), DMA_DIRECTION_FROM_DEVICE,
++                          MEMTXATTRS_UNSPECIFIED)) {
++        ti8168_emac_host_error(s, "inaccessible descriptor");
++        return false;
++    }
++    return true;
++}
++
++static bool ti8168_emac_chain_buffer(TI8168EMACState *s,
++                                    TI8168CPDMAEntry *entry, bool receive)
++{
++    uint64_t address = (uint64_t)entry->desc.buffer + entry->offset;
++
++    if (!entry->desc.buffer || !entry->length ||
++        address + entry->length > (UINT64_C(1) << 32)) {
++        ti8168_emac_host_error(s, "invalid descriptor buffer range");
++        return false;
++    }
++    entry->buffer = ti8168_emac_buffer_addr(s, address);
++    if (!dma_memory_valid(&address_space_memory, entry->buffer, entry->length,
++                          receive ? DMA_DIRECTION_FROM_DEVICE :
++                                    DMA_DIRECTION_TO_DEVICE,
++                          MEMTXATTRS_UNSPECIFIED)) {
++        ti8168_emac_host_error(s, "inaccessible packet buffer");
++        return false;
++    }
++    return true;
++}
++
++static bool ti8168_emac_complete_chain(TI8168EMACState *s,
++                                      TI8168CPDMAEntry *entries, unsigned count)
++{
++    /* Publish the SOP ownership change last: it releases the entire packet
++     * (SPRUGX8C 6.2.5.2, 6.2.5.4.8 and 6.2.5.5.8). */
++    while (count) {
++        TI8168CPDMAEntry *entry = &entries[--count];
++
++        if (!ti8168_emac_write_desc(entry->address, &entry->desc)) {
++            ti8168_emac_host_error(s, "cannot complete packet descriptor");
++            return false;
++        }
++    }
++    return true;
++}
++
 +static void ti8168_emac_process_tx(void *opaque)
 +{
 +    TI8168EMACState *s = opaque;
-+    TI8168CPDMADesc desc;
-+    uint8_t *frame;
-+    uint32_t length;
-+    uint32_t addr = s->tx_hdp;
++    TI8168CPDMAEntry entries[CPDMA_MAX_PACKET_DESCRIPTORS];
++    uint8_t frame[EMAC_MAX_FRAME];
++    uint32_t address = s->tx_hdp;
++    uint32_t packet_length = 0;
++    unsigned count = 0;
++    size_t length = 0;
++    unsigned i;
 +
-+    if (!(s->tx_control & 1) || !addr) {
++    if (!(s->tx_control & 1) || !address ||
++        (s->dma_raw & CPDMA_HOST_ERROR)) {
 +        return;
 +    }
-+    if (!ti8168_emac_read_desc(addr, &desc)) {
-+        ti8168_emac_host_error(s, "cannot read TX descriptor");
++    for (;;) {
++        TI8168CPDMAEntry *entry;
++
++        if (!ti8168_emac_chain_entry(s, entries, count, address)) {
++            return;
++        }
++        entry = &entries[count];
++        if (count == 0) {
++            if ((entry->desc.mode & (CPDMA_SOP | CPDMA_OWNER)) !=
++                (CPDMA_SOP | CPDMA_OWNER)) {
++                ti8168_emac_host_error(s, "TX SOP or ownership error");
++                return;
++            }
++            packet_length = entry->desc.mode & CPDMA_DESC_LEN;
++            if (!packet_length || packet_length > EMAC_MAX_FRAME) {
++                ti8168_emac_host_error(s, "TX packet length outside model bound");
++                return;
++            }
++        } else if (entry->desc.mode & CPDMA_SOP) {
++            ti8168_emac_host_error(s, "nested TX SOP");
++            return;
++        }
++        entry->offset = count == 0 ? entry->desc.buflen >> 16 : 0;
++        entry->length = entry->desc.buflen & CPDMA_DESC_LEN;
++        if ((count == 0 && entry->offset >= entry->length) ||
++            entry->length > packet_length - length ||
++            !ti8168_emac_chain_buffer(s, entry, false)) {
++            ti8168_emac_host_error(s, "TX fragment or packet length error");
++            return;
++        }
++        if (dma_memory_read(&address_space_memory, entry->buffer,
++                            frame + length, entry->length,
++                            MEMTXATTRS_UNSPECIFIED)) {
++            ti8168_emac_host_error(s, "cannot read TX fragment");
++            return;
++        }
++        length += entry->length;
++        count++;
++        if (entry->desc.mode & CPDMA_EOP) {
++            if (length != packet_length) {
++                ti8168_emac_host_error(s, "TX EOP packet length mismatch");
++                return;
++            }
++            break;
++        }
++        if (!entry->desc.next || length == packet_length) {
++            ti8168_emac_host_error(s, "TX chain ends without EOP");
++            return;
++        }
++        address = entry->desc.next;
++    }
++    for (i = 0; i < count; i++) {
++        /* OWNER is meaningful only on SOP. EOQ belongs only on EOP. */
++        entries[i].desc.mode &= ~CPDMA_EOQ;
++    }
++    entries[0].desc.mode &= ~CPDMA_OWNER;
++    if (!entries[count - 1].desc.next) {
++        entries[count - 1].desc.mode |= CPDMA_EOQ;
++    }
++    if (!ti8168_emac_complete_chain(s, entries, count)) {
 +        return;
 +    }
-+    length = desc.buflen & CPDMA_DESC_LEN;
-+    if (!(desc.mode & CPDMA_OWNER) || !desc.buffer || !length ||
-+        length > EMAC_MAX_FRAME) {
-+        ti8168_emac_host_error(s, "unsupported TX descriptor");
-+        return;
-+    }
-+    frame = g_malloc(length);
-+    if (dma_memory_read(&address_space_memory,
-+                        ti8168_emac_buffer_addr(desc.buffer), frame, length,
-+                        MEMTXATTRS_UNSPECIFIED)) {
-+        g_free(frame);
-+        ti8168_emac_host_error(s, "cannot read TX frame");
-+        return;
-+    }
-+    qemu_send_packet(qemu_get_queue(s->nic), frame, length);
-+    g_free(frame);
-+    desc.mode &= ~(CPDMA_OWNER | CPDMA_EOQ);
-+    if (!desc.next) {
-+        desc.mode |= CPDMA_EOQ;
-+    }
-+    if (!ti8168_emac_write_desc(addr, &desc)) {
-+        ti8168_emac_host_error(s, "cannot complete TX descriptor");
-+        return;
-+    }
-+    s->tx_hdp = desc.next;
-+    s->tx_cp = addr;
++    s->tx_hdp = entries[count - 1].desc.next;
++    s->tx_cp = entries[count - 1].address;
 +    s->tx_raw |= BIT(0);
++    qemu_send_packet(qemu_get_queue(s->nic), frame, length);
 +    ti8168_emac_update_irqs(s);
 +    if (s->tx_hdp) {
 +        ti8168_emac_schedule_tx(s);
@@ -839,55 +956,91 @@ index 0000000..4720b37
 +static bool ti8168_emac_can_receive(NetClientState *nc)
 +{
 +    TI8168EMACState *s = qemu_get_nic_opaque(nc);
-+    TI8168CPDMADesc desc;
 +
-+    return (s->rx_control & 1) && s->rx_hdp &&
-+           ti8168_emac_read_desc(s->rx_hdp, &desc) &&
-+           (desc.mode & CPDMA_OWNER) && desc.buffer &&
-+           (desc.buflen & CPDMA_DESC_LEN);
++    /* Consume/filter arrivals without receive resources instead of retaining
++     * an unbounded host queue until guest buffers become available. */
++    return (s->rx_control & 1) != 0;
 +}
 +
 +static ssize_t ti8168_emac_receive(NetClientState *nc, const uint8_t *buf,
-+                                    size_t size)
++                                  size_t size)
 +{
 +    TI8168EMACState *s = qemu_get_nic_opaque(nc);
-+    TI8168CPDMADesc desc;
-+    uint32_t addr = s->rx_hdp;
-+    uint32_t length;
++    TI8168CPDMAEntry entries[CPDMA_MAX_PACKET_DESCRIPTORS];
++    uint32_t address = s->rx_hdp;
++    unsigned count = 0;
++    size_t length = 0;
 +    bool oversized = size > s->rx_max_len;
++    unsigned i;
 +
-+    if (!ti8168_emac_can_receive(nc) || !ti8168_emac_accept(s, buf, size) ||
++    if (!ti8168_emac_can_receive(nc) || !address ||
++        (s->dma_raw & CPDMA_HOST_ERROR) ||
++        !ti8168_emac_accept(s, buf, size) || size > EMAC_MAX_FRAME ||
 +        (oversized && !(s->rx_mbp_enable & RXMBP_ERROR_FRAMES))) {
 +        return size;
 +    }
-+    if (!ti8168_emac_read_desc(addr, &desc)) {
-+        ti8168_emac_host_error(s, "cannot read RX descriptor");
-+        return -1;
++    while (length < size) {
++        TI8168CPDMAEntry *entry;
++        uint32_t capacity;
++
++        if (!ti8168_emac_chain_entry(s, entries, count, address)) {
++            return size;
++        }
++        entry = &entries[count];
++        capacity = entry->desc.buflen & CPDMA_DESC_LEN;
++        entry->offset = count == 0 ? s->rx_buffer_offset : 0;
++        if (!(entry->desc.mode & CPDMA_OWNER) || !entry->desc.buffer ||
++            capacity <= entry->offset) {
++            ti8168_emac_host_error(s, "RX ownership or buffer error");
++            return size;
++        }
++        entry->length = MIN(size - length, capacity - entry->offset);
++        if (!ti8168_emac_chain_buffer(s, entry, true)) {
++            return size;
++        }
++        length += entry->length;
++        count++;
++        if (length == size) {
++            break;
++        }
++        if (!entry->desc.next) {
++            /* Resource exhaustion filters the whole packet. No clipped packet
++             * or ownership/CP success is published. Silicon overrun statistics
++             * and RXCEFEN partial-error delivery are not modeled here. */
++            return size;
++        }
++        address = entry->desc.next;
 +    }
-+    length = MIN(MIN(size, s->rx_max_len),
-+                 desc.buflen & CPDMA_DESC_LEN);
-+    if (dma_memory_write(&address_space_memory,
-+                         ti8168_emac_buffer_addr(desc.buffer +
-+                                                 s->rx_buffer_offset),
-+                         buf, length, MEMTXATTRS_UNSPECIFIED)) {
-+        ti8168_emac_host_error(s, "cannot write RX frame");
-+        return -1;
++    length = 0;
++    for (i = 0; i < count; i++) {
++        TI8168CPDMAEntry *entry = &entries[i];
++
++        if (dma_memory_write(&address_space_memory, entry->buffer, buf + length,
++                             entry->length, MEMTXATTRS_UNSPECIFIED)) {
++            ti8168_emac_host_error(s, "cannot write RX fragment");
++            return size;
++        }
++        length += entry->length;
++        entry->desc.buflen = (entry->offset << 16) | entry->length;
++        entry->desc.mode &= ~(CPDMA_SOP | CPDMA_EOP | CPDMA_EOQ |
++                              CPDMA_OVERSIZE | CPDMA_DESC_LEN);
++        if (i == 0) {
++            entry->desc.mode &= ~CPDMA_OWNER;
++            entry->desc.mode |= CPDMA_SOP | size;
++            if (oversized) {
++                entry->desc.mode |= CPDMA_OVERSIZE;
++            }
++        }
 +    }
-+    desc.mode = (desc.mode & ~(CPDMA_OWNER | CPDMA_EOQ | CPDMA_OVERSIZE |
-+                               CPDMA_DESC_LEN)) |
-+                CPDMA_SOP | CPDMA_EOP | length;
-+    if (oversized) {
-+        desc.mode |= CPDMA_OVERSIZE;
++    entries[count - 1].desc.mode |= CPDMA_EOP;
++    if (!entries[count - 1].desc.next) {
++        entries[count - 1].desc.mode |= CPDMA_EOQ;
 +    }
-+    if (!desc.next) {
-+        desc.mode |= CPDMA_EOQ;
++    if (!ti8168_emac_complete_chain(s, entries, count)) {
++        return size;
 +    }
-+    if (!ti8168_emac_write_desc(addr, &desc)) {
-+        ti8168_emac_host_error(s, "cannot complete RX descriptor");
-+        return -1;
-+    }
-+    s->rx_hdp = desc.next;
-+    s->rx_cp = addr;
++    s->rx_hdp = entries[count - 1].desc.next;
++    s->rx_cp = entries[count - 1].address;
 +    s->rx_raw |= BIT(0);
 +    ti8168_emac_update_irqs(s);
 +    return size;
@@ -907,6 +1060,11 @@ index 0000000..4720b37
 +    TI8168EMACState *s = TI8168_EMAC(dev);
 +    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 +
++    if (s->phy0_address > 31 || s->phy1_address > 31 ||
++        s->phy0_address == s->phy1_address) {
++        error_setg(errp, "PHY addresses must be distinct values from 0 to 31");
++        return;
++    }
 +    memory_region_init(&s->iomem, OBJECT(dev), TYPE_TI8168_EMAC, EMAC_SIZE);
 +    memory_region_init_io(&s->regs, OBJECT(dev), &ti8168_emac_ops, s,
 +                          TYPE_TI8168_EMAC "-regs", CPDMA_CTRL_RAM);
@@ -935,6 +1093,10 @@ index 0000000..4720b37
 +}
 +
 +static const Property ti8168_emac_properties[] = {
++    DEFINE_PROP_UINT32("phy0-address", TI8168EMACState, phy0_address, 0),
++    DEFINE_PROP_UINT32("phy1-address", TI8168EMACState, phy1_address, 1),
++    DEFINE_PROP_BOOL("legacy-dma-alias", TI8168EMACState,
++                     legacy_dma_alias, false),
 +    DEFINE_NIC_PROPERTIES(TI8168EMACState, conf),
 +};
 +
@@ -981,10 +1143,10 @@ index 0000000..4720b37
 +type_init(ti8168_emac_register_types)
 diff --git a/hw/arm/ti8168_emac_regs.inc b/hw/arm/ti8168_emac_regs.inc
 new file mode 100644
-index 0000000..7225ac1
+index 0000000..fc60ea9
 --- /dev/null
 +++ b/hw/arm/ti8168_emac_regs.inc
-@@ -0,0 +1,285 @@
+@@ -0,0 +1,295 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +static void ti8168_emac_mdio_access(TI8168EMACState *s, uint32_t value)
 +{
@@ -995,8 +1157,11 @@ index 0000000..7225ac1
 +     */
 +    unsigned phy = (value >> 16) & 0x1f;
 +    unsigned reg = (value >> 21) & 0x1f;
-+    int phy_index = ti8168_emac_phy_index(phy);
++    int phy_index = ti8168_emac_phy_index(s, phy);
 +
++    /* USERACCESS DATA is the value to write or the completed read result
++     * (SPRUGX8C section 6.3.3.11, Table 6-85). A PHY may self-clear bits
++     * after a write without changing that command's DATA field. */
 +    s->mdio_access = value & ~(MDIO_ACCESS_GO | MDIO_ACCESS_ACK);
 +    if (phy_index >= 0) {
 +        if (value & MDIO_ACCESS_WRITE) {
@@ -1004,9 +1169,12 @@ index 0000000..7225ac1
 +            if (reg == 0 && (s->phy[phy_index][reg] & BIT(15))) {
 +                s->phy[phy_index][reg] &= ~BIT(15);
 +            }
++        } else {
++            s->mdio_access = (s->mdio_access & ~0xffffU) |
++                             s->phy[phy_index][reg];
 +        }
-+        s->mdio_access |= MDIO_ACCESS_ACK | s->phy[phy_index][reg];
-+    } else {
++        s->mdio_access |= MDIO_ACCESS_ACK;
++    } else if (!(value & MDIO_ACCESS_WRITE)) {
 +        s->mdio_access |= 0xffff;
 +    }
 +}
@@ -1017,7 +1185,7 @@ index 0000000..7225ac1
 +    case MDIO_VERSION: return 1;
 +    case MDIO_CONTROL: return s->mdio_control | MDIO_CONTROL_IDLE;
 +    case MDIO_ALIVE:
-+    case MDIO_LINK: return TI8168_EMAC_PHY_ALIVE;
++    case MDIO_LINK: return ti8168_emac_phy_mask(s);
 +    case MDIO_USERINTRAW: return s->mdio_int_raw;
 +    case MDIO_USERINTMASKED: return s->mdio_int_raw & s->mdio_int_mask;
 +    case MDIO_USERINTMASKSET:
@@ -1202,12 +1370,16 @@ index 0000000..7225ac1
 +    case CPDMA_TXHDP: s->tx_hdp = value & ~3U; ti8168_emac_schedule_tx(s); return true;
 +    case CPDMA_RXHDP: s->rx_hdp = value & ~3U; return true;
 +    case CPDMA_TXCP:
-+        /* One modelled TX channel has one pending completion event. */
-+        s->tx_raw &= ~BIT(0);
++        /* A stale acknowledgement must not retire a newer completion.
++         * SPRUGX8C section 6.2.5.3 compares the host and EMAC pointers. */
++        if (value == s->tx_cp) {
++            s->tx_raw &= ~BIT(0);
++        }
 +        return true;
 +    case CPDMA_RXCP:
-+        /* One modelled RX channel has one pending completion event. */
-+        s->rx_raw &= ~BIT(0);
++        if (value == s->rx_cp) {
++            s->rx_raw &= ~BIT(0);
++        }
 +        return true;
 +    default: return false;
 +    }
@@ -1567,10 +1739,10 @@ index 0000000..effbd7e
 + */
 diff --git a/hw/arm/ti8168_intc.c b/hw/arm/ti8168_intc.c
 new file mode 100644
-index 0000000..2c84c2b
+index 0000000..5595d79
 --- /dev/null
 +++ b/hw/arm/ti8168_intc.c
-@@ -0,0 +1,318 @@
+@@ -0,0 +1,330 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +/* TI8168 INTCPS compatibility device. */
 +
@@ -1614,7 +1786,7 @@ index 0000000..2c84c2b
 +    s->sysconfig = 0;
 +    s->protection = 0;
 +    s->idle = 0;
-+    s->threshold = 0x3f;
++    s->threshold = 0xff;
 +    s->irq_in_service = -1;
 +    s->fiq_in_service = -1;
 +    ti8168_intc_update(s);
@@ -1629,19 +1801,20 @@ index 0000000..2c84c2b
 +{
 +    int irq;
 +    int selected = -1;
-+    unsigned selected_priority = 0x40;
++    unsigned selected_priority = 0x80;
 +
 +    for (irq = 0; irq < TI8168_NUM_IRQS; irq++) {
 +        unsigned bank = irq >> 5;
 +        unsigned bit = irq & 31;
 +        bool route_fiq = s->ilr[irq] & 1;
-+        unsigned priority = (s->ilr[irq] >> 2) & 0x3f;
++        unsigned priority = (s->ilr[irq] >> 2) & 0x7f;
 +
-+        if (route_fiq != fiq || priority > s->threshold ||
++        if (route_fiq != fiq ||
++            (priority && priority >= s->threshold) ||
 +            !(ti8168_intc_pending(s, bank) & ~s->mask[bank] & BIT(bit))) {
 +            continue;
 +        }
-+        if (priority < selected_priority) {
++        if (priority <= selected_priority) {
 +            selected_priority = priority;
 +            selected = irq;
 +        }
@@ -1651,10 +1824,15 @@ index 0000000..2c84c2b
 +
 +static void ti8168_intc_update(TI8168IntcState *s)
 +{
-+    qemu_set_irq(s->parent_irq, s->irq_in_service < 0 &&
-+                 ti8168_intc_active(s, false) >= 0);
-+    qemu_set_irq(s->parent_fiq, s->fiq_in_service < 0 &&
-+                 ti8168_intc_active(s, true) >= 0);
++    /* The selected number and output persist until the new agreement. */
++    if (s->irq_in_service < 0) {
++        s->irq_in_service = ti8168_intc_active(s, false);
++    }
++    if (s->fiq_in_service < 0) {
++        s->fiq_in_service = ti8168_intc_active(s, true);
++    }
++    qemu_set_irq(s->parent_irq, s->irq_in_service >= 0);
++    qemu_set_irq(s->parent_fiq, s->fiq_in_service >= 0);
 +}
 +
 +static void ti8168_intc_set_irq(void *opaque, int irq, int level)
@@ -1671,19 +1849,12 @@ index 0000000..2c84c2b
 +    ti8168_intc_update(s);
 +}
 +
-+static uint32_t ti8168_intc_claim(TI8168IntcState *s, bool fiq)
++/* No sorting latency is modelled; SIR reads do not acknowledge an IRQ. */
++static uint32_t ti8168_intc_selected(TI8168IntcState *s, bool fiq)
 +{
-+    int irq = ti8168_intc_active(s, fiq);
++    int irq = fiq ? s->fiq_in_service : s->irq_in_service;
 +
-+    if (irq >= 0) {
-+        if (fiq) {
-+            s->fiq_in_service = irq;
-+        } else {
-+            s->irq_in_service = irq;
-+        }
-+        ti8168_intc_update(s);
-+    }
-+    return irq < 0 ? 0x80 : irq;
++    return irq < 0 ? 0xffffff80U : irq;
 +}
 +
 +static bool ti8168_intc_read_primary(TI8168IntcState *s, hwaddr offset,
@@ -1692,25 +1863,40 @@ index 0000000..2c84c2b
 +    int irq;
 +
 +    switch (offset) {
-+    case 0x00: *value = 0x40; return true; /* INTCPS revision 4.0 */
++    case 0x00: *value = 0; return true; /* SPRUGX8C Table 12-4. */
 +    case 0x10: *value = s->sysconfig; return true;
 +    case 0x14: *value = 1; return true; /* reset complete */
-+    case 0x40: *value = ti8168_intc_claim(s, false); return true;
-+    case 0x44: *value = ti8168_intc_claim(s, true); return true;
++    case 0x40: *value = ti8168_intc_selected(s, false); return true;
++    case 0x44: *value = ti8168_intc_selected(s, true); return true;
 +    case 0x48: *value = 0; return true;
 +    case 0x4c: *value = s->protection; return true;
 +    case 0x50: *value = s->idle; return true;
 +    case 0x60:
-+        irq = ti8168_intc_active(s, false);
-+        *value = irq < 0 ? 0x3f : (s->ilr[irq] >> 2) & 0x3f;
++        irq = s->irq_in_service;
++        *value = irq < 0 ? 0xffffff80U : (s->ilr[irq] >> 2) & 0x7f;
 +        return true;
 +    case 0x64:
-+        irq = ti8168_intc_active(s, true);
-+        *value = irq < 0 ? 0x3f : (s->ilr[irq] >> 2) & 0x3f;
++        irq = s->fiq_in_service;
++        *value = irq < 0 ? 0xffffff80U : (s->ilr[irq] >> 2) & 0x7f;
 +        return true;
 +    case 0x68: *value = s->threshold; return true;
 +    default: return false;
 +    }
++}
++
++static uint32_t ti8168_intc_pending_route(TI8168IntcState *s,
++                                          unsigned bank, bool fiq)
++{
++    uint32_t route = 0;
++    unsigned bit;
++
++    for (bit = 0; bit < 32; bit++) {
++        if (!!(s->ilr[bank * 32 + bit] & 1) == fiq) {
++            route |= BIT(bit);
++        }
++    }
++    /* Pending views precede priority sorting (SPRUGX8C 12.2.3.2.1). */
++    return ti8168_intc_pending(s, bank) & ~s->mask[bank] & route;
 +}
 +
 +static uint64_t ti8168_intc_read_bank(TI8168IntcState *s, hwaddr offset)
@@ -1720,7 +1906,9 @@ index 0000000..2c84c2b
 +    switch ((offset - 0x80) & 0x1f) {
 +    case 0x00: return ti8168_intc_pending(s, bank);
 +    case 0x04: return s->mask[bank];
-+    case 0x18: return ti8168_intc_pending(s, bank) & ~s->mask[bank];
++    case 0x10: return s->soft_pending[bank];
++    case 0x18: return ti8168_intc_pending_route(s, bank, false);
++    case 0x1c: return ti8168_intc_pending_route(s, bank, true);
 +    default: return 0;
 +    }
 +}
@@ -1757,12 +1945,7 @@ index 0000000..2c84c2b
 +        s->sysconfig = value & 1;
 +        return true;
 +    case 0x48:
-+        /*
-+         * SIR reads claim the selected source; CONTROL bit 0 releases IRQ
-+         * service and bit 1 releases FIQ service.  A level source that remains asserted is eligible
-+         * again after acknowledgement.  This is deliberately conservative
-+         * rather than a claim of cycle-accurate INTCPS arbitration.
-+         */
++        /* CONTROL releases the latched result and enables a new sort. */
 +        if (value & 1) {
 +            s->irq_in_service = -1;
 +        }
@@ -1775,10 +1958,11 @@ index 0000000..2c84c2b
 +        s->protection = value & 1;
 +        return true;
 +    case 0x50:
-+        s->idle = value & 1;
++        s->idle = value & 3;
 +        return true;
 +    case 0x68:
-+        s->threshold = value & 0x3f;
++        s->threshold = value & 0xff;
++        ti8168_intc_update(s);
 +        return true;
 +    default: return false;
 +    }
@@ -1813,7 +1997,7 @@ index 0000000..2c84c2b
 +        return;
 +    }
 +    if (offset >= 0x100 && offset < 0x300 && !(offset & 3)) {
-+        s->ilr[(offset - 0x100) >> 2] = value & 0xff;
++        s->ilr[(offset - 0x100) >> 2] = value & 0x1fd;
 +        ti8168_intc_update(s);
 +        return;
 +    }
@@ -1891,7 +2075,7 @@ index 0000000..2c84c2b
 +/* Minimal OMAP dual-mode timer with overflow and auto-reload. */
 diff --git a/hw/arm/ti8168_internal.h b/hw/arm/ti8168_internal.h
 new file mode 100644
-index 0000000..b7a9aef
+index 0000000..864dd96
 --- /dev/null
 +++ b/hw/arm/ti8168_internal.h
 @@ -0,0 +1,31 @@
@@ -1928,10 +2112,10 @@ index 0000000..b7a9aef
 +#endif
 diff --git a/hw/arm/ti8168_mediaboard.c b/hw/arm/ti8168_mediaboard.c
 new file mode 100644
-index 0000000..aa0285d
+index 0000000..3f9690a
 --- /dev/null
 +++ b/hw/arm/ti8168_mediaboard.c
-@@ -0,0 +1,427 @@
+@@ -0,0 +1,559 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +/*
 + * Synthetic TI8168 media board experiment.
@@ -1944,6 +2128,8 @@ index 0000000..aa0285d
 + */
 +
 +#include "qemu/osdep.h"
++#include "qapi/visitor.h"
++#include "hw/gpio/ti8168_gpio.h"
 +#include "ti8168_internal.h"
 +
 +#define TYPE_TI8168_MEDIABOARD_MACHINE MACHINE_TYPE_NAME("ti8168-mediaboard")
@@ -1966,7 +2152,6 @@ index 0000000..aa0285d
 +    /* Synthetic DMM register storage. */
 +    TI8168_DMM_BASE = 0x4e000000,
 +    TI8168_DMM_BOOTSTRAP_SIZE = 0x1000,
-+    TI8168_MACHINE_ID = 0,
 +    TI8168_INTC_BASE = 0x48200000,
 +    TI8168_GPMC_BASE = 0x50000000,
 +    TI8168_PRCM_BASE = 0x48180000,
@@ -2010,6 +2195,13 @@ index 0000000..aa0285d
 +struct TI8168AulaMachineState {
 +    MachineState parent_obj;
 +    struct arm_boot_info bootinfo;
++    uint32_t boot_machine_id;
++    uint64_t boot_ram_start;
++    uint64_t boot_ram_size;
++    uint64_t early_uart_base;
++    char *control_init_file;
++    MemoryRegion early_uart_alias;
++    MemoryRegion *early_uart_target;
 +    MemoryRegion sram;
 +    MemoryRegion wfi_barrier;
 +    MemoryRegion dmm_bootstrap;
@@ -2020,6 +2212,47 @@ index 0000000..aa0285d
 +    bool nand_cow;
 +    Error *migration_blocker;
 +};
++
++/*
++ * These are caller-supplied Linux boot parameters, independent of DDR size.
++ * A zero boot-ram-size selects the full configured DDR capacity. No vendor
++ * machine identity, reserved-memory arrangement, or firmware is implied.
++ */
++#define DEFINE_TI8168_BOOT_PROPERTY(field, type) \
++static void ti8168_get_##field(Object *obj, Visitor *v, const char *name, \
++                               void *opaque, Error **errp) \
++{ \
++    TI8168AulaMachineState *s = TI8168_MEDIABOARD_MACHINE(obj); \
++    visit_type_##type(v, name, &s->field, errp); \
++} \
++static void ti8168_set_##field(Object *obj, Visitor *v, const char *name, \
++                               void *opaque, Error **errp) \
++{ \
++    TI8168AulaMachineState *s = TI8168_MEDIABOARD_MACHINE(obj); \
++    type##_t value; \
++    if (visit_type_##type(v, name, &value, errp)) { \
++        s->field = value; \
++    } \
++}
++
++DEFINE_TI8168_BOOT_PROPERTY(boot_machine_id, uint32)
++DEFINE_TI8168_BOOT_PROPERTY(boot_ram_start, uint64)
++DEFINE_TI8168_BOOT_PROPERTY(boot_ram_size, uint64)
++DEFINE_TI8168_BOOT_PROPERTY(early_uart_base, uint64)
++
++static char *ti8168_get_control_init_file(Object *obj, Error **errp)
++{
++    return g_strdup(TI8168_MEDIABOARD_MACHINE(obj)->control_init_file);
++}
++
++static void ti8168_set_control_init_file(Object *obj, const char *value,
++                                         Error **errp)
++{
++    TI8168AulaMachineState *s = TI8168_MEDIABOARD_MACHINE(obj);
++
++    g_free(s->control_init_file);
++    s->control_init_file = g_strdup(value);
++}
 +
 +static int ti8168_get_nand_profile(Object *obj, Error **errp)
 +{
@@ -2126,8 +2359,21 @@ index 0000000..aa0285d
 +
 +static void ti8168_mediaboard_validate(const MachineState *machine)
 +{
-+    if (machine->ram_size != TI8168_RAM_SIZE) {
-+        error_report("ti8168-mediaboard synthetic model requires 512 MiB RAM");
++    const TI8168AulaMachineState *s = TI8168_MEDIABOARD_MACHINE(machine);
++    uint64_t boot_size = s->boot_ram_size ? s->boot_ram_size : machine->ram_size;
++    uint64_t ram_end = (uint64_t)TI8168_RAM_BASE + machine->ram_size;
++
++    if (machine->ram_size != 512 * MiB && machine->ram_size != 1 * GiB &&
++        machine->ram_size != 2 * GiB) {
++        error_report("ti8168-mediaboard requires 512 MiB, 1 GiB, or 2 GiB RAM");
++        exit(EXIT_FAILURE);
++    }
++    /* Subtraction avoids overflow for untrusted uint64 property values. */
++    if (s->boot_ram_start < TI8168_RAM_BASE || s->boot_ram_start >= ram_end ||
++        boot_size > ram_end - s->boot_ram_start ||
++        (s->boot_ram_start & 0xfff) || (boot_size & 0xfff)) {
++        error_report("boot RAM must be a nonempty 4 KiB-aligned window "
++                     "inside mapped DDR");
 +        exit(EXIT_FAILURE);
 +    }
 +    if (machine->smp.cpus != 1) {
@@ -2170,6 +2416,7 @@ index 0000000..aa0285d
 +                           ti8168_intc_get_irq(intc, TI8168_IRQ_UART1),
 +                           3000000, serial_hd(0), DEVICE_LITTLE_ENDIAN);
 +    serial_mm_enable_omap_compat(uart1);
++    s->early_uart_target = sysbus_mmio_get_region(SYS_BUS_DEVICE(uart1), 0);
 +    serial_mm_enable_omap_compat(
 +        serial_mm_init(system_memory, TI8168_UART2_BASE, 2,
 +                       ti8168_intc_get_irq(intc, TI8168_IRQ_UART2),
@@ -2187,6 +2434,34 @@ index 0000000..aa0285d
 +                        PROBE_UART);
 +}
 +
++static void ti8168_mediaboard_create_early_uart_alias(
++    TI8168AulaMachineState *s)
++{
++    MemoryRegion *system_memory = get_system_memory();
++    MemoryRegionSection overlap;
++
++    if (!s->early_uart_base) {
++        return;
++    }
++    if ((s->early_uart_base & 0x1f) ||
++        s->early_uart_base > UINT32_MAX - 0x1f) {
++        error_report("early-uart-base must be a 0x20-aligned ARM32 address");
++        exit(EXIT_FAILURE);
++    }
++    /* Check after all fixed peripherals exist; never shadow another mapping. */
++    overlap = memory_region_find(system_memory, s->early_uart_base, 0x20);
++    if (overlap.mr) {
++        memory_region_unref(overlap.mr);
++        error_report("early-uart-base overlaps mapped memory");
++        exit(EXIT_FAILURE);
++    }
++    memory_region_init_alias(&s->early_uart_alias, OBJECT(s),
++                              "ti8168.early-uart-alias", s->early_uart_target,
++                              0, 0x20);
++    memory_region_add_subregion(system_memory, s->early_uart_base,
++                                &s->early_uart_alias);
++}
++
 +static DeviceState *ti8168_mediaboard_create_peripherals(
 +    TI8168AulaMachineState *s, DeviceState *intc)
 +{
@@ -2196,17 +2471,21 @@ index 0000000..aa0285d
 +    };
 +    static const unsigned timer_irqs[] = { 67, 68, 69, 92, 93, 94, 95 };
 +    DeviceState *nand = NULL;
++    DeviceState *prcm = ti8168_prcm_create(OBJECT(s), TI8168_PRCM_BASE);
 +    int i;
 +
 +    for (i = 0; i < ARRAY_SIZE(timer_bases); i++) {
-+        ti8168_timer_create(OBJECT(s), timer_bases[i],
-+                            ti8168_intc_get_irq(intc, timer_irqs[i]));
++        DeviceState *timer = ti8168_timer_create(
++            OBJECT(s), timer_bases[i], ti8168_intc_get_irq(intc, timer_irqs[i]),
++            ti8168_prcm_timer_clock(prcm, i));
++
++        qdev_connect_gpio_out_named(prcm, "timer-enable", i,
++                                    qdev_get_gpio_in_named(timer,
++                                                          "module-enable", 0));
 +    }
 +
-+    ti8168_probe_create(OBJECT(s), "control-probe", TI8168_CONTROL_BASE, 0x21000,
-+                        PROBE_CONTROL);
-+    ti8168_probe_create(OBJECT(s), "prcm-probe", TI8168_PRCM_BASE, 0x4000,
-+                        PROBE_PRCM);
++    ti8168_control_create(OBJECT(s), "control-probe", TI8168_CONTROL_BASE,
++                          0x21000, s->control_init_file);
 +    ti8168_edma_cc_bootstrap_create(OBJECT(s), TI8168_EDMA_CC_BASE);
 +    ti8168_pciess_bootstrap_create(OBJECT(s), TI8168_PCIESS_BASE);
 +    ti8168_mcspi_bootstrap_create(OBJECT(s), TI8168_MCSPI_BASE);
@@ -2224,9 +2503,16 @@ index 0000000..aa0285d
 +static void ti8168_mediaboard_add_placeholders(TI8168AulaMachineState *s,
 +                                          DeviceState *intc)
 +{
++    /* SPRUGX8C table 1-68: GPIO0 IRQ0/1 = 96/97; GPIO1 = 98/99.
++     * No board-specific pad wiring or external input levels are inferred.
++     */
++    ti8168_gpio_create(OBJECT(s), "gpio0", 0x48032000,
++                       ti8168_intc_get_irq(intc, 96),
++                       ti8168_intc_get_irq(intc, 97));
++    ti8168_gpio_create(OBJECT(s), "gpio1", 0x4804c000,
++                       ti8168_intc_get_irq(intc, 98),
++                       ti8168_intc_get_irq(intc, 99));
 +    /* Explicit placeholders: every region has a named fidelity gap. */
-+    create_unimplemented_device("ti8168.gpio1", 0x48032000, 0x1000);
-+    create_unimplemented_device("ti8168.gpio2", 0x4804c000, 0x1000);
 +    create_unimplemented_device("ti8168.i2c1", 0x48028000, 0x1000);
 +    create_unimplemented_device("ti8168.i2c2", 0x4802a000, 0x1000);
 +    /* Unimplemented TI8168 peripheral apertures. */
@@ -2235,7 +2521,7 @@ index 0000000..aa0285d
 +    create_unimplemented_device("ti8168.mcasp2", 0x48050000, 0x1000);
 +    create_unimplemented_device("ti8168.mmc1", 0x48060000, 0x1000);
 +    create_unimplemented_device("ti8168.rtc", 0x480c0000, 0x1000);
-+    create_unimplemented_device("ti8168.watchdog", 0x480c2000, 0x1000);
++    ti8168_watchdog_create(OBJECT(s), 0x480c2000);
 +    create_unimplemented_device("ti8168.mailbox", 0x480c8000, 0x1000);
 +    ti8168_emac_create(OBJECT(s), "emac0", 0x4a100000,
 +                       ti8168_intc_get_irq(intc, TI8168_IRQ_EMAC0_RX_THRESH),
@@ -2252,9 +2538,9 @@ index 0000000..aa0285d
 +                                     MachineState *machine, ARMCPU *cpu)
 +{
 +    s->bootinfo = (struct arm_boot_info) {
-+        .ram_size = machine->ram_size,
-+        .loader_start = TI8168_RAM_BASE,
-+        .board_id = TI8168_MACHINE_ID,
++        .ram_size = s->boot_ram_size ? s->boot_ram_size : machine->ram_size,
++        .loader_start = s->boot_ram_start,
++        .board_id = s->boot_machine_id,
 +        .kernel_filename = machine->kernel_filename,
 +        .kernel_cmdline = machine->kernel_cmdline,
 +        .initrd_filename = machine->initrd_filename,
@@ -2283,6 +2569,7 @@ index 0000000..aa0285d
 +        g_assert_not_reached();
 +    }
 +    ti8168_mediaboard_add_placeholders(s, intc);
++    ti8168_mediaboard_create_early_uart_alias(s);
 +    ti8168_mediaboard_load_kernel(s, machine, cpu);
 +}
 +
@@ -2301,6 +2588,31 @@ index 0000000..aa0285d
 +    mc->no_cdrom = true;
 +    mc->no_parallel = true;
 +    mc->default_ram_id = "ti8168.ddr3";
++    object_class_property_add_str(oc, "control-init-file",
++                                  ti8168_get_control_init_file,
++                                  ti8168_set_control_init_file);
++    object_class_property_set_description(oc, "control-init-file",
++        "Optional exact 0x1000-byte little-endian CONTROL initial snapshot");
++    object_class_property_add(oc, "early-uart-base", "uint64",
++                              ti8168_get_early_uart_base,
++                              ti8168_set_early_uart_base, NULL, NULL);
++    object_class_property_set_description(oc, "early-uart-base",
++        "Optional unmapped address for a UART1 legacy-window alias (0 disables)");
++    object_class_property_add(oc, "boot-machine-id", "uint32",
++                              ti8168_get_boot_machine_id,
++                              ti8168_set_boot_machine_id, NULL, NULL);
++    object_class_property_set_description(oc, "boot-machine-id",
++        "Caller-selected ARM Linux machine ID (default 0)");
++    object_class_property_add(oc, "boot-ram-start", "uint64",
++                              ti8168_get_boot_ram_start,
++                              ti8168_set_boot_ram_start, NULL, NULL);
++    object_class_property_set_description(oc, "boot-ram-start",
++        "ARM Linux boot window base inside DDR (default 0x80000000)");
++    object_class_property_add(oc, "boot-ram-size", "uint64",
++                              ti8168_get_boot_ram_size,
++                              ti8168_set_boot_ram_size, NULL, NULL);
++    object_class_property_set_description(oc, "boot-ram-size",
++        "ARM Linux boot window bytes (0 selects full configured DDR capacity)");
 +    object_class_property_add_enum(oc, "nand-profile", "TI8168NandProfile",
 +                                   &ti8168_nand_profile_lookup,
 +                                   ti8168_get_nand_profile,
@@ -2329,7 +2641,10 @@ index 0000000..aa0285d
 +
 +static void ti8168_mediaboard_instance_init(Object *obj)
 +{
-+    TI8168_MEDIABOARD_MACHINE(obj)->nand_read_only = true;
++    TI8168AulaMachineState *s = TI8168_MEDIABOARD_MACHINE(obj);
++
++    s->nand_read_only = true;
++    s->boot_ram_start = TI8168_RAM_BASE;
 +}
 +
 +static void ti8168_mediaboard_instance_finalize(Object *obj)
@@ -2337,6 +2652,7 @@ index 0000000..aa0285d
 +    TI8168AulaMachineState *s = TI8168_MEDIABOARD_MACHINE(obj);
 +    unsigned i;
 +
++    g_clear_pointer(&s->control_init_file, g_free);
 +    for (i = 0; i < ARRAY_SIZE(s->nand_images); i++) {
 +        g_clear_pointer(&s->nand_images[i], g_free);
 +        g_clear_pointer(&s->nand_oob_images[i], g_free);
@@ -2361,10 +2677,10 @@ index 0000000..aa0285d
 +type_init(ti8168_mediaboard_register_types)
 diff --git a/hw/arm/ti8168_mediaboard.h b/hw/arm/ti8168_mediaboard.h
 new file mode 100644
-index 0000000..62c7305
+index 0000000..6fd0815
 --- /dev/null
 +++ b/hw/arm/ti8168_mediaboard.h
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,61 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +/* Internal interfaces between the synthetic TI8168 machine and its devices. */
 +#ifndef HW_ARM_TI8168_MEDIABOARD_H
@@ -2375,6 +2691,8 @@ index 0000000..62c7305
 +
 +#define TYPE_TI8168_INTC "ti8168-intc"
 +#define TYPE_TI8168_TIMER "ti8168-timer"
++#define TYPE_TI8168_WATCHDOG "ti8168-watchdog"
++#define TYPE_TI8168_PRCM "ti8168-prcm"
 +#define TYPE_TI8168_PROBE_REGS "ti8168-probe-regs"
 +#define TYPE_TI8168_SYNTHETIC_NAND "ti8168-synthetic-nand"
 +#define TYPE_TI8168_GPMC "ti8168-gpmc"
@@ -2396,7 +2714,11 @@ index 0000000..62c7305
 +DeviceState *ti8168_intc_create(Object *parent, hwaddr base,
 +                                qemu_irq irq, qemu_irq fiq);
 +qemu_irq ti8168_intc_get_irq(DeviceState *dev, unsigned irq);
-+void ti8168_timer_create(Object *parent, hwaddr base, qemu_irq irq);
++DeviceState *ti8168_timer_create(Object *parent, hwaddr base, qemu_irq irq,
++                                  Clock *fclk);
++void ti8168_watchdog_create(Object *parent, hwaddr base);
++DeviceState *ti8168_prcm_create(Object *parent, hwaddr base);
++Clock *ti8168_prcm_timer_clock(DeviceState *dev, unsigned index);
 +DeviceState *ti8168_synthetic_nand_create(
 +    Object *parent, char *const images[TI8168_NAND_MTD_COUNT],
 +    char *const oob_images[TI8168_NAND_MTD_COUNT],
@@ -2412,6 +2734,9 @@ index 0000000..62c7305
 +DeviceState *ti8168_probe_create(Object *parent, const char *child_name,
 +                                 hwaddr base, uint32_t size,
 +                                 enum TI8168ProbeRole role);
++DeviceState *ti8168_control_create(Object *parent, const char *child_name,
++                                   hwaddr base, uint32_t size,
++                                   const char *initial_registers);
 +void ti8168_emac_create(Object *parent, const char *child_name, hwaddr base,
 +                        qemu_irq rx_thresh_irq, qemu_irq rx_irq,
 +                        qemu_irq tx_irq, qemu_irq misc_irq);
@@ -3167,12 +3492,220 @@ index 0000000..727cfff
 +        s->regions[i] = ti8168_nand_region_layout[i];
 +    }
 +}
+diff --git a/hw/arm/ti8168_prcm.c b/hw/arm/ti8168_prcm.c
+new file mode 100644
+index 0000000..110b7b5
+--- /dev/null
++++ b/hw/arm/ti8168_prcm.c
+@@ -0,0 +1,202 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* Public DM816x timer-clock subset of PRCM (SPRUGX8C chapter 18). */
++#include "qemu/osdep.h"
++#include "hw/core/qdev-clock.h"
++#include "ti8168_internal.h"
++
++OBJECT_DECLARE_SIMPLE_TYPE(TI8168PRCMState, TI8168_PRCM)
++
++#define TI8168_PRCM_TIMER_COUNT 7
++#define TI8168_PRCM_SIZE 0x4000
++#define TI8168_PRCM_TIMER_CLKSEL 0x390
++#define TI8168_PRCM_TIMER_CLKCTRL 0x1570
++
++struct TI8168PRCMState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    Clock *timer_clock[TI8168_PRCM_TIMER_COUNT];
++    qemu_irq timer_enable[TI8168_PRCM_TIMER_COUNT];
++    uint32_t timer_select[TI8168_PRCM_TIMER_COUNT];
++    uint32_t timer_mode[TI8168_PRCM_TIMER_COUNT];
++    uint32_t clkin_frequency;
++    uint32_t sysclk18_frequency;
++    uint32_t tclkin_frequency;
++    unsigned unimp_logs;
++};
++
++static uint32_t ti8168_prcm_timer_rate(TI8168PRCMState *s, unsigned index)
++{
++    if (s->timer_mode[index] != 2) {
++        return 0;
++    }
++    switch (s->timer_select[index]) {
++    case 0: return s->tclkin_frequency;
++    case 1: return s->sysclk18_frequency;
++    case 2: return s->clkin_frequency;
++    default: g_assert_not_reached();
++    }
++}
++
++static void ti8168_prcm_update_timer(TI8168PRCMState *s, unsigned index)
++{
++    /* Only implemented timers receive an immediate clock/idle handshake. */
++    qemu_set_irq(s->timer_enable[index], s->timer_mode[index] == 2);
++    clock_update_hz(s->timer_clock[index], ti8168_prcm_timer_rate(s, index));
++}
++
++static int ti8168_prcm_timer_index(hwaddr offset, hwaddr base)
++{
++    if (offset < base || offset >= base + TI8168_PRCM_TIMER_COUNT * 4 ||
++        (offset & 3)) {
++        return -1;
++    }
++    return (offset - base) / 4;
++}
++
++static void ti8168_prcm_unimplemented(TI8168PRCMState *s, hwaddr offset,
++                                      bool write)
++{
++    if (s->unimp_logs++ < 16) {
++        qemu_log_mask(LOG_UNIMP, "ti8168-prcm: unimplemented %s offset 0x%"
++                      HWADDR_PRIx "\n", write ? "write" : "read", offset);
++    }
++}
++
++static uint64_t ti8168_prcm_read(void *opaque, hwaddr offset, unsigned size)
++{
++    TI8168PRCMState *s = opaque;
++    int index = ti8168_prcm_timer_index(offset, TI8168_PRCM_TIMER_CLKSEL);
++
++    if (index >= 0) {
++        return s->timer_select[index];
++    }
++    index = ti8168_prcm_timer_index(offset, TI8168_PRCM_TIMER_CLKCTRL);
++    if (index >= 0) {
++        /* Never acknowledge functional state without an available source.
++         * Clock-domain idle requests and finite transition delays are absent. */
++        unsigned idle = s->timer_mode[index] != 2 ? 3 :
++                        ti8168_prcm_timer_rate(s, index) ? 0 : 1;
++
++        return s->timer_mode[index] | (idle << 16);
++    }
++    ti8168_prcm_unimplemented(s, offset, false);
++    return 0;
++}
++
++static void ti8168_prcm_write(void *opaque, hwaddr offset, uint64_t value,
++                               unsigned size)
++{
++    TI8168PRCMState *s = opaque;
++    int index = ti8168_prcm_timer_index(offset, TI8168_PRCM_TIMER_CLKSEL);
++    unsigned field = value & 3;
++
++    if (index >= 0) {
++        if (field == 3) {
++            qemu_log_mask(LOG_GUEST_ERROR,
++                          "ti8168-prcm: reserved timer clock selection ignored\n");
++            return;
++        }
++        s->timer_select[index] = field;
++        ti8168_prcm_update_timer(s, index);
++        return;
++    }
++    index = ti8168_prcm_timer_index(offset, TI8168_PRCM_TIMER_CLKCTRL);
++    if (index >= 0) {
++        if (field != 0 && field != 2) {
++            qemu_log_mask(LOG_GUEST_ERROR,
++                          "ti8168-prcm: reserved timer module mode ignored\n");
++            return;
++        }
++        s->timer_mode[index] = field;
++        ti8168_prcm_update_timer(s, index);
++        return;
++    }
++    ti8168_prcm_unimplemented(s, offset, true);
++}
++
++static const MemoryRegionOps ti8168_prcm_ops = {
++    .read = ti8168_prcm_read,
++    .write = ti8168_prcm_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = { .min_access_size = 4, .max_access_size = 4 },
++};
++
++static void ti8168_prcm_reset(DeviceState *dev)
++{
++    TI8168PRCMState *s = TI8168_PRCM(dev);
++    unsigned index;
++
++    /* QEMU machine reset is cold reset; warm-reset control is unimplemented. */
++    s->unimp_logs = 0;
++    for (index = 0; index < TI8168_PRCM_TIMER_COUNT; index++) {
++        s->timer_select[index] = 1;
++        s->timer_mode[index] = 0;
++        ti8168_prcm_update_timer(s, index);
++    }
++}
++
++static void ti8168_prcm_init(Object *obj)
++{
++    TI8168PRCMState *s = TI8168_PRCM(obj);
++    unsigned index;
++
++    memory_region_init_io(&s->iomem, obj, &ti8168_prcm_ops, s,
++                          TYPE_TI8168_PRCM, TI8168_PRCM_SIZE);
++    sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
++    qdev_init_gpio_out_named(DEVICE(obj), s->timer_enable, "timer-enable",
++                             TI8168_PRCM_TIMER_COUNT);
++    for (index = 0; index < TI8168_PRCM_TIMER_COUNT; index++) {
++        g_autofree char *name = g_strdup_printf("timer%u-fclk", index + 1);
++
++        s->timer_clock[index] = qdev_init_clock_out(DEVICE(obj), name);
++    }
++}
++
++static const Property ti8168_prcm_properties[] = {
++    /* These are explicit inputs to the bounded mux, not an emulated FAPLL. */
++    DEFINE_PROP_UINT32("clkin-frequency", TI8168PRCMState,
++                       clkin_frequency, 27000000),
++    DEFINE_PROP_UINT32("sysclk18-frequency", TI8168PRCMState,
++                       sysclk18_frequency, 32768),
++    DEFINE_PROP_UINT32("tclkin-frequency", TI8168PRCMState,
++                       tclkin_frequency, 0),
++};
++
++static void ti8168_prcm_class_init(ObjectClass *klass, const void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    device_class_set_legacy_reset(dc, ti8168_prcm_reset);
++    device_class_set_props(dc, ti8168_prcm_properties);
++}
++
++static const TypeInfo ti8168_prcm_type_info = {
++    .name = TYPE_TI8168_PRCM,
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(TI8168PRCMState),
++    .instance_init = ti8168_prcm_init,
++    .class_init = ti8168_prcm_class_init,
++};
++
++DeviceState *ti8168_prcm_create(Object *parent, hwaddr base)
++{
++    DeviceState *dev = qdev_new(TYPE_TI8168_PRCM);
++
++    object_property_add_child(parent, "prcm", OBJECT(dev));
++    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
++    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
++    return dev;
++}
++
++Clock *ti8168_prcm_timer_clock(DeviceState *dev, unsigned index)
++{
++    g_assert(index < TI8168_PRCM_TIMER_COUNT);
++    return TI8168_PRCM(dev)->timer_clock[index];
++}
++
++static void ti8168_prcm_register_types(void)
++{
++    type_register_static(&ti8168_prcm_type_info);
++}
++
++type_init(ti8168_prcm_register_types)
 diff --git a/hw/arm/ti8168_probe_regs.c b/hw/arm/ti8168_probe_regs.c
 new file mode 100644
-index 0000000..d2dddaa
+index 0000000..bd3e086
 --- /dev/null
 +++ b/hw/arm/ti8168_probe_regs.c
-@@ -0,0 +1,258 @@
+@@ -0,0 +1,349 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +/* TI8168 bounded probe-register compatibility device. */
 +
@@ -3199,7 +3732,9 @@ index 0000000..d2dddaa
 +    uint32_t mdr1;
 +    uint32_t scr;
 +    uint16_t wer;
-+    uint32_t control_regs[0x1000 / sizeof(uint32_t)];
++    char *initial_registers;
++    uint8_t control_initial[0x1000];
++    uint8_t control_regs[0x1000];
 +    unsigned unimp_logs;
 +};
 +
@@ -3228,13 +3763,19 @@ index 0000000..d2dddaa
 +}
 +
 +static bool ti8168_probe_control_read(TI8168ProbeRegsState *s, hwaddr offset,
-+                                      uint64_t *value)
++                                      unsigned size, uint64_t *value)
 +{
-+    if (offset < sizeof(s->control_regs) && !(offset & 3)) {
-+        *value = s->control_regs[offset / 4];
-+        return true;
++    unsigned i;
++
++    if (offset >= sizeof(s->control_regs) ||
++        size > sizeof(s->control_regs) - offset) {
++        return false;
 +    }
-+    return false;
++    *value = 0;
++    for (i = 0; i < size; i++) {
++        *value |= (uint64_t)s->control_regs[offset + i] << (i * 8);
++    }
++    return true;
 +}
 +
 +static bool ti8168_probe_gpmc_read(TI8168ProbeRegsState *s, hwaddr offset,
@@ -3279,7 +3820,7 @@ index 0000000..d2dddaa
 +
 +    switch (s->role) {
 +    case PROBE_CONTROL:
-+        handled = ti8168_probe_control_read(s, offset, &value);
++        handled = ti8168_probe_control_read(s, offset, size, &value);
 +        break;
 +    case PROBE_GPMC:
 +        handled = ti8168_probe_gpmc_read(s, offset, &value);
@@ -3317,9 +3858,13 @@ index 0000000..d2dddaa
 +        s->config = value;
 +        return;
 +    }
-+    if (s->role == PROBE_CONTROL &&
-+        offset < sizeof(s->control_regs) && !(offset & 3)) {
-+        s->control_regs[offset / 4] = value;
++    if (s->role == PROBE_CONTROL && offset < sizeof(s->control_regs) &&
++        size <= sizeof(s->control_regs) - offset) {
++        unsigned i;
++
++        for (i = 0; i < size; i++) {
++            s->control_regs[offset + i] = value >> (i * 8);
++        }
 +        return;
 +    }
 +    if (s->role == PROBE_UART) {
@@ -3349,8 +3894,9 @@ index 0000000..d2dddaa
 +        return size == 1 || (size == 2 && !(offset & 1)) ||
 +               (size == 4 && !(offset & 3));
 +    }
-+    if (s->role == PROBE_CONTROL) {
-+        return size == 4 && !(offset & 3);
++    if (s->role == PROBE_CONTROL && offset < sizeof(s->control_regs)) {
++        return (size == 2 || size == 4) && !(offset & (size - 1)) &&
++               size <= sizeof(s->control_regs) - offset;
 +    }
 +    return size == 4 && !(offset & 3);
 +}
@@ -3373,8 +3919,62 @@ index 0000000..d2dddaa
 +    s->mdr1 = 0x7;
 +    s->scr = 0;
 +    s->wer = 0;
-+    memset(s->control_regs, 0, sizeof(s->control_regs));
++    memcpy(s->control_regs, s->control_initial, sizeof(s->control_regs));
 +    s->unimp_logs = 0;
++}
++
++/* Caller-supplied register state is a snapshot, never a reset-value claim. */
++static bool ti8168_probe_load_initial(TI8168ProbeRegsState *s, Error **errp)
++{
++    struct stat st;
++    size_t loaded = 0;
++    int fd;
++
++    if (!s->initial_registers) {
++        return true;
++    }
++    if (s->role != PROBE_CONTROL) {
++        error_setg(errp, "initial-registers is supported only for CONTROL");
++        return false;
++    }
++    /* NONBLOCK prevents a caller-selected FIFO from hanging realization. */
++    fd = qemu_open(s->initial_registers, O_RDONLY | O_NONBLOCK, errp);
++    if (fd < 0) {
++        return false;
++    }
++    if (fstat(fd, &st) < 0) {
++        error_setg_errno(errp, errno, "cannot stat CONTROL initial-registers");
++        close(fd);
++        return false;
++    }
++    if (!S_ISREG(st.st_mode) || st.st_size != sizeof(s->control_initial)) {
++        error_setg(errp, "CONTROL initial-registers must be a regular "
++                   "file of exactly 0x1000 bytes");
++        close(fd);
++        return false;
++    }
++    while (loaded < sizeof(s->control_initial)) {
++        ssize_t result = read(fd, s->control_initial + loaded,
++                              sizeof(s->control_initial) - loaded);
++
++        if (result < 0 && errno == EINTR) {
++            continue;
++        }
++        if (result <= 0) {
++            if (result < 0) {
++                error_setg_errno(errp, errno,
++                                 "cannot read CONTROL initial-registers");
++            } else {
++                error_setg(errp, "short read of CONTROL initial-registers");
++            }
++            close(fd);
++            return false;
++        }
++        loaded += result;
++    }
++    close(fd);
++    memcpy(s->control_regs, s->control_initial, sizeof(s->control_regs));
++    return true;
 +}
 +
 +static void ti8168_probe_realize(DeviceState *dev, Error **errp)
@@ -3385,12 +3985,17 @@ index 0000000..d2dddaa
 +        error_setg(errp, "ti8168-probe-regs size must be non-zero");
 +        return;
 +    }
++    if (!ti8168_probe_load_initial(s, errp)) {
++        return;
++    }
 +    memory_region_init_io(&s->iomem, OBJECT(dev), &ti8168_probe_ops, s,
 +                          "ti8168.probe-regs", s->size);
 +    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
 +}
 +
 +static const Property ti8168_probe_properties[] = {
++    DEFINE_PROP_STRING("initial-registers", TI8168ProbeRegsState,
++                       initial_registers),
 +    DEFINE_PROP_UINT32("role", TI8168ProbeRegsState, role, PROBE_CONTROL),
 +    DEFINE_PROP_UINT32("size", TI8168ProbeRegsState, size, 0x1000),
 +};
@@ -3411,18 +4016,37 @@ index 0000000..d2dddaa
 +    .class_init = ti8168_probe_class_init,
 +};
 +
-+DeviceState *ti8168_probe_create(Object *parent, const char *child_name,
-+                                 hwaddr base, uint32_t size,
-+                                 enum TI8168ProbeRole role)
++static DeviceState *ti8168_probe_create_initialized(
++    Object *parent, const char *child_name, hwaddr base, uint32_t size,
++    enum TI8168ProbeRole role, const char *initial_registers)
 +{
 +    DeviceState *dev = qdev_new(TYPE_TI8168_PROBE_REGS);
 +
 +    object_property_add_child(parent, child_name, OBJECT(dev));
 +    qdev_prop_set_uint32(dev, "role", role);
++    if (initial_registers) {
++        qdev_prop_set_string(dev, "initial-registers", initial_registers);
++    }
 +    qdev_prop_set_uint32(dev, "size", size);
 +    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 +    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
 +    return dev;
++}
++
++DeviceState *ti8168_probe_create(Object *parent, const char *child_name,
++                                 hwaddr base, uint32_t size,
++                                 enum TI8168ProbeRole role)
++{
++    return ti8168_probe_create_initialized(parent, child_name, base, size,
++                                            role, NULL);
++}
++
++DeviceState *ti8168_control_create(Object *parent, const char *child_name,
++                                   hwaddr base, uint32_t size,
++                                   const char *initial_registers)
++{
++    return ti8168_probe_create_initialized(parent, child_name, base, size,
++                                            PROBE_CONTROL, initial_registers);
 +}
 +
 +static void ti8168_probe_register_types(void)
@@ -3433,14 +4057,15 @@ index 0000000..d2dddaa
 +type_init(ti8168_probe_register_types)
 diff --git a/hw/arm/ti8168_timer.c b/hw/arm/ti8168_timer.c
 new file mode 100644
-index 0000000..cf6f6ac
+index 0000000..02dd3e8
 --- /dev/null
 +++ b/hw/arm/ti8168_timer.c
-@@ -0,0 +1,239 @@
+@@ -0,0 +1,412 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
-+/* TI8168 dual-mode timer compatibility device. */
++/* TI8168 dual-mode timer, register contract from SPRUGX8C chapter 21. */
 +
 +#include "qemu/osdep.h"
++#include "hw/core/qdev-clock.h"
 +#include "ti8168_internal.h"
 +
 +OBJECT_DECLARE_SIMPLE_TYPE(TI8168TimerState, TI8168_TIMER)
@@ -3449,7 +4074,11 @@ index 0000000..cf6f6ac
 +    MemoryRegion iomem;
 +    qemu_irq irq;
 +    QEMUTimer *qtimer;
++    QEMUTimer *match_timer;
++    Clock *fclk;
 +    uint32_t frequency;
++    bool module_enabled;
++    uint32_t config;
 +    uint32_t tisr;
 +    uint32_t tier;
 +    uint32_t twer;
@@ -3459,58 +4088,163 @@ index 0000000..cf6f6ac
 +    uint32_t tmar;
 +    uint32_t tsicr;
 +    int64_t started_ns;
++    uint32_t input_fraction; /* Consumed source-clock fraction, /1e9. */
++    uint32_t prescale_progress; /* Whole source clocks toward next count. */
 +};
++
++static void ti8168_timer_reset(DeviceState *dev);
++
++static unsigned ti8168_timer_divisor(TI8168TimerState *s)
++{
++    return s->tclr & BIT(5) ? 1U << (((s->tclr >> 2) & 7) + 1) : 1;
++}
++
++static void ti8168_timer_update_irq(TI8168TimerState *s)
++{
++    qemu_set_irq(s->irq, !!(s->tier & s->tisr));
++}
++
++static bool ti8168_timer_running(TI8168TimerState *s)
++{
++    return s->module_enabled && s->frequency && (s->tclr & 1);
++}
++
++static uint64_t ti8168_timer_progress(TI8168TimerState *s, uint32_t *fraction)
++{
++    uint64_t elapsed, clocks, remainder;
++
++    if (!ti8168_timer_running(s)) {
++        *fraction = s->input_fraction;
++        return s->prescale_progress;
++    }
++    elapsed = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) - s->started_ns;
++    clocks = muldiv64(elapsed, s->frequency, NANOSECONDS_PER_SECOND);
++    remainder = (elapsed % NANOSECONDS_PER_SECOND) * s->frequency %
++                NANOSECONDS_PER_SECOND;
++    remainder += s->input_fraction;
++    *fraction = remainder % NANOSECONDS_PER_SECOND;
++    return clocks + s->prescale_progress +
++           remainder / NANOSECONDS_PER_SECOND;
++}
 +
 +static uint32_t ti8168_timer_count(TI8168TimerState *s)
 +{
-+    uint64_t elapsed, ticks;
++    uint32_t fraction;
++    uint64_t ticks = ti8168_timer_progress(s, &fraction) /
++                     ti8168_timer_divisor(s);
 +
-+    if (!(s->tclr & 1)) {
-+        return s->tcrr;
++    /* The overflow callback owns wrapping and reload, including AR=0 stop. */
++    return s->tcrr + MIN(ticks, (uint64_t)UINT32_MAX - s->tcrr);
++}
++
++static void ti8168_timer_snapshot(TI8168TimerState *s)
++{
++    uint32_t fraction;
++    uint64_t clocks = ti8168_timer_progress(s, &fraction);
++    unsigned divisor = ti8168_timer_divisor(s);
++
++    s->tcrr += MIN(clocks / divisor, (uint64_t)UINT32_MAX - s->tcrr);
++    s->prescale_progress = clocks % divisor;
++    s->input_fraction = fraction;
++    s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++}
++
++static int64_t ti8168_timer_deadline(TI8168TimerState *s, uint64_t ticks)
++{
++    uint64_t clocks = ticks * ti8168_timer_divisor(s) - s->prescale_progress;
++    uint64_t delay = muldiv64(clocks, NANOSECONDS_PER_SECOND, s->frequency);
++    int64_t remainder = (clocks % s->frequency) *
++                        (NANOSECONDS_PER_SECOND % s->frequency) % s->frequency;
++
++    remainder -= s->input_fraction;
++    if (remainder < 0) {
++        uint64_t borrow = (-remainder + s->frequency - 1) / s->frequency;
++
++        delay -= borrow;
++        remainder += borrow * s->frequency;
 +    }
-+    elapsed = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) - s->started_ns;
-+    ticks = muldiv64(elapsed, s->frequency, NANOSECONDS_PER_SECOND);
-+    /* Do not expose a wrapped count while an overflow callback is pending. */
-+    if (!(s->tclr & 2) && ticks >= (uint64_t)UINT32_MAX - s->tcrr) {
-+        return UINT32_MAX;
++    /* Round upward: an event cannot precede its input-clock edge. */
++    return s->started_ns + delay + !!remainder;
++}
++
++static void ti8168_timer_check_match(TI8168TimerState *s)
++{
++    if ((s->tclr & BIT(6)) && ti8168_timer_count(s) == s->tmar) {
++        s->tisr |= 1;
++        ti8168_timer_update_irq(s);
 +    }
-+    return s->tcrr + ticks;
 +}
 +
 +static void ti8168_timer_schedule(TI8168TimerState *s)
 +{
-+    uint32_t count;
-+    uint64_t ticks;
-+    int64_t delay;
++    int64_t deadline;
 +
 +    timer_del(s->qtimer);
-+    if (!(s->tclr & 1)) {
++    timer_del(s->match_timer);
++    if (!ti8168_timer_running(s)) {
 +        return;
 +    }
-+    count = ti8168_timer_count(s);
-+    s->tcrr = count;
-+    s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-+    ticks = (uint64_t)UINT32_MAX - count + 1;
-+    delay = muldiv64(ticks, NANOSECONDS_PER_SECOND, s->frequency);
-+    timer_mod(s->qtimer, s->started_ns + MAX(delay, 1));
++    timer_mod(s->qtimer,
++              ti8168_timer_deadline(s, (1ULL << 32) - s->tcrr));
++    if ((s->tclr & BIT(6)) && s->tmar > s->tcrr) {
++        deadline = ti8168_timer_deadline(s, (uint64_t)s->tmar - s->tcrr);
++        if (deadline > qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)) {
++            timer_mod(s->match_timer, deadline);
++        }
++    }
++}
++
++static void ti8168_timer_match(void *opaque)
++{
++    TI8168TimerState *s = opaque;
++
++    s->tisr |= 1;
++    ti8168_timer_update_irq(s);
 +}
 +
 +static void ti8168_timer_expire(void *opaque)
 +{
 +    TI8168TimerState *s = opaque;
++    uint32_t fraction;
 +
++    /* Retain the continuous input-clock phase at integer-ns delivery time. */
++    ti8168_timer_progress(s, &fraction);
++    s->input_fraction = fraction;
++    s->prescale_progress = 0;
 +    s->tisr |= 2;
-+    qemu_set_irq(s->irq, !!(s->tier & s->tisr));
 +    if (s->tclr & 2) {
 +        s->tcrr = s->tldr;
-+        s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-+        ti8168_timer_schedule(s);
 +    } else {
-+        /* Without AR the free-running counter wraps to zero. */
++        /* One-shot overflow freezes at zero and clears ST (21.2.1.1). */
 +        s->tcrr = 0;
-+        s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++        s->tclr &= ~1U;
++        s->input_fraction = 0;
++    }
++    s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++    ti8168_timer_check_match(s);
++    ti8168_timer_update_irq(s);
++    ti8168_timer_schedule(s);
++}
++
++static void ti8168_timer_clock_update(void *opaque, ClockEvent event)
++{
++    TI8168TimerState *s = opaque;
++
++    if (event == ClockPreUpdate) {
++        ti8168_timer_snapshot(s);
++    } else if (event == ClockUpdate) {
++        s->frequency = clock_get_hz(s->fclk);
 +        ti8168_timer_schedule(s);
 +    }
++}
++
++static void ti8168_timer_module_enable(void *opaque, int n, int level)
++{
++    TI8168TimerState *s = opaque;
++
++    ti8168_timer_snapshot(s);
++    s->module_enabled = !!level;
++    ti8168_timer_schedule(s);
 +}
 +
 +static uint64_t ti8168_timer_read(void *opaque, hwaddr offset, unsigned size)
@@ -3518,15 +4252,18 @@ index 0000000..cf6f6ac
 +    TI8168TimerState *s = opaque;
 +
 +    switch (offset) {
-+    case 0x00: return 0x40;
-+    case 0x10: return 0;
-+    case 0x14: return 1;
++    case 0x00: return 0x4fff1301; /* SPRUGX8C Table 21-7. */
++    case 0x10: return s->config;
++    case 0x20: return 0; /* EOI is unused for the level output. */
 +    case 0x24: return s->tisr;
-+    case 0x28: return s->tisr;
++    case 0x28: return s->tisr & s->tier;
++    case 0x2c:
++    case 0x30: return s->tier;
 +    case 0x34: return s->twer;
 +    case 0x38: return s->tclr;
 +    case 0x3c: return ti8168_timer_count(s);
 +    case 0x40: return s->tldr;
++    case 0x44: return UINT32_MAX;
 +    case 0x48: return 0; /* TWPS: all writes take effect immediately. */
 +    case 0x4c: return s->tmar;
 +    case 0x54: return s->tsicr;
@@ -3539,55 +4276,108 @@ index 0000000..cf6f6ac
 +{
 +    TI8168TimerState *s = opaque;
 +    uint32_t old_count = ti8168_timer_count(s);
++    uint32_t old_tclr = s->tclr;
 +
 +    switch (offset) {
 +    case 0x10:
-+        if (value & 2) {
-+            s->tisr = s->tier = s->twer = s->tclr = s->tsicr = 0;
-+            s->tcrr = s->tldr = s->tmar = 0;
-+            timer_del(s->qtimer);
-+            qemu_set_irq(s->irq, 0);
++        if (value & 1) {
++            ti8168_timer_reset(DEVICE(s));
++        } else {
++            s->config = value & 0xe;
 +        }
 +        return;
++    case 0x24:
++        s->tisr |= value & 7;
++        ti8168_timer_update_irq(s);
++        return;
 +    case 0x28:
-+        s->tisr &= ~value;
-+        qemu_set_irq(s->irq, !!(s->tier & s->tisr));
++        s->tisr &= ~(value & 7);
++        ti8168_timer_update_irq(s);
 +        return;
 +    case 0x2c:
 +        s->tier |= value & 7;
-+        qemu_set_irq(s->irq, !!(s->tier & s->tisr));
++        ti8168_timer_update_irq(s);
 +        return;
 +    case 0x30:
 +        s->tier &= ~(value & 7);
-+        qemu_set_irq(s->irq, !!(s->tier & s->tisr));
++        ti8168_timer_update_irq(s);
 +        return;
 +    case 0x34: s->twer = value & 7; return;
 +    case 0x38:
-+        s->tcrr = old_count;
-+        s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-+        s->tclr = value;
++        s->tclr = value & 0x7fff;
++        /* Preserve fractional input-clock phase for compare-only changes. */
++        if ((old_tclr ^ s->tclr) & 0x3d) {
++            s->tcrr = old_count;
++            s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++            s->input_fraction = s->prescale_progress = 0;
++        }
++        if (!(old_tclr & BIT(6)) && (s->tclr & BIT(6))) {
++            ti8168_timer_check_match(s);
++        }
++        if (!(old_tclr & 0x300) && (s->tclr & 0x300)) {
++            s->tisr &= ~4U; /* Enabling capture resets capture status. */
++            ti8168_timer_update_irq(s);
++        }
 +        ti8168_timer_schedule(s);
 +        return;
 +    case 0x3c:
 +        s->tcrr = value;
 +        s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++        s->input_fraction = s->prescale_progress = 0;
++        ti8168_timer_check_match(s);
 +        ti8168_timer_schedule(s);
 +        return;
 +    case 0x40: s->tldr = value; return;
 +    case 0x44:
 +        s->tcrr = s->tldr;
 +        s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++        s->input_fraction = s->prescale_progress = 0;
++        ti8168_timer_check_match(s);
 +        ti8168_timer_schedule(s);
 +        return;
-+    case 0x4c: s->tmar = value; return;
-+    case 0x54: s->tsicr = value; return;
++    case 0x4c:
++        s->tmar = value;
++        ti8168_timer_check_match(s);
++        ti8168_timer_schedule(s);
++        return;
++    case 0x54:
++        if (value & 2) {
++            ti8168_timer_reset(DEVICE(s));
++        }
++        s->tsicr = value & 4;
++        return;
 +    default: return;
 +    }
 +}
 +
++static MemTxResult ti8168_timer_read_with_attrs(void *opaque, hwaddr offset,
++                                                uint64_t *value, unsigned size,
++                                                MemTxAttrs attrs)
++{
++    TI8168TimerState *s = opaque;
++
++    if (!s->module_enabled) {
++        *value = 0;
++        return MEMTX_ERROR;
++    }
++    *value = ti8168_timer_read(opaque, offset, size);
++    return MEMTX_OK;
++}
++
++static MemTxResult ti8168_timer_write_with_attrs(void *opaque, hwaddr offset,
++                                                 uint64_t value, unsigned size,
++                                                 MemTxAttrs attrs)
++{
++    if (!TI8168_TIMER(opaque)->module_enabled) {
++        return MEMTX_ERROR;
++    }
++    ti8168_timer_write(opaque, offset, value, size);
++    return MEMTX_OK;
++}
++
 +static const MemoryRegionOps ti8168_timer_ops = {
-+    .read = ti8168_timer_read,
-+    .write = ti8168_timer_write,
++    .read_with_attrs = ti8168_timer_read_with_attrs,
++    .write_with_attrs = ti8168_timer_write_with_attrs,
 +    .endianness = DEVICE_LITTLE_ENDIAN,
 +    .valid = { .min_access_size = 4, .max_access_size = 4 },
 +};
@@ -3597,10 +4387,12 @@ index 0000000..cf6f6ac
 +    TI8168TimerState *s = TI8168_TIMER(dev);
 +
 +    timer_del(s->qtimer);
-+    s->tisr = s->tier = s->twer = s->tclr = s->tsicr = 0;
++    timer_del(s->match_timer);
++    s->config = s->tisr = s->tier = s->twer = s->tclr = s->tsicr = 0;
 +    s->tcrr = s->tldr = s->tmar = 0;
 +    s->started_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-+    qemu_set_irq(s->irq, 0);
++    s->input_fraction = s->prescale_progress = 0;
++    ti8168_timer_update_irq(s);
 +}
 +
 +static void ti8168_timer_unrealize(DeviceState *dev)
@@ -3611,17 +4403,23 @@ index 0000000..cf6f6ac
 +        timer_free(s->qtimer);
 +        s->qtimer = NULL;
 +    }
++    if (s->match_timer) {
++        timer_free(s->match_timer);
++        s->match_timer = NULL;
++    }
 +}
 +
 +static void ti8168_timer_realize(DeviceState *dev, Error **errp)
 +{
 +    TI8168TimerState *s = TI8168_TIMER(dev);
 +
-+    if (!s->frequency) {
-+        error_setg(errp, "ti8168-timer frequency must be non-zero");
++    if (!clock_has_source(s->fclk)) {
++        error_setg(errp, "ti8168-timer fclk must be connected to PRCM");
 +        return;
 +    }
++    s->frequency = clock_get_hz(s->fclk);
 +    s->qtimer = timer_new_ns(QEMU_CLOCK_VIRTUAL, ti8168_timer_expire, s);
++    s->match_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, ti8168_timer_match, s);
 +}
 +
 +static void ti8168_timer_init(Object *obj)
@@ -3633,11 +4431,11 @@ index 0000000..cf6f6ac
 +                          "ti8168.timer", 0x2000);
 +    sysbus_init_mmio(sbd, &s->iomem);
 +    sysbus_init_irq(sbd, &s->irq);
++    s->fclk = qdev_init_clock_in(DEVICE(obj), "fclk", ti8168_timer_clock_update,
++                                s, ClockPreUpdate | ClockUpdate);
++    qdev_init_gpio_in_named(DEVICE(obj), ti8168_timer_module_enable,
++                            "module-enable", 1);
 +}
-+
-+static const Property ti8168_timer_properties[] = {
-+    DEFINE_PROP_UINT32("frequency", TI8168TimerState, frequency, 27000000),
-+};
 +
 +static void ti8168_timer_class_init(ObjectClass *klass, const void *data)
 +{
@@ -3646,7 +4444,6 @@ index 0000000..cf6f6ac
 +    dc->realize = ti8168_timer_realize;
 +    dc->unrealize = ti8168_timer_unrealize;
 +    device_class_set_legacy_reset(dc, ti8168_timer_reset);
-+    device_class_set_props(dc, ti8168_timer_properties);
 +}
 +
 +static const TypeInfo ti8168_timer_type_info = {
@@ -3657,15 +4454,17 @@ index 0000000..cf6f6ac
 +    .class_init = ti8168_timer_class_init,
 +};
 +
-+void ti8168_timer_create(Object *parent, hwaddr base, qemu_irq irq)
++DeviceState *ti8168_timer_create(Object *parent, hwaddr base, qemu_irq irq,
++                                  Clock *fclk)
 +{
 +    DeviceState *dev = qdev_new(TYPE_TI8168_TIMER);
 +
 +    object_property_add_child(parent, "timer[*]", OBJECT(dev));
-+    qdev_prop_set_uint32(dev, "frequency", 27000000);
++    qdev_connect_clock_in(dev, "fclk", fclk);
 +    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 +    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
 +    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq);
++    return dev;
 +}
 +
 +static void ti8168_timer_register_types(void)
@@ -3674,8 +4473,384 @@ index 0000000..cf6f6ac
 +}
 +
 +type_init(ti8168_timer_register_types)
+diff --git a/hw/arm/ti8168_watchdog.c b/hw/arm/ti8168_watchdog.c
+new file mode 100644
+index 0000000..173ae8b
+--- /dev/null
++++ b/hw/arm/ti8168_watchdog.c
+@@ -0,0 +1,372 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* Public TI8168 WDT contract: SPRUGX8C chapter 22; see WATCHDOG.md. */
++#include "qemu/osdep.h"
++#include "ti8168_internal.h"
++#include "system/watchdog.h"
 +
-+/* Synthetic timer behavior; no hardware reset claim. */
++OBJECT_DECLARE_SIMPLE_TYPE(TI8168WatchdogState, TI8168_WATCHDOG)
++
++struct TI8168WatchdogState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    qemu_irq irq;
++    QEMUTimer *event_timer;
++    uint32_t frequency;
++    uint32_t config, status, enable, control, count, load, trigger, delay, spr;
++    uint32_t shadow;
++    unsigned divisor;
++    uint16_t sequence;
++    bool enabled, running, delay_fired;
++    int64_t started_ns, force_at;
++};
++
++static void ti8168_watchdog_reset(DeviceState *dev);
++
++static int64_t wd_now(void)
++{
++    return qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
++}
++
++static uint64_t wd_duration(TI8168WatchdogState *s, uint64_t clocks)
++{
++    uint64_t ns;
++
++    if (s->frequency < NANOSECONDS_PER_SECOND &&
++        clocks > muldiv64(INT64_MAX, s->frequency,
++                         NANOSECONDS_PER_SECOND)) {
++        return INT64_MAX;
++    }
++    ns = muldiv64(clocks, NANOSECONDS_PER_SECOND, s->frequency);
++    /* Round up, so a functional edge is never observed early. */
++    return ns + !!((clocks % s->frequency) *
++                   (NANOSECONDS_PER_SECOND % s->frequency) % s->frequency);
++}
++
++static uint32_t wd_count(TI8168WatchdogState *s)
++{
++    uint64_t ticks;
++
++    if (!s->running) {
++        return s->count;
++    }
++    ticks = muldiv64(wd_now() - s->started_ns, s->frequency,
++                     NANOSECONDS_PER_SECOND) / s->divisor;
++    /* The event callback, not a read, owns overflow and automatic reload. */
++    return s->count + MIN(ticks, (uint64_t)UINT32_MAX - s->count);
++}
++
++static void wd_irq(TI8168WatchdogState *s)
++{
++    qemu_set_irq(s->irq, !!(s->status & s->enable));
++}
++
++static int64_t wd_deadline(TI8168WatchdogState *s, uint64_t clocks)
++{
++    uint64_t duration = wd_duration(s, clocks);
++
++    return duration >= INT64_MAX - s->started_ns ? INT64_MAX :
++           s->started_ns + duration;
++}
++
++static int64_t wd_overflow_at(TI8168WatchdogState *s)
++{
++    return wd_deadline(s, ((1ULL << 32) - s->count) * s->divisor);
++}
++
++static int64_t wd_delay_at(TI8168WatchdogState *s)
++{
++    /* Section 22.2.11 gives (WDLY - WLDR + 1) functional periods. */
++    return wd_deadline(s, ((uint64_t)s->delay - s->count + 1) * s->divisor);
++}
++
++static void wd_schedule(TI8168WatchdogState *s)
++{
++    int64_t next = s->force_at;
++
++    timer_del(s->event_timer);
++    if (s->running) {
++        next = MIN(next, wd_overflow_at(s));
++        if (!s->delay_fired && s->delay >= s->count && s->delay >= s->load) {
++            next = MIN(next, wd_delay_at(s));
++        }
++    }
++    if (next != INT64_MAX) {
++        timer_mod(s->event_timer, next);
++    }
++}
++
++static void wd_reload(TI8168WatchdogState *s)
++{
++    s->count = s->load;
++    s->started_ns = wd_now();
++    s->divisor = s->control & BIT(5) ? 1U << ((s->control >> 2) & 7) : 1;
++    s->delay_fired = false;
++    if (s->enabled) {
++        s->running = true;
++    }
++    /* Section 22.2.6: max load triggers reset even when disabled. */
++    s->force_at = s->load == UINT32_MAX ? wd_deadline(s, 1) : INT64_MAX;
++    wd_schedule(s);
++}
++
++static void wd_event(void *opaque)
++{
++    TI8168WatchdogState *s = opaque;
++    int64_t now = wd_now();
++    bool overflow = s->force_at <= now ||
++                    (s->running && wd_overflow_at(s) <= now);
++
++    if (s->running && !s->delay_fired && s->delay >= s->count &&
++        s->delay >= s->load && wd_delay_at(s) <= now) {
++        s->delay_fired = true;
++        s->status |= BIT(1);
++    }
++    if (overflow) {
++        int64_t edge = MIN(s->force_at,
++                          s->running ? wd_overflow_at(s) : INT64_MAX);
++
++        s->status |= BIT(0);
++        s->count = s->load;
++        s->started_ns = edge;
++        s->divisor = s->control & BIT(5) ? 1U << ((s->control >> 2) & 7) : 1;
++        s->delay_fired = false;
++        s->force_at = INT64_MAX;
++        wd_irq(s);
++        wd_schedule(s);
++        /* Default QEMU action is reset; QMP WATCHDOG identifies the cause. */
++        watchdog_perform_action();
++        return;
++    }
++    wd_irq(s);
++    wd_schedule(s);
++}
++
++static void wd_apply(TI8168WatchdogState *s, unsigned reg, uint32_t value)
++{
++    switch (reg) {
++    case 0: /* WCLR */
++    case 1: /* WCRR */
++    case 2: /* WLDR */
++    case 5: /* WDLY */
++        if (s->enabled) {
++            qemu_log_mask(LOG_GUEST_ERROR, "ti8168 WDT: configuration while "
++                          "enabled (SPRUGX8C 22.2.9 requires disable)\n");
++            return;
++        }
++        if (reg == 0) {
++            s->control = value & 0x3c;
++        } else if (reg == 1) {
++            s->count = value;
++            s->started_ns = wd_now();
++        } else if (reg == 2) {
++            s->load = value;
++        } else {
++            s->delay = value;
++        }
++        break;
++    case 3: /* WTGR */
++        if (value != s->trigger) {
++            s->trigger = value;
++            wd_reload(s);
++        }
++        break;
++    case 4: /* WSPR: only low 16 bits participate in the magic sequence. */
++        s->spr = value;
++        if (s->sequence == 0xaaaa && (uint16_t)value == 0x5555) {
++            s->count = wd_count(s);
++            s->enabled = s->running = false;
++            s->sequence = 0;
++        } else if (s->sequence == 0xbbbb && (uint16_t)value == 0x4444) {
++            s->enabled = true;
++            if (!s->running) {
++                s->running = true;
++                s->started_ns = wd_now();
++            }
++            s->sequence = 0;
++        } else {
++            s->sequence = (uint16_t)value;
++        }
++        break;
++    default:
++        g_assert_not_reached();
++    }
++    wd_schedule(s);
++}
++
++static uint32_t wd_reg(TI8168WatchdogState *s, hwaddr offset)
++{
++    switch (offset) {
++    case 0x00: return 0; /* Table 22-12 revision reset value. */
++    case 0x10: return s->config;
++    case 0x14: return 1;
++    case 0x18: return s->status;
++    case 0x1c: return s->enable;
++    case 0x24: return s->control;
++    case 0x28: return wd_count(s);
++    case 0x2c: return s->load;
++    case 0x30: return s->trigger;
++    case 0x34: return 0; /* Nonposted writes complete before MMIO returns. */
++    case 0x44: return s->delay;
++    case 0x48: return s->spr;
++    case 0x54: return s->status;
++    case 0x58: return s->status & s->enable;
++    case 0x5c:
++    case 0x60: return s->enable;
++    default: return 0;
++    }
++}
++
++static uint64_t wd_read(void *opaque, hwaddr offset, unsigned size)
++{
++    TI8168WatchdogState *s = opaque;
++    uint32_t value;
++
++    if (offset == 0x28 && size == 2) {
++        s->shadow = wd_count(s);
++        return s->shadow & 0xffff;
++    }
++    if (offset == 0x2a && size == 2) {
++        return s->shadow >> 16;
++    }
++    value = wd_reg(s, offset & ~3ULL);
++    return size == 2 ? (value >> ((offset & 2) * 8)) & 0xffff : value;
++}
++
++static void wd_write(void *opaque, hwaddr offset, uint64_t value, unsigned size)
++{
++    TI8168WatchdogState *s = opaque;
++    hwaddr reg = offset & ~3ULL;
++    uint32_t shifted = value << ((offset & 2) * 8);
++    unsigned bit;
++
++    switch (reg) {
++    case 0x10:
++        if (size == 2 && (offset & 2)) {
++            return;
++        }
++        s->config = shifted & BIT(5);
++        if (shifted & BIT(1)) {
++            ti8168_watchdog_reset(DEVICE(s));
++        }
++        return;
++    case 0x18:
++    case 0x58: s->status &= ~(shifted & 3); wd_irq(s); return;
++    case 0x1c:
++        if (!(size == 2 && (offset & 2))) {
++            s->enable = shifted & 3;
++            wd_irq(s);
++        }
++        return;
++    case 0x54: s->status |= shifted & 3; wd_irq(s); return;
++    case 0x5c: s->enable |= shifted & 3; wd_irq(s); return;
++    case 0x60: s->enable &= ~(shifted & 3); wd_irq(s); return;
++    case 0x24: bit = 0; break;
++    case 0x28: bit = 1; break;
++    case 0x2c: bit = 2; break;
++    case 0x30: bit = 3; break;
++    case 0x48: bit = 4; break;
++    case 0x44: bit = 5; break;
++    default: return;
++    }
++    if (size == 2) {
++        uint32_t mask = 0xffffU << ((offset & 2) * 8);
++        value = (wd_reg(s, reg) & ~mask) | shifted;
++    }
++    /* SPRUGX8C 22.1.3: this integration supports nonposted writes only.
++     * Model their completed effects, not the unmodeled L4 bus wait states.
++     */
++    wd_apply(s, bit, value);
++}
++
++static const MemoryRegionOps wd_ops = {
++    .read = wd_read,
++    .write = wd_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = { .min_access_size = 2, .max_access_size = 4 },
++    .impl = { .min_access_size = 2, .max_access_size = 4 },
++};
++
++static void ti8168_watchdog_reset(DeviceState *dev)
++{
++    TI8168WatchdogState *s = TI8168_WATCHDOG(dev);
++
++    timer_del(s->event_timer);
++    s->config = s->status = s->enable = s->count = s->trigger = s->delay = 0;
++    s->spr = s->shadow = s->sequence = 0;
++    s->control = BIT(5); /* Table 22-17: PRE=1, PTV=0. */
++    s->load = 0xffffffbe; /* Integration-specific Table 22-2, not generic 22-19. */
++    s->divisor = 1;
++    s->enabled = true;
++    s->running = s->delay_fired = false;
++    s->force_at = INT64_MAX;
++    s->started_ns = wd_now();
++    wd_irq(s);
++}
++
++static void wd_realize(DeviceState *dev, Error **errp)
++{
++    TI8168WatchdogState *s = TI8168_WATCHDOG(dev);
++
++    if (!s->frequency) {
++        error_setg(errp, "ti8168-watchdog frequency must be nonzero");
++        return;
++    }
++    s->event_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, wd_event, s);
++}
++
++static void wd_unrealize(DeviceState *dev)
++{
++    TI8168WatchdogState *s = TI8168_WATCHDOG(dev);
++
++    timer_free(s->event_timer);
++}
++
++static void wd_init(Object *obj)
++{
++    TI8168WatchdogState *s = TI8168_WATCHDOG(obj);
++    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
++
++    memory_region_init_io(&s->iomem, obj, &wd_ops, s, "ti8168.watchdog", 0x1000);
++    sysbus_init_mmio(sbd, &s->iomem);
++    sysbus_init_irq(sbd, &s->irq);
++}
++
++static const Property wd_properties[] = {
++    DEFINE_PROP_UINT32("frequency", TI8168WatchdogState, frequency, 32768),
++};
++
++static void wd_class_init(ObjectClass *klass, const void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    dc->realize = wd_realize;
++    dc->unrealize = wd_unrealize;
++    device_class_set_legacy_reset(dc, ti8168_watchdog_reset);
++    device_class_set_props(dc, wd_properties);
++    set_bit(DEVICE_CATEGORY_WATCHDOG, dc->categories);
++}
++
++static const TypeInfo wd_type = {
++    .name = TYPE_TI8168_WATCHDOG,
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(TI8168WatchdogState),
++    .instance_init = wd_init,
++    .class_init = wd_class_init,
++};
++
++void ti8168_watchdog_create(Object *parent, hwaddr base)
++{
++    DeviceState *dev = qdev_new(TYPE_TI8168_WATCHDOG);
++
++    object_property_add_child(parent, "watchdog", OBJECT(dev));
++    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
++    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
++    /* SPRUGX8C Table 1-68 provides no MPU INTC source for WDTINT. */
++}
++
++static void wd_register_types(void)
++{
++    type_register_static(&wd_type);
++}
++
++type_init(wd_register_types)
 diff --git a/hw/char/serial-mm.c b/hw/char/serial-mm.c
 index 0e0be26..2514645 100644
 --- a/hw/char/serial-mm.c
@@ -3797,6 +4972,414 @@ index 0e0be26..2514645 100644
  static void serial_mm_instance_init(Object *o)
  {
      SerialMM *smm = SERIAL_MM(o);
+diff --git a/hw/gpio/meson.build b/hw/gpio/meson.build
+index 6a67ee9..d5a46ad 100644
+--- a/hw/gpio/meson.build
++++ b/hw/gpio/meson.build
+@@ -19,3 +19,5 @@ system_ss.add(when: 'CONFIG_ASPEED_SOC', if_true: files('aspeed_gpio.c'))
+ system_ss.add(when: 'CONFIG_ASPEED_SOC', if_true: files('aspeed_sgpio.c'))
+ system_ss.add(when: 'CONFIG_SIFIVE_GPIO', if_true: files('sifive_gpio.c'))
+ system_ss.add(when: 'CONFIG_PCF8574', if_true: files('pcf8574.c'))
++
++system_ss.add(when: 'CONFIG_TI8168_MEDIABOARD', if_true: files('ti8168_gpio.c'))
+diff --git a/hw/gpio/ti8168_gpio.c b/hw/gpio/ti8168_gpio.c
+new file mode 100644
+index 0000000..ad820b5
+--- /dev/null
++++ b/hw/gpio/ti8168_gpio.c
+@@ -0,0 +1,392 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/*
++ * TI8168 GPIO register/event model, based on public TI SPRUGX8C chapter 8.
++ * https://www.ti.com/lit/ug/sprugx8c/sprugx8c.pdf
++ *
++ * Implements the register file, two independent event/interrupt paths, sampled
++ * inputs and output-latch/direction signals. GPIO_OE configures pads, not the
++ * controller's input detector (8.2.4.3). No pad feedback, pull, pinmux or PCB
++ * connections are implied. Input changes are sampled immediately: interface
++ * clock latency, gated-clock ratios, debounce filtering and PRCM/wakeup/power
++ * integration are not modeled. Debounce configuration is retained, not applied.
++ *
++ * Figure 8-7 and table 8-2 disagree about RTL/MINOR revision reset fields. The
++ * default below follows figure 8-7; the revision property permits another
++ * explicitly selected revision without claiming a physical silicon snapshot.
++ *
++ * Copyright (c) 2026 Sebastian Spicker
++ */
++
++#include "qemu/osdep.h"
++#include "qemu/bitops.h"
++#include "qemu/error-report.h"
++#include "qemu/log.h"
++#include "qemu/module.h"
++#include "qapi/error.h"
++#include "hw/core/irq.h"
++#include "hw/core/qdev-properties.h"
++#include "hw/core/sysbus.h"
++#include "hw/gpio/ti8168_gpio.h"
++#include "migration/vmstate.h"
++
++OBJECT_DECLARE_SIMPLE_TYPE(TI8168GPIOState, TI8168_GPIO)
++
++struct TI8168GPIOState {
++    SysBusDevice parent_obj;
++    MemoryRegion iomem;
++    qemu_irq irq[2];
++    qemu_irq output[32];
++    qemu_irq output_enable[32];
++    uint32_t revision;
++    uint32_t sysconfig;
++    uint32_t ctrl;
++    uint32_t oe;
++    uint32_t pins;
++    uint32_t datain;
++    uint32_t dataout;
++    uint32_t raw[2];
++    uint32_t enable[2];
++    uint32_t level[2];
++    uint32_t rising;
++    uint32_t falling;
++    uint32_t debounce_enable;
++    uint32_t debounce_time;
++};
++
++static void ti8168_gpio_irq(TI8168GPIOState *s)
++{
++    for (unsigned line = 0; line < 2; line++) {
++        qemu_set_irq(s->irq[line], !!(s->raw[line] & s->enable[line]));
++    }
++}
++
++static void ti8168_gpio_outputs(TI8168GPIOState *s)
++{
++    for (unsigned pin = 0; pin < 32; pin++) {
++        qemu_set_irq(s->output[pin], extract32(s->dataout, pin, 1));
++        qemu_set_irq(s->output_enable[pin], !extract32(s->oe, pin, 1));
++    }
++}
++
++static void ti8168_gpio_sample(TI8168GPIOState *s)
++{
++    uint32_t events, changed;
++
++    if (!(s->ctrl & 1)) {
++        changed = s->datain ^ s->pins;
++        events = (changed & s->pins & s->rising) |
++                 (changed & ~s->pins & s->falling) |
++                 (~s->pins & s->level[0]) | (s->pins & s->level[1]);
++        s->datain = s->pins;
++        s->raw[0] |= events;
++        s->raw[1] |= events;
++    }
++    ti8168_gpio_irq(s);
++}
++
++static void ti8168_gpio_input(void *opaque, int pin, int value)
++{
++    TI8168GPIOState *s = opaque;
++
++        s->pins = deposit32(s->pins, pin, 1, !!value);
++    ti8168_gpio_sample(s);
++}
++
++static void ti8168_gpio_reset(DeviceState *dev)
++{
++    TI8168GPIOState *s = TI8168_GPIO(dev);
++
++        s->sysconfig = 0;
++        s->ctrl = 2;
++        s->oe = UINT32_MAX;
++    /* DATAIN's hardware reset value is unspecified (8.3.15). Sample inputs. */
++        s->datain = s->pins;
++        s->dataout = 0;
++        s->raw[0] = s->raw[1] = 0;
++        s->enable[0] = s->enable[1] = 0;
++        s->level[0] = s->level[1] = 0;
++        s->rising = s->falling = 0;
++        s->debounce_enable = s->debounce_time = 0;
++    ti8168_gpio_outputs(s);
++    ti8168_gpio_irq(s);
++}
++
++static uint64_t ti8168_gpio_read(void *opaque, hwaddr offset, unsigned size)
++{
++    TI8168GPIOState *s = opaque;
++    uint32_t value = 0;
++
++    switch (offset & ~3) {
++    case 0x000:
++        value = s->revision;
++        break;
++    case 0x010:
++        value = s->sysconfig;
++        break;
++    case 0x020:
++        break; /* EOI has no memory (8.3.3). */
++    case 0x024:
++        value = s->raw[0];
++        break;
++    case 0x028:
++        value = s->raw[1];
++        break;
++    case 0x02c:
++        value = s->raw[0] & s->enable[0];
++        break;
++    case 0x030:
++        value = s->raw[1] & s->enable[1];
++        break;
++    case 0x034:
++    case 0x03c:
++        value = s->enable[0];
++        break;
++    case 0x038:
++    case 0x040:
++        value = s->enable[1];
++        break;
++    case 0x114:
++        value = 1;
++        break; /* Reset completes without modeled latency. */
++    case 0x130:
++        value = s->ctrl;
++        break;
++    case 0x134:
++        value = s->oe;
++        break;
++    case 0x138:
++        value = s->datain;
++        break;
++    case 0x13c:
++    case 0x190:
++    case 0x194:
++        value = s->dataout;
++        break;
++    case 0x140:
++        value = s->level[0];
++        break;
++    case 0x144:
++        value = s->level[1];
++        break;
++    case 0x148:
++        value = s->rising;
++        break;
++    case 0x14c:
++        value = s->falling;
++        break;
++    case 0x150:
++        value = s->debounce_enable;
++        break;
++    case 0x154:
++        value = s->debounce_time;
++        break;
++    default:
++        qemu_log_mask(LOG_UNIMP,
++                      "ti8168-gpio: unimplemented read 0x%" HWADDR_PRIx "\n",
++                      offset);
++        break;
++    }
++    return extract32(value, (offset & 3) * 8, size * 8);
++}
++
++static uint32_t merge(uint32_t prior, uint32_t value, uint32_t mask)
++{
++    return (prior & ~mask) | (value & mask);
++}
++
++static void ti8168_gpio_write(void *opaque, hwaddr offset, uint64_t data,
++                              unsigned size)
++{
++    TI8168GPIOState *s = opaque;
++    unsigned shift = (offset & 3) * 8;
++    uint32_t mask = size == 4 ? UINT32_MAX : MAKE_64BIT_MASK(shift, size * 8);
++    uint32_t value = data << shift;
++
++    switch (offset & ~3) {
++    case 0x000:
++    case 0x114:
++    case 0x138:
++        return; /* Read only. */
++    case 0x010:
++        if (value & 2) {
++            ti8168_gpio_reset(DEVICE(s));
++        } else {
++            s->sysconfig = merge(s->sysconfig, value, mask) & 0x19;
++        }
++        return;
++    case 0x020:
++        /* EOI acknowledges a line, never a source. Pending sources reassert. */
++        ti8168_gpio_irq(s);
++        return;
++    case 0x024:
++        s->raw[0] |= value;
++        break;
++    case 0x028:
++        s->raw[1] |= value;
++        break;
++    case 0x02c:
++        s->raw[0] &= ~value;
++        break;
++    case 0x030:
++        s->raw[1] &= ~value;
++        break;
++    case 0x034:
++        s->enable[0] |= value;
++        break;
++    case 0x038:
++        s->enable[1] |= value;
++        break;
++    case 0x03c:
++        s->enable[0] &= ~value;
++        break;
++    case 0x040:
++        s->enable[1] &= ~value;
++        break;
++    case 0x130:
++        s->ctrl = merge(s->ctrl, value, mask) & 7;
++        break;
++    case 0x134:
++        s->oe = merge(s->oe, value, mask);
++        ti8168_gpio_outputs(s);
++        return;
++    case 0x13c:
++        s->dataout = merge(s->dataout, value, mask);
++        ti8168_gpio_outputs(s);
++        return;
++    case 0x140:
++        s->level[0] = merge(s->level[0], value, mask);
++        break;
++    case 0x144:
++        s->level[1] = merge(s->level[1], value, mask);
++        break;
++    case 0x148:
++        s->rising = merge(s->rising, value, mask);
++        break;
++    case 0x14c:
++        s->falling = merge(s->falling, value, mask);
++        break;
++    case 0x150:
++        s->debounce_enable = merge(s->debounce_enable, value, mask);
++        if (s->debounce_enable) {
++            qemu_log_mask(LOG_UNIMP,
++                          "ti8168-gpio: debounce timing is not modeled\n");
++        }
++        return;
++    case 0x154:
++        s->debounce_time = merge(s->debounce_time, value, mask) & 0xff;
++        return;
++    case 0x190:
++        s->dataout &= ~value;
++        ti8168_gpio_outputs(s);
++        return;
++    case 0x194:
++        s->dataout |= value;
++        ti8168_gpio_outputs(s);
++        return;
++    default:
++        qemu_log_mask(LOG_UNIMP,
++                      "ti8168-gpio: unimplemented write 0x%" HWADDR_PRIx "\n",
++                      offset);
++        return;
++    }
++    /* Levels remain pending after W1C until the selected input deasserts. */
++    ti8168_gpio_sample(s);
++}
++
++static const MemoryRegionOps ti8168_gpio_ops = {
++    .read = ti8168_gpio_read,
++    .write = ti8168_gpio_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid = { .min_access_size = 1, .max_access_size = 4 },
++    .impl = { .min_access_size = 1, .max_access_size = 4 },
++};
++
++static int ti8168_gpio_post_load(void *opaque, int version_id)
++{
++    TI8168GPIOState *s = opaque;
++
++    ti8168_gpio_outputs(s);
++    ti8168_gpio_irq(s);
++    return 0;
++}
++
++static const VMStateDescription vmstate_ti8168_gpio = {
++    .name = TYPE_TI8168_GPIO,
++    .version_id = 1,
++    .minimum_version_id = 1,
++    .post_load = ti8168_gpio_post_load,
++    .fields = (const VMStateField[]) {
++        VMSTATE_UINT32_EQUAL(revision, TI8168GPIOState, NULL),
++        VMSTATE_UINT32(sysconfig, TI8168GPIOState),
++        VMSTATE_UINT32(ctrl, TI8168GPIOState),
++        VMSTATE_UINT32(oe, TI8168GPIOState),
++        VMSTATE_UINT32(pins, TI8168GPIOState),
++        VMSTATE_UINT32(datain, TI8168GPIOState),
++        VMSTATE_UINT32(dataout, TI8168GPIOState),
++        VMSTATE_UINT32_ARRAY(raw, TI8168GPIOState, 2),
++        VMSTATE_UINT32_ARRAY(enable, TI8168GPIOState, 2),
++        VMSTATE_UINT32_ARRAY(level, TI8168GPIOState, 2),
++        VMSTATE_UINT32(rising, TI8168GPIOState),
++        VMSTATE_UINT32(falling, TI8168GPIOState),
++        VMSTATE_UINT32(debounce_enable, TI8168GPIOState),
++        VMSTATE_UINT32(debounce_time, TI8168GPIOState),
++        VMSTATE_END_OF_LIST()
++    },
++};
++
++static void ti8168_gpio_init(Object *obj)
++{
++    TI8168GPIOState *s = TI8168_GPIO(obj);
++    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
++
++    memory_region_init_io(&s->iomem, obj, &ti8168_gpio_ops, s,
++                          TYPE_TI8168_GPIO, 0x1000);
++    sysbus_init_mmio(sbd, &s->iomem);
++    for (unsigned line = 0; line < 2; line++) {
++        sysbus_init_irq(sbd, &s->irq[line]);
++    }
++    qdev_init_gpio_in_named(DEVICE(obj), ti8168_gpio_input, "gpio-in", 32);
++    qdev_init_gpio_out_named(DEVICE(obj), s->output, "gpio-out", 32);
++    qdev_init_gpio_out_named(DEVICE(obj), s->output_enable, "gpio-oe", 32);
++}
++
++static const Property ti8168_gpio_properties[] = {
++    DEFINE_PROP_UINT32("revision", TI8168GPIOState, revision, 0x50600801),
++};
++
++static void ti8168_gpio_class_init(ObjectClass *klass, const void *data)
++{
++    DeviceClass *dc = DEVICE_CLASS(klass);
++
++    device_class_set_legacy_reset(dc, ti8168_gpio_reset);
++    device_class_set_props(dc, ti8168_gpio_properties);
++    dc->vmsd = &vmstate_ti8168_gpio;
++}
++
++static const TypeInfo ti8168_gpio_type_info = {
++    .name = TYPE_TI8168_GPIO,
++    .parent = TYPE_SYS_BUS_DEVICE,
++    .instance_size = sizeof(TI8168GPIOState),
++    .instance_init = ti8168_gpio_init,
++    .class_init = ti8168_gpio_class_init,
++};
++
++DeviceState *ti8168_gpio_create(Object *parent, const char *name, hwaddr base,
++                                qemu_irq irq0, qemu_irq irq1)
++{
++    DeviceState *dev = qdev_new(TYPE_TI8168_GPIO);
++
++    object_property_add_child(parent, name, OBJECT(dev));
++    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
++    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
++    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq0);
++    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 1, irq1);
++    return dev;
++}
++
++static void ti8168_gpio_register_types(void)
++{
++    type_register_static(&ti8168_gpio_type_info);
++}
++
++type_init(ti8168_gpio_register_types)
 diff --git a/include/hw/char/serial-mm.h b/include/hw/char/serial-mm.h
 index 0076bdc..81fdbe0 100644
 --- a/include/hw/char/serial-mm.h
@@ -3823,3 +5406,29 @@ index 0076bdc..81fdbe0 100644
 +void serial_mm_enable_omap_compat(SerialMM *smm);
 
  #endif
+diff --git a/include/hw/gpio/ti8168_gpio.h b/include/hw/gpio/ti8168_gpio.h
+new file mode 100644
+index 0000000..04e7e03
+--- /dev/null
++++ b/include/hw/gpio/ti8168_gpio.h
+@@ -0,0 +1,20 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* Public-manual TI8168 GPIO controller; no board pad or PCB wiring. */
++#ifndef HW_GPIO_TI8168_GPIO_H
++#define HW_GPIO_TI8168_GPIO_H
++
++#include "qemu/typedefs.h"
++#include "exec/hwaddr.h"
++#include "hw/core/irq.h"
++
++#define TYPE_TI8168_GPIO "ti8168-gpio"
++
++/*
++ * Named gpio-in, gpio-out and gpio-oe groups each contain 32 lines.
++ * gpio-out is the DATAOUT latch; gpio-oe is high when the driver is enabled.
++ * A board may connect these to a pad model, but no input feedback is implicit.
++ */
++DeviceState *ti8168_gpio_create(Object *parent, const char *name, hwaddr base,
++                                qemu_irq irq0, qemu_irq irq1);
++
++#endif

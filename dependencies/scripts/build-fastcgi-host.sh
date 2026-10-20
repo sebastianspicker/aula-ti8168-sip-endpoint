@@ -85,7 +85,9 @@ cat > "$source_dir/include/fcgi_config.h" <<EOF
 #define HAVE_SYS_TYPES_H 1
 #define HAVE_UNISTD_H 1
 #define HAVE_LIBPTHREAD 1
-#define USE_LOCKING 1
+/* Concurrent accept needs no fcntl record lock on Darwin/Linux. Upstream
+ * enables USE_LOCKING only for legacy IRIX/SunOS/System V hosts; enabling
+ * it here makes accept fail with EBADF on a valid Darwin socket. */
 #define STDC_HEADERS 1
 #define PACKAGE "fcgi"
 #define VERSION "$version"

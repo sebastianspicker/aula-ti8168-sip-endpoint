@@ -111,7 +111,7 @@ static void *worker_main(void *context) {
   aula_fastcgi_server *server = (aula_fastcgi_server *)context;
   FCGX_Request request;
   int accept_result;
-  if (FCGX_InitRequest(&request, server->listener, 0) != 0) return NULL;
+  if (FCGX_InitRequest(&request, server->listener, 0) != 0) return context;
   for (;;) {
     errno = 0;
     accept_result = FCGX_Accept_r(&request);
@@ -124,7 +124,7 @@ static void *worker_main(void *context) {
     (void)fprintf(stderr,
                   "gateway runtime: FastCGI accept failed: result=%d errno=%d\n",
                   accept_result, errno);
-    return NULL;
+    return context;
   }
 }
 
@@ -138,7 +138,8 @@ static int start_workers(aula_fastcgi_server *server) {
     }
   }
   for (index = 0U; index < AULA_GATEWAY_WORKERS; ++index) {
-    if (pthread_join(workers[index], NULL) != 0) return 0;
+    void *result = NULL;
+    if (pthread_join(workers[index], &result) != 0 || result != NULL) return 0;
   }
   return 1;
 }

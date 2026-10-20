@@ -4,7 +4,6 @@ WORK := $(CURDIR)/.work
 SIPD_BUILD := $(WORK)/build/sipd
 SIPD_HOST_CONFIG := $(WORK)/config/aula-sipd.conf
 SIPD_HOST_RUN := $(WORK)/run/aula-sipd
-EMULATOR_STATE := $(WORK)/cache/emulator-run/synthetic-state.json
 PAYLOAD := $(WORK)/dist/aula-ti8168-sip-endpoint/runtime
 QEMU_WORK := $(WORK)/build/qemu
 QEMU_BINARY := $(QEMU_WORK)/build-aula-v11.0.3/qemu-system-arm
@@ -15,9 +14,10 @@ export PYTHONPYCACHEPREFIX := $(WORK)/cache/python
 .NOTPARALLEL:
 
 .PHONY: build verify test sipd-build sipd-test sipd-host-config sipd-pjsip emulator-status emulator-test \
+	emulator-ui emulator-ui-status emulator-ui-stop emulator-source-check \
 	console-device console-gateway console-test console-fastcgi-host \
 	console-fastcgi ui-install ui-build ui-test package-ti8168 package-qemu \
-	qemu-build qemu-verify qemu-run qemu-acceptance live-build \
+	qemu-build qemu-verify qemu-run qemu-acceptance qemu-input-test arm-userspace-test live-build \
 	live-package live-preflight live-install live-gates live-smoke \
 	live-soak-15 live-soak-30 live-soak-60 live-reboot live-remove
 
@@ -26,7 +26,17 @@ build: sipd-build console-device console-gateway ui-build
 verify: build test sipd-host-config emulator-status
 	@echo "Maintained host build, unit tests, and synthetic emulator entry point verified."
 
-test: sipd-test console-test emulator-test ui-test
+test: sipd-test console-test emulator-test ui-test arm-userspace-test qemu-input-test emulator-source-check
+
+arm-userspace-test:
+	python3 -B -m unittest discover -s lab/arm-userspace/tests
+
+qemu-input-test:
+	python3 -B -m unittest discover -s lab/qemu/firmware/tests
+
+emulator-source-check:
+	python3 -B -m unittest discover -s lab/qemu/tests
+	python3 -B lab/qemu/scripts/check_public_sources.py
 
 sipd-build:
 	@mkdir -p $(SIPD_BUILD)
@@ -71,13 +81,22 @@ sipd-host-config: sipd-build
 	$(SIPD_BUILD)/aula-sipd --check-config $(SIPD_HOST_CONFIG)
 
 emulator-status:
-	@mkdir -p $(dir $(EMULATOR_STATE))
-	PYTHONPATH=lab/emulator/src python3 -m aula_emulator status \
-		--state-file $(EMULATOR_STATE)
+	PYTHONPATH=lab/emulator/src python3 lab/emulator/tests/smoke_cli.py
 
 emulator-test:
 	PYTHONPATH=lab/emulator/src python3 -m unittest discover \
 		-s lab/emulator/tests -t lab/emulator
+
+# Opt-in local HTTPS console: pinned native dependencies, real gateway and
+# synthetic providers. Generated configuration and credentials stay in .work.
+emulator-ui:
+	python3 -B lab/emulator/examples/console.py start $(EMULATOR_UI_ARGS)
+
+emulator-ui-status:
+	python3 -B lab/emulator/examples/console.py status
+
+emulator-ui-stop:
+	python3 -B lab/emulator/examples/console.py stop
 
 console-device:
 	$(MAKE) -C product/console device-control
@@ -132,10 +151,12 @@ qemu-build:
 	sh lab/qemu/scripts/build.sh
 
 qemu-verify: qemu-build
-	QEMU_BINARY=$(QEMU_BINARY) sh lab/qemu/scripts/verify.sh --require-source
+	QEMU_BINARY=$(QEMU_BINARY) sh lab/qemu/scripts/verify.sh --require-runtime
 
-qemu-run:
-	@echo "Supply a reviewed ELF or raw image to the synthetic QEMU model explicitly" >&2; exit 2
+qemu-run: qemu-build
+	python3 -B lab/qemu/scripts/probe_guest.py $(QEMU_BINARY) \
+		--assembler "$${QEMU_ARM_AS:-arm-none-eabi-as}" \
+		--linker "$${QEMU_ARM_LD:-arm-none-eabi-ld}"
 
 qemu-acceptance:
 	@echo "Product acceptance is unavailable in the synthetic QEMU lane" >&2; exit 2

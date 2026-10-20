@@ -16,7 +16,7 @@ which requirement is missing (exit status 2); `--help` describes the modes.
 
 ## Local contract
 
-The gateway connects to `/run/aula-device/control.sock`, verifies a root peer,
+The gateway defaults to `/run/aula-device/control.sock`, verifies a root peer,
 and sends one bounded JSON request per Unix connection. The companion accepts
 only the configured gateway UID. The launcher checks socket ownership, type,
 permissions, inode stability, and a lifetime lock before accepting or
@@ -53,3 +53,18 @@ This separation intentionally removes the old firmware HTTP/login client and
 raw recorder projection; operators must not treat the safe `unknown` status as
 an observation of the TI8168 media board. The SIP daemon LSZ1 interface is
 independent of the companion.
+
+## Synthetic host activity provider
+
+`lab/emulator` can answer the revision-1 status request over an inherited Unix
+stream socket, including `paused` and `unknown`. It reads fresh synthetic state
+for each request; it supplies no hardware or recording-control behavior and
+rejects all revision-2 credential/job requests. The production companion's
+root requirement, fixed paths, and peer checks are unchanged.
+
+Host gateway policies may set `device_socket_path`; non-root
+`expected_device_uid` additionally requires `development_device_provider: true`
+and emits a startup warning. These operator-owned settings apply only to the
+gateway client, including its credential requests; do not enable development
+mode in production. See the [gateway policy instructions](../gateway/README.md#device-companion-routes)
+for path restrictions and socket activation.

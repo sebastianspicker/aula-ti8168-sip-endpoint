@@ -2,7 +2,7 @@
 
 #define AULA_PJSIP_MEDIA_WATCH_LIMIT 4U
 
-typedef struct aula_pjsip_media_watch {
+struct aula_pjsip_media_watch {
   int source_descriptor;
   int owned_descriptor;
   pj_ioqueue_key_t *key;
@@ -10,7 +10,7 @@ typedef struct aula_pjsip_media_watch {
   unsigned char peek_byte;
   int pending;
   int signaled;
-} aula_pjsip_media_watch;
+};
 
 static void pjsip_media_readiness_complete(pj_ioqueue_key_t *key,
                                            pj_ioqueue_op_key_t *operation,

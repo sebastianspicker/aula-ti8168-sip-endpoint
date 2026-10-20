@@ -56,8 +56,8 @@ fastcgi: check-fcgi-prefix $(BUILD)/aula-gateway-fcgi
 check-fcgi-prefix:
 	@test -n "$(FCGI_PREFIX)" || (echo "Set FCGI_PREFIX to a vetted FastCGI 2.4.7 installation"; exit 2)
 
-$(BUILD)/aula-gateway-fcgi: $(FCGI_OBJECTS)
-	$(CC) $(CFLAGS) -pthread $^ $(LDLIBS) -L$(FCGI_PREFIX)/lib -lfcgi -o $@
+$(BUILD)/aula-gateway-fcgi: $(FCGI_OBJECTS) $(wildcard $(FCGI_PREFIX)/lib/libfcgi.*)
+	$(CC) $(CFLAGS) -pthread $(FCGI_OBJECTS) $(LDLIBS) -L$(FCGI_PREFIX)/lib -lfcgi -o $@
 
 $(BUILD)/fcgi/%.o: %.c | check-fcgi-prefix
 	@mkdir -p $(@D)
@@ -112,7 +112,8 @@ $(BUILD)/check/sipd/%.o: ../sipd/%.c
 # Host unit tests: standalone C programs linked against the pure gateway and
 # the device client half, compiled without FastCGI. A non-zero exit fails.
 CONSOLE_TESTS := test_gateway_basics test_gateway_session_renewal test_gateway_auth \
-	test_gateway_idempotency test_gateway_logging test_gateway_auth_limits test_fastcgi_request
+	test_gateway_idempotency test_gateway_logging test_gateway_auth_limits test_fastcgi_request \
+	test_gateway_device test_gateway_device_routing
 GATEWAY_OBJECTS := $(patsubst %.c,$(BUILD)/obj/%.o,$(GATEWAY_SOURCES))
 CONSOLE_TEST_BINARIES := $(addprefix $(BUILD)/tests/,$(CONSOLE_TESTS))
 CONSOLE_TEST_OBJECTS := $(CONSOLE_TESTS:%=$(BUILD)/obj/tests/%.o)
@@ -125,6 +126,16 @@ test: $(CONSOLE_TEST_BINARIES)
 $(BUILD)/tests/%: $(BUILD)/obj/tests/%.o $(GATEWAY_OBJECTS) $(DEVICE_CLIENT_OBJECTS)
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -pthread $^ $(LDLIBS) -o $@
+
+# The routing fixture substitutes only connect(), recording the configured path
+# and identity. The framing/peer contract uses the normal transport elsewhere.
+$(BUILD)/tests/test_gateway_device_routing: $(BUILD)/obj/tests/test_gateway_device_routing.o $(GATEWAY_OBJECTS) $(filter-out $(BUILD)/obj/device/transport.o,$(DEVICE_CLIENT_OBJECTS)) $(BUILD)/obj/tests/device_transport_real.o
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -pthread $^ $(LDLIBS) -o $@
+
+$(BUILD)/obj/tests/device_transport_real.o: device/transport.c device/transport.h
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Daula_device_connect=aula_device_connect_real -c $< -o $@
 
 # The request-mapping test also links the FastCGI adapter's pure mapping unit.
 $(BUILD)/tests/test_fastcgi_request: $(BUILD)/obj/gateway/fastcgi_request.o

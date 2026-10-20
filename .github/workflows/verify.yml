@@ -1,6 +1,6 @@
 # Runs the documented host verification lane (docs/DEVELOPMENT.md): build
 # the daemon, gateway, device companion and UI, run the unit tests, validate
-# the host configuration and query the emulator. Linux exercises gcc and the
+# the host configuration and exercise fresh emulator state. Linux exercises gcc and the
 # SOCK_SEQPACKET control lane; macOS exercises clang and SOCK_STREAM.
 name: verify
 
@@ -32,6 +32,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
+
+      # Exercise the emulator's supported Python floor on both host platforms.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
 
       - name: Install native dependencies (Linux)
         if: runner.os == 'Linux'

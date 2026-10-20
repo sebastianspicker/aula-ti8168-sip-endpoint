@@ -1,4 +1,5 @@
-# Host unit tests. Each test is a standalone C program linked against the
+# Unit tests. Cross execution requires the explicit emulator opt-in. Each test
+# is a standalone C program linked against the
 # core library with the project's warning policy; a non-zero exit fails it.
 # This is an explicit inventory, not a glob, like the core source list.
 set(AULA_SIPD_TESTS

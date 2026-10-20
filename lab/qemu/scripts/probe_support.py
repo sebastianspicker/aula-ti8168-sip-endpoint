@@ -95,11 +95,12 @@ def terminate_process(process: subprocess.Popen[str]) -> None:
 
 
 def qtest_arguments(
-    qemu: Path, machine: str, qtest_path: Path, qmp_path: Path | None
+    qemu: Path, machine: str, qtest_path: Path, qmp_path: Path | None,
+    *, nic: str = "none",
 ) -> list[str]:
     arguments = [
         str(qemu), "-machine", machine, "-accel", "qtest", "-display", "none",
-        "-serial", "none", "-qtest", f"unix:{qtest_path}",
+        "-serial", "none", "-nic", nic, "-qtest", f"unix:{qtest_path}",
     ]
     if qmp_path is not None:
         arguments.extend(

@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "gateway_internal.h"
+#include "../device/transport.h"
 
 #include <arpa/inet.h>
 #include <ctype.h>
@@ -120,6 +121,12 @@ void aula_gateway_init(aula_gateway *gateway, const aula_gateway_config *config)
   (void)memset(gateway, 0, sizeof(*gateway));
   gateway->directory_revision = 1U;
   if (config != NULL) gateway->config = *config;
+  if (gateway->config.device_socket_path == NULL)
+    gateway->config.device_socket_path = AULA_DEVICE_SOCKET;
+  if (!gateway->config.development_device_provider) gateway->config.expected_device_uid = 0;
+  else if (gateway->config.policy_path == NULL)
+    (void)fprintf(stderr, "WARNING: gateway DEVELOPMENT device provider enabled; expected peer UID=%lu; never use in production\n",
+        (unsigned long)gateway->config.expected_device_uid);
   if (gateway->config.bootstrap_code != NULL &&
       strlen(gateway->config.bootstrap_code) < sizeof(gateway->policy_bootstrap_code)) {
     (void)snprintf(gateway->policy_bootstrap_code, sizeof(gateway->policy_bootstrap_code),
@@ -245,6 +252,27 @@ static int load_policy_uid(aula_gateway *gateway, json_t *root) {
   return 1;
 }
 
+static int load_policy_device(aula_gateway *gateway, json_t *root, size_t *present) {
+  json_t *path = json_object_get(root, "device_socket_path");
+  json_t *uid = json_object_get(root, "expected_device_uid");
+  json_t *development = json_object_get(root, "development_device_provider");
+  *present = (path != NULL) + (uid != NULL) + (development != NULL);
+  if (development != NULL && !json_is_boolean(development)) return 0;
+  if (uid != NULL && (!json_is_integer(uid) || json_integer_value(uid) < 0 ||
+      (uint64_t)json_integer_value(uid) > UINT32_MAX)) return 0;
+  if (uid != NULL && json_integer_value(uid) != 0 && !json_is_true(development)) return 0;
+  if (path != NULL && (!json_is_string(path) ||
+      json_string_length(path) != strlen(json_string_value(path)))) return 0;
+  if (path != NULL && !load_policy_path(root, "device_socket_path", gateway->policy_device_socket,
+      sizeof(gateway->policy_device_socket))) return 0;
+  if (path == NULL) (void)snprintf(gateway->policy_device_socket,
+      sizeof(gateway->policy_device_socket), "%s", AULA_DEVICE_SOCKET);
+  gateway->config.device_socket_path = gateway->policy_device_socket;
+  gateway->config.expected_device_uid = uid == NULL ? 0U : (uint32_t)json_integer_value(uid);
+  gateway->config.development_device_provider = json_is_true(development);
+  return 1;
+}
+
 static int load_policy_control_timeout(aula_gateway *gateway, json_t *root, int *present) {
   json_t *value = json_object_get(root, "control_timeout_milliseconds");
   *present = value != NULL;
@@ -295,16 +323,18 @@ static int load_policy_preview(aula_gateway *gateway, json_t *root) {
 
 static int load_policy_fields(aula_gateway *gateway, json_t *root,
                               int *bootstrap_present, int *timeout_present) {
+  size_t device_present = 0;
   return load_policy_origin(gateway, root) &&
       load_policy_path(root, "control_socket_path", gateway->policy_control_socket,
                        sizeof(gateway->policy_control_socket)) &&
       load_policy_path(root, "account_store_path", gateway->policy_account_store,
                        sizeof(gateway->policy_account_store)) &&
       load_policy_uid(gateway, root) &&
+      load_policy_device(gateway, root, &device_present) &&
       load_policy_preview(gateway, root) &&
       load_policy_control_timeout(gateway, root, timeout_present) &&
       load_policy_bootstrap(gateway, root, bootstrap_present) &&
-      json_object_size(root) == 7U + (*bootstrap_present ? 1U : 0U) + (*timeout_present ? 1U : 0U);
+      json_object_size(root) == 7U + device_present + (*bootstrap_present ? 1U : 0U) + (*timeout_present ? 1U : 0U);
 }
 
 int aula_gateway_load_policy(aula_gateway *gateway) {
@@ -331,6 +361,9 @@ int aula_gateway_load_policy(aula_gateway *gateway) {
     return 0;
   }
   json_decref(root);
+  if (gateway->config.development_device_provider)
+    (void)fprintf(stderr, "WARNING: gateway DEVELOPMENT device provider enabled; expected peer UID=%lu; never use in production\n",
+        (unsigned long)gateway->config.expected_device_uid);
   if (!bootstrap_present) gateway_disable_bootstrap_code(gateway);
   gateway->config.allowed_origin = gateway->policy_origin;
   gateway->config.control_socket_path = gateway->policy_control_socket;

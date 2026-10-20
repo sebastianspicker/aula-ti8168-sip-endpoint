@@ -3,7 +3,7 @@
 ## Purpose and non-goals
 
 Aula, a SIP endpoint for TI8168 media boards, combines a maintained
-SIP/media endpoint and management console with two independent development environments and a
+SIP/media endpoint and management console with three development environments and a
 physical-target deployment lane. The product stack builds and packages without importing recovered
 or decompiled firmware. The emulator and QEMU model provide different kinds of
 development evidence and neither is a production dependency.
@@ -59,8 +59,9 @@ listener.
 | [`product/console/device/`](../product/console/device/README.md) | Protected projected status, durable job journal, and credential state | Job journal and credential store (persistent deployment state) | Gateway over protected Unix socket; no firmware access |
 | [`product/console/web/`](../product/console/README.md) | React/TypeScript browser application | None (renders server-provided state) | Gateway `/zoom/api/v1/*` routes |
 | `product/console/nginx/` | TLS termination, static assets, FastCGI route allowlist | None | Gateway FastCGI process |
-| [`lab/emulator/`](../lab/emulator/README.md) | Synthetic local recording/stream state and events | Explicit JSON state file below `.work/` | Independent validation lane; not a product runtime dependency |
-| [`lab/qemu/`](../lab/qemu/README.md) | Synthetic TI8168 media-board model | Volatile guest state only | Caller-supplied reviewed ELF/raw image; independent validation lane |
+| [`lab/emulator/`](../lab/emulator/README.md) | Synthetic activity state, LSZ1 stand-in, and device-status provider over inherited Unix sockets | Explicit activity/settings JSON files; volatile call and replay state | Independent host validation lane; not a product runtime dependency |
+| [`lab/qemu/`](../lab/qemu/README.md) | Partial TI8168 model, generated guest and explicit private original-kernel checks | Volatile guest/COW state; private inputs and receipts under `.work` | Peripheral contracts, Linux boot and selected ARM software paths; no full-board/media claim |
+| [`lab/arm-userspace/`](../lab/arm-userspace/README.md) | Cross-built maintained daemon and C tests under Cortex-A8 user-mode QEMU | Explicit build/report directory below `.work` | ARM application behavior; host Linux syscalls, not board Linux boot |
 | [`lab/sip-peer/`](../lab/sip-peer/README.md) | Deterministic SIP/RTP peer for controlled QEMU and physical-lab use | None | Used by QEMU and `tooling/live` |
 | [`deployment/`](../deployment/README.md) | Payload assembly and physical-target lifecycle | Installed releases and ownership journals (target state) | Reviewed prebuilt binaries |
 | [`dependencies/`](../dependencies/README.md) | Third-party version pins, advisories, and preparation scripts | Immutable dependency records | None |
@@ -78,6 +79,14 @@ listener.
   and implementation were removed; LSZ1 call operations remain available.
 - `lab/emulator` and `lab/qemu` are independent validation lanes, not runtime
   dependencies of the product services.
+- `lab/arm-userspace` runs cross-built product code with a supplied ARM runtime.
+  It uses the host Linux kernel; the private full-system QEMU tests separately
+  run selected binaries under the original kernel.
+- For host development the emulator can replace the daemon's LSZ1 interface
+  and the companion's revision-1 activity projection. These servers consume
+  inherited Unix sockets. Gateway device identity overrides require explicit
+  development mode; the production companion and default root-peer policy
+  remain independent of the emulator.
 - The maintained physical [campaign CLI](../tooling/live/README.md) rejects all
   actions before session loading or transport; hardware campaigns require
   separately reviewed private identity tooling. Physical packaging retains
@@ -120,7 +129,7 @@ the change and includes a deliberate compatibility plan.
 | Sessions, CSRF values, token grace, idempotency cache, preview lease | Gateway | Memory only |
 | Device job journal, device credentials | Device companion | Owner-only atomic store below persistent deployment state |
 | TLS keys, SIP credentials, product configuration | Operator/deployment | External restrictive files; never repository content |
-| Synthetic recording/stream state | Emulator | Explicit JSON state file below `.work/` |
+| Synthetic activity and runtime settings | Emulator | Explicit separate JSON files below `.work/` (or an explicit CLI work root) |
 | Installed releases and ownership journal | Deployment target | Versioned target state |
 | Build, package, receipt, and campaign output | Tooling | Ignored `.work/` |
 
@@ -224,6 +233,11 @@ The canonical visible roots are `product`, `lab`, `deployment`, `dependencies`,
   repository content or product dependencies.
 - Reviewed external inputs may be supplied explicitly to build and deployment
   tools; generated output still belongs below `.work/`.
+- Firmware execution tools require private output directories below `.work`.
+  The public emulator source inventory and QEMU patch targets are checked
+  against working files and Git's index. See the
+  [model provenance record](../lab/qemu/PROVENANCE.md) for public references,
+  synthetic defaults and unsupported hardware.
 
 ## Security boundaries
 
@@ -251,11 +265,16 @@ for the full journal, transaction, and recovery contract.
 
 | Lane | Command | Scope |
 | --- | --- | --- |
-| Default host | `make verify` | Builds the SIP daemon, device companion, and UI, then queries the synthetic emulator |
-| QEMU model | `make qemu-verify` | Prepares and builds the pinned QEMU model, then runs its structural and model probes |
+| Default host | `make verify` | Builds the SIP daemon, device companion, and UI, runs tests including emulator/C-client contracts, and verifies fresh emulator mutations/reloads |
+| Browser console | `make emulator-ui` | Runs the host UI, nginx and real gateway with synthetic LSZ1 and activity providers |
+| QEMU model | `make qemu-verify` | Builds the pinned model, checks peripheral contracts, and executes the generated ARM timer/IRQ guest |
+| ARM application | `python3 lab/arm-userspace/run.py ...` | Cross-compiles and runs actual daemon/C tests with explicit public toolchain and runtime inputs |
+| Original kernel | `python3 lab/qemu/firmware/run_original.py ...` | Boots explicit private inputs and checks selected product binaries; vendor startup is bypassed |
 | Physical package | `make package-ti8168 ...` | Assembles explicit reviewed binaries and support files into a manifest-verified payload |
 
-Emulator and QEMU results are synthetic model evidence; label them as such.
+Record which environment produced each result. Synthetic provider responses,
+ARM application execution and original-kernel execution establish different
+things; none establishes physical media or full-board equivalence.
 See [`DEVELOPMENT.md`](DEVELOPMENT.md) for commands and prerequisites.
 
 ## Where new code belongs
@@ -269,8 +288,9 @@ See [`DEVELOPMENT.md`](DEVELOPMENT.md) for commands and prerequisites.
 - Projected status, job-journal, and credential changes belong in
   `product/console/device/`; this component must not gain SIP, media, or
   Zoom-facing responsibility.
-- Synthetic local-state changes for host-only validation belong
-  in `lab/emulator/`.
+- Synthetic state and stand-ins for maintained Aula control interfaces used
+  for host-only validation belong in `lab/emulator/`. These do not implement
+  vendor protocols, SIP/media transport, or appliance emulation.
 - Synthetic machine-model changes belong in `lab/qemu/`; keep model claims
   separate from physical-device claims.
 - Deterministic SIP/RTP peer changes belong in `lab/sip-peer/`; QEMU and

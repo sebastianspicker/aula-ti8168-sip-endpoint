@@ -206,7 +206,7 @@ static int execute_gateway_transaction(aula_gateway *gateway, gateway_transactio
   }
   gateway_state_unlock(gateway);
   control_result = (transaction->plan.flags & R_DEVICE) != 0U ?
-      gateway_device_backend_reply(transaction, backend, sizeof(backend)) :
+      gateway_device_backend_reply(&gateway->config, transaction, backend, sizeof(backend)) :
       gateway_backend_control_reply(control, context, &transaction->plan, backend);
   if (!gateway_state_lock(gateway)) {
     OPENSSL_cleanse(backend, sizeof(backend));

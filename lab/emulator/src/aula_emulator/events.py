@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from typing import Generic, TypeVar
-
+from typing import Generic, TypeVar, cast
 
 EventT = TypeVar("EventT")
 _CLOSED = object()
@@ -20,6 +19,8 @@ class EventSubscription(Generic[EventT]):
 
     def __init__(self, broker: EventBroker[EventT], max_queue_size: int) -> None:
         self._broker = broker
+        # Queues bind lazily to the active loop when a get() actually waits.
+        # This broker is for a single asyncio loop, not cross-thread fan-out.
         self._queue: asyncio.Queue[EventT | object] = asyncio.Queue(maxsize=max_queue_size)
         self._closed = False
 
@@ -38,7 +39,7 @@ class EventSubscription(Generic[EventT]):
         if item is _CLOSED:
             self._queue.put_nowait(_CLOSED)
             raise SubscriptionClosed("subscription is closed")
-        return item  # type: ignore[return-value]
+        return cast(EventT, item)
 
     async def unsubscribe(self) -> None:
         """Remove this subscription.  It is safe to call more than once."""

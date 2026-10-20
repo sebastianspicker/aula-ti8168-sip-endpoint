@@ -1,3 +1,6 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE 1
+#endif
 #define _POSIX_C_SOURCE 200809L
 
 #include "gateway_internal.h"
@@ -47,7 +50,7 @@ int aula_gateway_peer_uid_matches(int descriptor, uint32_t expected_uid) {
     struct ucred credentials;
     socklen_t length = (socklen_t)sizeof(credentials);
     return getsockopt(descriptor, SOL_SOCKET, SO_PEERCRED, &credentials, &length) == 0 &&
-        length == sizeof(credentials) && credentials.uid >= 0 && (uint32_t)credentials.uid == expected_uid;
+        length == sizeof(credentials) && credentials.uid == (uid_t)expected_uid;
   }
 #elif defined(__APPLE__) || defined(__FreeBSD__)
   {

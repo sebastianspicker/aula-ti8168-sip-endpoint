@@ -2,6 +2,18 @@ import { isRecord, readNumber, readText, type JsonRecord } from './types'
 
 const record = (value: unknown): JsonRecord | null => isRecord(value) ? value : null
 export function projectActiveCall(status: JsonRecord): JsonRecord { return status }
+export function projectCallState(state: string | null | undefined) {
+  const active = ['active', 'connected', 'connecting', 'resolving', 'inviting',
+    'early', 'establishing_media', 'established', 'terminating', 'failed', 'backing_off'].includes(state ?? '')
+  if (state === 'idle' || state === 'terminated') return {
+    active, emptyTitle: 'No active call', emptyDescription: state === 'terminated'
+      ? 'The call has ended. You can join another meeting.'
+      : 'Use the form to start a permitted meeting.'
+  }
+  if (state === 'stopped') return { active, emptyTitle: 'Calling stopped', emptyDescription: 'Calling is stopped on the device.' }
+  if (state === 'terminal_failure') return { active, emptyTitle: 'Call failed', emptyDescription: 'The device reported a terminal call failure. Check diagnostics before retrying.' }
+  return { active, emptyTitle: 'Call state unavailable', emptyDescription: 'The device did not report a recognized call state.' }
+}
 export function connectionLabel(status: JsonRecord | null): string {
   const state = readText(status, 'call_state')
   if (['established', 'connected', 'active'].includes(state ?? '')) return 'SIP call established'

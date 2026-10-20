@@ -7,28 +7,26 @@
 #include <string.h>
 #include <unistd.h>
 
-json_t *aula_device_exchange(json_t *request) {
+json_t *aula_device_exchange_at(const char *path, uint32_t owner, json_t *request) {
   uint64_t deadline = aula_device_clock() + 4500;
   json_t *response = NULL;
-  int fd = aula_device_connect(AULA_DEVICE_SOCKET, 0, 500);
+  int fd = aula_device_connect(path, owner, 500);
   if (fd < 0) return NULL;
   if (aula_device_send_message(fd, request, deadline)) response = aula_device_receive_message(fd, deadline);
   close(fd);
   return response;
 }
 
-int aula_device_read_status(char *output, size_t capacity) {
-  int fd = aula_device_connect(AULA_DEVICE_SOCKET, 0, 1000);
+int aula_device_read_status_fd(int fd, uint32_t owner, char *output, size_t capacity) {
   uint64_t deadline = aula_device_clock() + 4500;
   json_t *request, *response = NULL;
   char *encoded = NULL;
   int result = 0;
-  if (fd < 0) return 0;
+  if (fd < 0 || output == NULL || capacity == 0 || !aula_device_peer(fd, owner)) return 0;
   request = json_pack("{s:i,s:s}", "revision", 1, "operation", "status");
   if (request != NULL && aula_device_send_message(fd, request, deadline))
     response = aula_device_receive_message(fd, deadline);
   json_decref(request);
-  close(fd);
   if (aula_device_status_valid(response)) encoded = json_dumps(response, JSON_COMPACT);
   if (encoded != NULL && strlen(encoded) < capacity) {
     snprintf(output, capacity, "%s", encoded);
@@ -37,4 +35,21 @@ int aula_device_read_status(char *output, size_t capacity) {
   free(encoded);
   json_decref(response);
   return result;
+}
+
+int aula_device_read_status_at(const char *path, uint32_t owner, char *output, size_t capacity) {
+  int fd = aula_device_connect(path, owner, 1000);
+  int result;
+  if (fd < 0) return 0;
+  result = aula_device_read_status_fd(fd, owner, output, capacity);
+  close(fd);
+  return result;
+}
+
+json_t *aula_device_exchange(json_t *request) {
+  return aula_device_exchange_at(AULA_DEVICE_SOCKET, 0, request);
+}
+
+int aula_device_read_status(char *output, size_t capacity) {
+  return aula_device_read_status_at(AULA_DEVICE_SOCKET, 0, output, capacity);
 }

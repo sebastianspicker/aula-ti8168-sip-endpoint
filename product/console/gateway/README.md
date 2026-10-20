@@ -269,6 +269,27 @@ read lane, independently of SIPD mutations, and rechecks the console session
 before releasing the result. The response exposes only recording/streaming
 activity enums; unavailable transport returns `DEVICE_UNAVAILABLE` (503).
 
+Optional policy keys `device_socket_path` and `expected_device_uid` default to
+`/run/aula-device/control.sock` and root (UID 0). A custom socket retains the
+same descriptor-walked ancestor, socket ownership, and connected-peer checks.
+Non-root `expected_device_uid` is rejected unless the strict JSON boolean
+`development_device_provider` is explicitly `true`. Development mode prints a
+`WARNING: gateway DEVELOPMENT device provider enabled` line with the expected
+UID on successful configuration. Keep it disabled in deployed policies.
+The override applies to all device-client routes, including credential requests;
+the synthetic provider implements only revision-1 status, so credential and
+maintenance requests remain unavailable against it.
+
+For a developer-host provider, create the socket through an external launcher
+under a canonical, private directory such as the checkout's `.work/run/`
+(without symlink ancestors, and with no group/world-writable ancestors). Use its
+absolute path in policy and set the developer's numeric UID explicitly alongside
+`development_device_provider: true`. `/tmp` and `/private/tmp` are deliberately
+unsuitable socket locations: the device client rejects writable ancestors.
+Pass the launcher's listening Unix stream fd to
+`aula-emulator serve-device --fd 3`; the emulator never binds or removes paths.
+The companion server and its root-only device deployment are unchanged.
+
 The gateway links only the client half of the device protocol (`device/client.c`,
 transport, wire framing, strict projected-status validation, and credential *schema*
 validation). The companion's serving loop and its persistent credential store

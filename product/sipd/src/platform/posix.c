@@ -82,7 +82,10 @@ static aula_status process_effective_identity(pid_t pid, uint32_t *out_uid, uint
   char path[64]; struct stat details; int written = snprintf(path, sizeof(path), "/proc/%ld", (long)pid);
   if (written <= 0 || (size_t)written >= sizeof(path)) return AULA_STATUS_LIMIT_EXCEEDED;
   if (stat(path, &details) != 0) return errno == ENOENT ? AULA_STATUS_END : AULA_STATUS_IO_ERROR;
-  if ((uint64_t)details.st_uid > UINT32_MAX || (uint64_t)details.st_gid > UINT32_MAX) return AULA_STATUS_LIMIT_EXCEEDED;
+  /* Round-trip through the wire width: retain the overflow check for wider
+   * uid_t/gid_t without an always-false range comparison on 32-bit targets. */
+  if ((uid_t)(uint32_t)details.st_uid != details.st_uid ||
+      (gid_t)(uint32_t)details.st_gid != details.st_gid) return AULA_STATUS_LIMIT_EXCEEDED;
   *out_uid = (uint32_t)details.st_uid; *out_gid = (uint32_t)details.st_gid; return AULA_STATUS_OK;
 #elif defined(__APPLE__)
   struct proc_bsdinfo info; int bytes = proc_pidinfo((int)pid, PROC_PIDTBSDINFO, 0, &info, (int)sizeof(info));

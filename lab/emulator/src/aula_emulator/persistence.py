@@ -10,15 +10,17 @@ from __future__ import annotations
 
 import base64
 import errno
+import fcntl
 import json
 import math
 import os
 import stat
 import tempfile
-from collections.abc import Mapping
+import threading
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
-
 
 _UNHANDLED = object()
 
@@ -33,6 +35,20 @@ class PersistenceValidationError(PersistenceError, ValueError):
 
 class PersistenceLoadError(PersistenceError):
     """Raised when an on-disk snapshot cannot be safely loaded."""
+
+
+class PersistenceSafetyError(PersistenceLoadError):
+    """An unsafe filesystem object must never be recovered or overwritten."""
+
+
+class PersistenceDurabilityError(PersistenceError):
+    """Replacement committed, but a final sync or lock release failed.
+
+    The new state is visible. The message identifies the failed completion step;
+    a directory-sync failure makes survival after a system crash uncertain.
+    """
+
+    committed = True
 
 
 class SchemaVersionError(PersistenceLoadError):
@@ -73,6 +89,9 @@ class JsonStateStore:
         self.max_depth = max_depth
         self.max_items = max_items
         self.max_string_bytes = max_string_bytes
+        self._mutex = threading.RLock()
+        self._lock_depth = 0
+        self._transaction_committed = False
 
     @property
     def enabled(self) -> bool:
@@ -80,60 +99,124 @@ class JsonStateStore:
 
         return self.path is not None
 
-    def save(self, state: Mapping[str, Any]) -> bool:
-        """Atomically write *state*, returning ``False`` when disabled."""
+    def _make_parents(self) -> None:
+        assert self.path is not None
+        missing: list[Path] = []
+        parent = self.path.parent
+        while not parent.exists():
+            missing.append(parent)
+            parent = parent.parent
+        for directory in reversed(missing):
+            try:
+                directory.mkdir(mode=0o700)
+            except FileExistsError:
+                if not directory.is_dir():
+                    raise
 
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Serialize reload/check/update/save with a persistent sibling flock.
+
+        The lock inode is never unlinked, including after errors. Nested calls
+        on this store are supported; separate stores/processes share the flock.
+        """
+        with self._mutex:
+            if self.path is None or self._lock_depth:
+                yield
+                return
+            descriptor: int | None = None
+            self._transaction_committed = False
+            try:
+                self._make_parents()
+                lock_path = self.path.with_name(self.path.name + ".lock")
+                flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK
+                descriptor = os.open(lock_path, flags, 0o600)
+                self._validate_file_status(os.fstat(descriptor), "lock")
+                fcntl.flock(descriptor, fcntl.LOCK_EX)
+                self._lock_depth += 1
+                try:
+                    yield
+                finally:
+                    self._lock_depth -= 1
+            except OSError as error:
+                raise PersistenceError("unable to acquire or use snapshot lock") from error
+            finally:
+                if descriptor is not None:
+                    try:
+                        os.close(descriptor)
+                    except OSError as error:
+                        if self._transaction_committed:
+                            raise PersistenceDurabilityError(
+                                "snapshot committed; releasing snapshot lock failed") from error
+                        raise PersistenceError("unable to release snapshot lock") from error
+
+    def save(self, state: Mapping[str, Any]) -> bool:
+        """Atomically replace *state*, returning False when disabled.
+
+        A directory-sync failure raises PersistenceDurabilityError after commit;
+        other errors leave the old snapshot intact. Use transaction() around
+        reload and save when performing a read-modify-write operation.
+        """
         if not self.enabled:
             return False
         if not isinstance(state, Mapping):
             raise PersistenceValidationError("persisted state must be a mapping")
-
         document = {
             "schema_version": self.schema_version,
             "state": self._encode_value(dict(state), depth=0, item_count=[0]),
         }
         try:
-            encoded = json.dumps(
-                document,
-                allow_nan=False,
-                ensure_ascii=False,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        except (TypeError, ValueError) as error:
+            encoded = json.dumps(document, allow_nan=False, ensure_ascii=False,
+                                 separators=(",", ":")).encode("utf-8")
+        except (TypeError, ValueError, UnicodeError) as error:
             raise PersistenceValidationError("state is not JSON serializable") from error
         if len(encoded) > self.max_file_bytes:
             raise PersistenceValidationError("serialized state exceeds max_file_bytes")
+        with self.transaction():
+            return self._save_encoded(encoded)
 
+    def _check_save_target(self) -> None:
         assert self.path is not None
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            target_status = self.path.lstat()
-        except FileNotFoundError:
-            pass
-        else:
-            if stat.S_ISLNK(target_status.st_mode) or not stat.S_ISREG(target_status.st_mode):
-                raise PersistenceValidationError("snapshot target must be a regular non-symlink file")
-            if hasattr(os, "getuid") and target_status.st_uid != os.getuid():
-                raise PersistenceValidationError("snapshot target must be owned by the current user")
-            if target_status.st_mode & 0o022:
-                raise PersistenceValidationError("snapshot target must not be group/world writable")
-        descriptor, temporary_name = tempfile.mkstemp(
-            prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent
-        )
+            descriptor = self._open_snapshot(self.path)
+            if descriptor is not None:
+                try:
+                    self._validate_file_status(os.fstat(descriptor), "snapshot")
+                finally:
+                    os.close(descriptor)
+        except PersistenceLoadError as error:
+            raise PersistenceValidationError(str(error)) from error
+
+    def _save_encoded(self, encoded: bytes) -> bool:
+        assert self.path is not None
+        temporary_name: str | None = None
         try:
+            self._check_save_target()
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent)
             with os.fdopen(descriptor, "wb") as temporary_file:
                 temporary_file.write(encoded)
                 temporary_file.flush()
                 os.fsync(temporary_file.fileno())
+            self._check_save_target()
             os.replace(temporary_name, self.path)
-            self._fsync_parent_directory()
-        finally:
-            # os.replace removes the source on success; this also cleans up an
-            # interrupted or failed replacement without disturbing the old file.
+            self._transaction_committed = True
+            temporary_name = None
             try:
-                os.unlink(temporary_name)
-            except FileNotFoundError:
-                pass
+                self._fsync_parent_directory()
+            except OSError as error:
+                raise PersistenceDurabilityError(
+                    "snapshot committed; directory sync failed (durability uncertain)") from error
+        except OSError as error:
+            raise PersistenceError("unable to save snapshot") from error
+        finally:
+            if temporary_name is not None:
+                try:
+                    os.unlink(temporary_name)
+                except FileNotFoundError:
+                    pass
+                except OSError as error:
+                    raise PersistenceError("unable to remove temporary snapshot") from error
         return True
 
     def _fsync_parent_directory(self) -> None:
@@ -168,18 +251,18 @@ class JsonStateStore:
         try:
             return self._read_open_snapshot(descriptor)
         except OSError as error:
-            raise PersistenceLoadError("unable to read snapshot") from error
+            raise PersistenceError("unable to read snapshot") from error
 
     def _open_snapshot(self, path: Path) -> int | None:
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
         try:
             return os.open(path, flags)
         except FileNotFoundError:
             return None
         except OSError as error:
             if error.errno == errno.ELOOP:
-                raise PersistenceLoadError("snapshot must be a regular non-symlink file") from error
-            raise PersistenceLoadError("unable to open snapshot") from error
+                raise PersistenceSafetyError("snapshot must be a regular non-symlink file") from error
+            raise PersistenceError("unable to open snapshot") from error
 
     def _read_open_snapshot(self, descriptor: int) -> bytes:
         try:
@@ -195,13 +278,17 @@ class JsonStateStore:
             raise PersistenceLoadError("snapshot exceeds max_file_bytes")
         return raw
 
-    def _validate_snapshot_status(self, target_status: os.stat_result) -> None:
+    @staticmethod
+    def _validate_file_status(target_status: os.stat_result, label: str) -> None:
         if not stat.S_ISREG(target_status.st_mode):
-            raise PersistenceLoadError("snapshot must be a regular non-symlink file")
-        if hasattr(os, "getuid") and target_status.st_uid != os.getuid():
-            raise PersistenceLoadError("snapshot must be owned by the current user")
+            raise PersistenceSafetyError(f"{label} must be a regular non-symlink file")
+        if target_status.st_uid != os.getuid():
+            raise PersistenceSafetyError(f"{label} must be owned by the current user")
         if target_status.st_mode & 0o022:
-            raise PersistenceLoadError("snapshot must not be group/world writable")
+            raise PersistenceSafetyError(f"{label} must not be group/world writable")
+
+    def _validate_snapshot_status(self, target_status: os.stat_result) -> None:
+        self._validate_file_status(target_status, "snapshot")
         if target_status.st_size > self.max_file_bytes:
             raise PersistenceLoadError("snapshot exceeds max_file_bytes")
 
@@ -311,5 +398,9 @@ class JsonStateStore:
             raise PersistenceValidationError("state exceeds max_items")
 
     def _check_string(self, value: str) -> None:
-        if len(value.encode("utf-8")) > self.max_string_bytes:
+        try:
+            length = len(value.encode("utf-8"))
+        except UnicodeError as error:
+            raise PersistenceValidationError("string is not valid UTF-8") from error
+        if length > self.max_string_bytes:
             raise PersistenceValidationError("string exceeds max_string_bytes")

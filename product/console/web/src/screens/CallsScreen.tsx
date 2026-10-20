@@ -2,7 +2,7 @@ import { Grid2X2, KeyRound, Keyboard, MicOff, PhoneCall, PhoneOff, RefreshCw, Vi
 import { useCallback, useState } from 'react'
 import { api } from '../api'
 import { CallEvidence, SourceCounters } from '../components/CallEvidence'
-import { previewLabel, projectActiveCall, projectMedia } from '../statusProjection'
+import { previewLabel, projectActiveCall, projectCallState, projectMedia } from '../statusProjection'
 import type { ApiError, CallRequest, JsonRecord, Role } from '../types'
 import { isRecord, readNumber, readText } from '../types'
 import { Button, EmptyState, ErrorNotice, Freshness, LoadingRows, Notice, ValueRow } from '../components/ui'
@@ -27,8 +27,8 @@ export function CallsScreen({ role, onConnection, embedded = false }: { embedded
 
   const active = data?.active
   const callState = readText(active, 'call_state') ?? readText(data?.status ?? null, 'call_state') ?? 'unknown'
-  const activeCall = ['active', 'connected', 'connecting', 'resolving', 'inviting',
-    'early', 'establishing_media', 'established', 'terminating'].includes(callState)
+  const callView = projectCallState(callState)
+  const activeCall = callView.active
   const displayName = readText(active, 'display_name') ?? readText(active, 'meeting_name') ?? readText(active, 'meeting_id')
   const canOperate = role === 'operator' || role === 'admin'
   const videoEnabled = typeof data?.status?.video_transmit_enabled === 'boolean'
@@ -90,7 +90,7 @@ export function CallsScreen({ role, onConnection, embedded = false }: { embedded
         <div className="control-grid"><Button onClick={() => setKeypadOpen(value => !value)} disabled={!canOperate}><Keyboard aria-hidden="true" size={20} /> Keypad</Button><Button variant={audioMuted ? 'primary' : 'danger'} onClick={onAudioMute} disabled={!canOperate || busy || audioMuted === null} title={audioMuted === null ? 'The device did not report audio mute state.' : undefined}><MicOff aria-hidden="true" size={20} />{audioMuted === null ? 'Mute state unavailable' : audioMuted ? (embedded ? 'Unmute meeting' : 'Unmute audio') : (embedded ? 'Mute meeting' : 'Mute audio')}</Button><Button onClick={onVideo} disabled={!canOperate || busy || videoEnabled === null} title={videoEnabled === null ? 'The device did not report video transmit state.' : undefined}>{videoEnabled === false ? <Video aria-hidden="true" size={20} /> : <VideoOff aria-hidden="true" size={20} />}{videoEnabled === null ? 'Video state unavailable' : videoEnabled ? 'Stop video' : 'Start video'}</Button><Button onClick={() => void perform(api.cycleLayout, 'Zoom layout cycle requested.')} disabled={!canOperate || busy}><Grid2X2 aria-hidden="true" size={20} /> {embedded ? 'Next meeting layout' : 'Next layout'}</Button><Button className="span-two" onClick={() => void perform(api.requestKeyframe, 'Local keyframe requested.')} disabled={!canOperate || busy}><RefreshCw aria-hidden="true" size={20} /> Request keyframe</Button></div>
         {keypadOpen && <div className="keypad" aria-label="DTMF keypad">{KEYS.map(tone => <Button key={tone} onClick={() => onTone(tone)} disabled={!canOperate || busy}>{tone}</Button>)}</div>}
         <Button variant="danger" className="hangup" onClick={() => void perform(api.hangup, 'Hang-up request sent.')} disabled={!canOperate || busy}><PhoneOff aria-hidden="true" size={20} /> Hang up</Button>
-      </> : <EmptyState title={callState === 'idle' ? 'No active call' : 'Call state unavailable'}>{callState === 'idle' ? 'Use the form to start a permitted meeting.' : 'The device did not report an active-call record.'}</EmptyState>}</section>
+      </> : <EmptyState title={callView.emptyTitle}>{callView.emptyDescription}</EmptyState>}</section>
       {!embedded && <LiveHealth media={data.media} status={data.status} preview={data.preview} stale={error !== null} />}
     </div>}</section>
 }
