@@ -88,7 +88,7 @@ void aula_rx_shim_report_metrics(aula_rx_source_entry *entry,
   out_metrics->report_block_ssrc = entry->stats.ssrc;
   out_metrics->highest_sequence = entry->highest_sequence_extended;
   out_metrics->jitter = entry->jitter_timestamp_units;
-  out_metrics->cumulative_loss = lost > INT32_MAX ? INT32_MAX : (int32_t)lost;
+  out_metrics->cumulative_loss = lost > 8388607U ? 8388607 : (int32_t)lost;
   out_metrics->fraction_lost = expected_interval == 0U ? 0U :
       (uint8_t)((lost_interval * 256U) / expected_interval > 255U ? 255U :
           (lost_interval * 256U) / expected_interval);

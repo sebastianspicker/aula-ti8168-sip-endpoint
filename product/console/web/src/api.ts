@@ -8,6 +8,7 @@ export type OemCredentialsStatus = { revision: number; credentials_present: bool
 
 export class ConsoleApi {
   private csrfToken: string | null = null
+  onSessionEnded: (() => void) | null = null
 
   async session(signal?: AbortSignal): Promise<ApiResult<Session>> {
     const result = await this.request<unknown>('/auth/session', { signal })
@@ -52,7 +53,7 @@ export class ConsoleApi {
     const result = await this.request<unknown>('/device/credentials', { signal })
     const data = result.data
     if (!isRecord(data) || Object.keys(data).length !== 3 || !Number.isInteger(data.revision) ||
-        typeof data.revision !== 'number' || data.revision < 1 || data.revision > 33 ||
+        typeof data.revision !== 'number' || data.revision < 1 || data.revision > 2147483647 ||
         typeof data.credentials_present !== 'boolean' || typeof data.connection !== 'string' ||
         !['unknown', 'connected', 'authentication_failed', 'backoff', 'unconfigured'].includes(data.connection)) {
       throw this.invalidResponse('Device connection status was not recognized.')
@@ -111,11 +112,20 @@ export class ConsoleApi {
       if (this.csrfToken) headers['X-CSRF-Token'] = this.csrfToken
       headers['Idempotency-Key'] = operationId!
     }
-    return requestJson<T>(`${API_BASE}${path}`, {
-      method, headers,
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      credentials: 'same-origin'
-    }, operationId !== null && init.auth !== false && this.csrfToken !== null, init.signal)
+    try {
+      return await requestJson<T>(`${API_BASE}${path}`, {
+        method, headers,
+        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        credentials: 'same-origin'
+      }, operationId !== null && init.auth !== false && this.csrfToken !== null, init.signal)
+    } catch (error) {
+      // A rejected login is also a 401; only authenticated requests mean the session ended.
+      if (init.auth !== false && (error as ApiError)?.status === 401) {
+        this.csrfToken = null
+        this.onSessionEnded?.()
+      }
+      throw error
+    }
   }
 
   private invalidResponse(message: string): ApiError {

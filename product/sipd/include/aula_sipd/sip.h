@@ -327,10 +327,6 @@ aula_status aula_sip_format_redacted_dial_target(
 /* This boundary intentionally exposes no third-party SIP-library types. */
 aula_status aula_sip_adapter_create(const aula_sip_endpoint_config *config,
                                       aula_sip_adapter **out_adapter);
-/* Atomically applies the bounded runtime policy used by subsequent invites.
- * It never accepts endpoint text, route, credential, or certificate input. */
-aula_status aula_sip_adapter_apply_settings(
-    aula_sip_adapter *adapter, aula_zoom_profile profile, int tls_verified);
 /* Applies the complete bounded transport policy atomically while idle.  This
  * narrow form exists so callers can restore an exact private-lab UDP/TCP
  * policy after a persistence failure; public profiles still require TLS. */

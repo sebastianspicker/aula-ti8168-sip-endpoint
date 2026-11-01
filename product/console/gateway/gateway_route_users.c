@@ -113,7 +113,6 @@ int gateway_handle_user_mutation(aula_gateway *gateway, aula_gateway_session *se
   int had_existing;
   aula_gateway_store_result store_result;
   aula_gateway_account backup_accounts[AULA_GATEWAY_MAX_ACCOUNTS];
-  aula_gateway_account backup_legacy;
   unsigned int backup_revision = 0U;
   char data[128], target_username[33];
   revoked_username[0] = '\0';
@@ -140,15 +139,12 @@ int gateway_handle_user_mutation(aula_gateway *gateway, aula_gateway_session *se
     return 1;
   }
   (void)memcpy(backup_accounts, gateway->accounts, sizeof(backup_accounts));
-  backup_legacy = gateway->account;
   backup_revision = gateway->account_revision;
   if (!apply_user_mutation(gateway, deleting, target_username, password, role)) {
     (void)memcpy(gateway->accounts, backup_accounts, sizeof(backup_accounts));
-    gateway->account = backup_legacy;
     gateway->account_revision = backup_revision;
     json_decref(root);
     OPENSSL_cleanse(backup_accounts, sizeof(backup_accounts));
-    OPENSSL_cleanse(&backup_legacy, sizeof(backup_legacy));
     gateway_write_error(response, 400U, "SCHEMA_INVALID", "body schema is invalid");
     return 1;
   }
@@ -156,17 +152,14 @@ int gateway_handle_user_mutation(aula_gateway *gateway, aula_gateway_session *se
   store_result = aula_gateway_store_account(gateway);
   if (store_result == AULA_GATEWAY_STORE_NOT_COMMITTED) {
     (void)memcpy(gateway->accounts, backup_accounts, sizeof(backup_accounts));
-    gateway->account = backup_legacy;
     gateway->account_revision = backup_revision;
     json_decref(root);
     OPENSSL_cleanse(backup_accounts, sizeof(backup_accounts));
-    OPENSSL_cleanse(&backup_legacy, sizeof(backup_legacy));
     gateway_write_error(response, 500U, "PERSISTENCE_FAILED", "account state was not saved");
     return 1;
   }
   json_decref(root);
   OPENSSL_cleanse(backup_accounts, sizeof(backup_accounts));
-  OPENSSL_cleanse(&backup_legacy, sizeof(backup_legacy));
   if (had_existing) (void)snprintf(revoked_username, 33U, "%s", target_username);
   if (store_result == AULA_GATEWAY_STORE_DURABILITY_UNCERTAIN) {
     gateway_write_error(response, 503U, "PERSISTENCE_UNCERTAIN",

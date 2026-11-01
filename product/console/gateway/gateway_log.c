@@ -2,10 +2,11 @@
  * aula_gateway_handle. Lines carry only the method, the route path, the
  * status, the error code, the nginx-supplied client address and the
  * duration: never bodies, cookies, CSRF tokens, idempotency keys, usernames,
- * query strings or diagnostics export identifiers. Two fixed budgets per
- * minute bound the volume: one for state-changing and refused or failed
- * requests (the audit trail) and a separate one for successful reads, so
- * the console's continuous polling cannot crowd out the audit lines. */
+ * query strings or diagnostics export identifiers. Three fixed budgets per
+ * minute bound the volume: refused or failed requests, successful reads and
+ * successful state-changing requests each have their own, so neither
+ * continuous polling nor a flood of refused requests can hide an admin
+ * action. */
 #define _POSIX_C_SOURCE 200809L
 
 #include "gateway_internal.h"
@@ -17,6 +18,7 @@
 #define GATEWAY_LOG_WINDOW_SECONDS 60U
 #define GATEWAY_LOG_AUDIT_LINES_PER_WINDOW 30U
 #define GATEWAY_LOG_READ_LINES_PER_WINDOW 12U
+#define GATEWAY_LOG_WRITE_LINES_PER_WINDOW 120U
 #define GATEWAY_LOG_EXPORT_PREFIX "/zoom/api/v1/diagnostics/export/"
 
 /* Copies `source` up to `stop` (or its end), replacing any character outside
@@ -48,21 +50,24 @@ static void response_code(char *destination, size_t capacity, const char *body) 
   if (index == 0U) (void)snprintf(destination, capacity, "-");
 }
 
-static int request_is_audit(const aula_gateway_request *request,
-                            const aula_gateway_response *response, int handled) {
-  return !handled || response->status >= 400U || request->method == NULL ||
-      strcmp(request->method, "GET") != 0;
+static int request_is_refused(const aula_gateway_response *response, int handled) {
+  return !handled || response->status >= 400U;
 }
 
-/* Takes one line from the audit or read budget for the current minute;
- * reports lines either budget dropped in the previous minute through
- * `suppressed`. */
-static int take_log_budget(aula_gateway *gateway, uint64_t now, int audit,
+static int request_is_read(const aula_gateway_request *request) {
+  return request->method != NULL && strcmp(request->method, "GET") == 0;
+}
+
+/* Takes one line from the audit (`audit`), write (`write`) or read budget for
+ * the current minute. Reports lines any budget dropped in the previous minute
+ * through `suppressed`. */
+static int take_log_budget(aula_gateway *gateway, uint64_t now, int audit, int write,
                            unsigned int *suppressed) {
   uint64_t window = now / GATEWAY_LOG_WINDOW_SECONDS;
-  unsigned int *lines = audit ? &gateway->log_lines : &gateway->log_read_lines;
-  unsigned int limit = audit ? GATEWAY_LOG_AUDIT_LINES_PER_WINDOW
-                             : GATEWAY_LOG_READ_LINES_PER_WINDOW;
+  unsigned int *lines = audit ? &gateway->log_lines :
+      write ? &gateway->log_write_lines : &gateway->log_read_lines;
+  unsigned int limit = audit ? GATEWAY_LOG_AUDIT_LINES_PER_WINDOW :
+      write ? GATEWAY_LOG_WRITE_LINES_PER_WINDOW : GATEWAY_LOG_READ_LINES_PER_WINDOW;
   int allowed;
   *suppressed = 0U;
   if (!gateway_state_lock(gateway)) return 0;
@@ -71,6 +76,7 @@ static int take_log_budget(aula_gateway *gateway, uint64_t now, int audit,
     gateway->log_window = window;
     gateway->log_lines = 0U;
     gateway->log_read_lines = 0U;
+    gateway->log_write_lines = 0U;
     gateway->log_suppressed = 0U;
   }
   allowed = *lines < limit;
@@ -99,8 +105,9 @@ void gateway_log_request(aula_gateway *gateway, const aula_gateway_request *requ
   char line[256];
   unsigned int suppressed;
   if (gateway == NULL || request == NULL || response == NULL ||
-      !take_log_budget(gateway, request->now,
-                       request_is_audit(request, response, handled), &suppressed))
+      !take_log_budget(gateway, request->now, request_is_refused(response, handled),
+                       !request_is_refused(response, handled) && !request_is_read(request),
+                       &suppressed))
     return;
   if (suppressed != 0U) {
     (void)snprintf(line, sizeof(line),

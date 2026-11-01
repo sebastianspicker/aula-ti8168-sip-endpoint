@@ -10,9 +10,25 @@ import subprocess
 import sys
 
 from dependency_leases import BusyError, Leases
-from dependency_cleanup import sync_directory, trash_work, write_all
 
 MANIFESTS = ("package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml")
+
+
+def sync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def write_all(descriptor, contents):
+    offset = 0
+    while offset < len(contents):
+        written = os.write(descriptor, contents[offset:])
+        if written == 0:
+            raise OSError("short write while publishing generated metadata")
+        offset += written
 
 
 class Dependencies:
@@ -200,8 +216,6 @@ def main(arguments):
         dependencies = Dependencies(Path(__file__).resolve().parents[2])
         if arguments == ["--install"]:
             return dependencies.install()
-        if len(arguments) == 2 and arguments[0] == "--trash-work":
-            return trash_work(dependencies, Path(arguments[1]))
         if arguments == ["--clean"]:
             return dependencies.clean()
         if not arguments or arguments[0].startswith("--"):

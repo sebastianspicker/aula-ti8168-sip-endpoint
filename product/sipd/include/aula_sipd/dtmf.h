@@ -7,16 +7,6 @@
 extern "C" {
 #endif
 
-typedef struct aula_dtmf_sender {
-  uint8_t payload_type;
-  uint32_t ssrc;
-  uint16_t sequence_number;
-  uint32_t rtp_timestamp;
-  uint16_t duration_samples;
-  uint16_t maximum_duration_samples;
-  uint8_t repeat_count;
-} aula_dtmf_sender;
-
 typedef struct aula_dtmf_event {
   uint8_t digit;
   uint16_t duration_samples;
@@ -47,10 +37,6 @@ typedef struct aula_dtmf_sender_state aula_dtmf_sender_state;
 typedef struct aula_dtmf_receiver aula_dtmf_receiver;
 
 aula_status aula_dtmf_validate_digit(uint8_t digit);
-aula_status aula_dtmf_sender_start(aula_dtmf_sender *sender, uint8_t digit,
-                                     aula_mutable_bytes *output);
-aula_status aula_dtmf_sender_advance(aula_dtmf_sender *sender, int end,
-                                       aula_mutable_bytes *output);
 aula_status aula_dtmf_account_received(const aula_rtp_packet *packet,
                                          aula_dtmf_receive_stats *stats,
                                          aula_dtmf_event *out_event);

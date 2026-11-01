@@ -23,7 +23,7 @@ AUTOSTART_TX=$BASE/autostart-transaction
 PURGE_TX=$BASE/purge-transaction
 ROLLBACK_TX=$BASE/rollback-transaction
 STARTER=$BASE/live-start.sh
-INTERNAL_LOCK=aula-ti8168-sip-endpoint-live-internal-v1; SIP_CA=$BASE/tls/sip-ca.crt; SIP_CA_UID=1000; SIP_CA_GID=0
+INTERNAL_LOCK=aula-ti8168-sip-endpoint-live-internal-v1; SIP_CA=$BASE/tls/sip-ca.crt; SIP_CA_UID=$(id -u aula-sip 2>/dev/null || true); SIP_CA_GID=0
 
 die() { printf '%s\n' "live-remove: $*" >&2; exit 1; }
 durability_barrier() { sync || die 'filesystem durability barrier failed'; }
@@ -178,10 +178,19 @@ require_integrity_evidence() {
     actual=$(sha256_file "$target") || die "cannot hash managed immutable file: $target"
     [ "$actual" = "$digest" ] || die "managed immutable file changed outside the campaign: $target"
 }
+# SIP_CA_UID is resolved before the passwd restore. A purge rerun after the restore
+# compares against aula-sipd.conf, which install.sh chowned to aula-sip and which a
+# purge deletes only after the TLS files.
+sip_ca_ownership_ok() {
+    expected=$SIP_CA_UID
+    [ -n "$expected" ] || expected=$(ls -nd "$BASE/aula-sipd.conf" 2>/dev/null | awk 'NR == 1 { print $3 }')
+    case $expected in ''|0|*[!0-9]*) return 1 ;; esac
+    [ "$(ls -nd "$1" | awk 'NR == 1 { print $3 ":" $4 }')" = "$expected:$SIP_CA_GID" ]
+}
 validate_runtime_leaf() {
     relative=${1#"$BASE"/}
     [ -f "$1" ] && [ ! -L "$1" ] || die "campaign runtime state is unsafe: $relative"
-    [ "$relative" != tls/sip-ca.crt ] || { [ "$(ls -nd "$1" | awk 'NR == 1 { print $3 ":" $4 }')" = "$SIP_CA_UID:$SIP_CA_GID" ] || die 'SIP CA ownership is unsafe'; find "$1" -prune -perm 0600 | grep -Fx "$1" >/dev/null || die 'SIP CA mode is unsafe'; }
+    [ "$relative" != tls/sip-ca.crt ] || { sip_ca_ownership_ok "$1" || die 'SIP CA ownership is unsafe'; find "$1" -prune -perm 0600 | grep -Fx "$1" >/dev/null || die 'SIP CA mode is unsafe'; }
     case $relative in
         gateway/account.json|gateway/service.log|nginx/service.log|nginx/nginx-error.log|nginx/nginx-access.log|nginx/nginx.pid|sip/settings.json|sip/service.log|tls/server.crt|tls/server.key|tls/sip-ca.crt|aula-sipd.conf|gateway.conf|bootstrap-token) ;;
         *) die "unexpected object blocks owned-state purge: $relative" ;;
@@ -433,7 +442,10 @@ finalize_purge() {
 
 # Validate every journal target before the first service stop, unmount, restore,
 # unlink, or release deletion.  The second pass below is mutation-only.
-acquire_lock; trap release_lock EXIT HUP INT TERM
+acquire_lock; trap release_lock EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 [ ! -e "$BOOTSTRAP_TX" ] && [ ! -L "$BOOTSTRAP_TX" ] || die 'bootstrap transaction is unresolved; rerun the installer before removal'
 if [ "$purge" = 1 ] && [ "$journal_present" = 0 ]; then
     read_purge_tx
@@ -481,6 +493,33 @@ if [ -L "$CURRENT" ] && [ -x "$CURRENT/etc/init.d/S99aula" ]; then
     "$CURRENT/etc/init.d/S99aula" stop >/dev/null 2>&1 || die 'cannot stop active services'
 fi
 
+# Pass 1: the passwd restore, before any unmount or deletion, so a failed restore
+# leaves every other journaled object in place and a rerun can retry it.
+while IFS= read -r entry; do
+    case $entry in
+        root-ssh-passwd:*)
+            require_secure_path_chain "$ROOT_SSH_APPLY"
+            temporary=$ROOT_SSH_PROVISION/account-overlays/${ROOT_PASSWD_MOUNT#/root-ssh-provision/account-overlays/}; temporary=${temporary%/passwd}/.passwd.aula-ti8168-sip-endpoint-restore.$$
+            cp "$ROOT_SSH_BACKUP" "$temporary"; chown 0:0 "$temporary"; chmod 0644 "$temporary"; mv "$temporary" "$ROOT_PASSWD_SOURCE"
+            "$ROOT_SSH_APPLY" || die 'managed root-SSH apply failed while restoring passwd source'
+            cmp -s "$ROOT_SSH_BACKUP" /etc/passwd || die 'managed root-SSH passwd restore did not activate exact prior bytes'
+            ;;
+        *) : ;;
+    esac
+done < "$JOURNAL"
+# Pass 2: bind mounts.
+while IFS= read -r entry; do
+    case $entry in
+        mount:/run/aula-state:"$BASE")
+            if mounted_from "$BASE" /run/aula-state; then umount /run/aula-state; fi
+            ;;
+        mount:/etc/group:"$IDENTITY/group")
+            if mounted_from "$IDENTITY/group" /etc/group; then umount /etc/group || die 'cannot remove managed group bind mount'; fi
+            ;;
+        *) : ;;
+    esac
+done < "$JOURNAL"
+# Pass 3: release deletions.
 while IFS= read -r entry; do
     case $entry in
         release:*)
@@ -493,20 +532,7 @@ while IFS= read -r entry; do
                 durability_barrier
             fi
             ;;
-        mount:/run/aula-state:"$BASE")
-            if mounted_from "$BASE" /run/aula-state; then umount /run/aula-state; fi
-            ;;
-        mount:/etc/group:"$IDENTITY/group")
-            if mounted_from "$IDENTITY/group" /etc/group; then umount /etc/group || die 'cannot remove managed group bind mount'; fi
-            ;;
-        root-ssh-passwd:*)
-            require_secure_path_chain "$ROOT_SSH_APPLY"
-            temporary=$ROOT_SSH_PROVISION/account-overlays/${ROOT_PASSWD_MOUNT#/root-ssh-provision/account-overlays/}; temporary=${temporary%/passwd}/.passwd.aula-ti8168-sip-endpoint-restore.$$
-            cp "$ROOT_SSH_BACKUP" "$temporary"; chown 0:0 "$temporary"; chmod 0644 "$temporary"; mv "$temporary" "$ROOT_PASSWD_SOURCE"
-            "$ROOT_SSH_APPLY" || die 'managed root-SSH apply failed while restoring passwd source'
-            cmp -s "$ROOT_SSH_BACKUP" /etc/passwd || die 'managed root-SSH passwd restore did not activate exact prior bytes'
-            ;;
-        release-sha256:*|root-ssh-passwd-backup:*|root-ssh-apply:*|file:*|link:*|cron-comment:*|cron-job:*) : ;;
+        *) : ;;
     esac
 done < "$JOURNAL"
 

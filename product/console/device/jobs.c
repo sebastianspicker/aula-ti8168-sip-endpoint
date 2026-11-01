@@ -180,69 +180,6 @@ static json_t *project_job(json_t *job) {
       "cancellable", strcmp(job_text(job, "state"), "queued") == 0);
 }
 
-static int existing_intent(json_t *jobs, const char *principal, const char *key,
-    const char *operation, const char *fingerprint, json_t **output) {
-  size_t index;
-  json_t *job;
-  json_array_foreach(jobs, index, job) {
-    if (strcmp(job_text(job, "principal"), principal) != 0 ||
-        strcmp(job_text(job, "key"), key) != 0) continue;
-    if (strcmp(job_text(job, "operation"), operation) != 0 ||
-        strcmp(job_text(job, "fingerprint"), fingerprint) != 0) return AULA_JOB_CONFLICT;
-    *output = project_job(job);
-    return *output == NULL ? AULA_JOB_ERROR : AULA_JOB_DUPLICATE;
-  }
-  return AULA_JOB_CREATED;
-}
-
-int aula_device_jobs_accept(aula_device_jobs *store, const char *principal,
-    const char *key, const char *operation, const char *fingerprint, json_t **output) {
-  json_t *jobs, *job;
-  char id[24];
-  int result;
-  if (output == NULL) return AULA_JOB_ERROR;
-  *output = NULL;
-  if (store == NULL || !store->healthy || !job_token(principal, 64) ||
-      !job_token(key, 64) || !job_token(operation, 48) ||
-      !fingerprint_valid(fingerprint)) return AULA_JOB_ERROR;
-  jobs = json_object_get(store->document, "jobs");
-  result = existing_intent(jobs, principal, key, operation, fingerprint, output);
-  if (result != AULA_JOB_CREATED) return result;
-  if (json_array_size(jobs) >= AULA_DEVICE_JOB_LIMIT) return AULA_JOB_FULL;
-  snprintf(id, sizeof(id), "job-%08u", (unsigned)json_array_size(jobs) + 1);
-  job = json_pack("{s:s,s:s,s:s,s:s,s:s,s:s}", "id", id, "principal", principal,
-      "key", key, "operation", operation, "fingerprint", fingerprint, "state", "queued");
-  if (job == NULL || json_array_append_new(jobs, job) != 0) return AULA_JOB_ERROR;
-  if (!journal_write(store)) return AULA_JOB_ERROR;
-  *output = project_job(json_array_get(jobs, json_array_size(jobs) - 1));
-  return *output == NULL ? AULA_JOB_ERROR : AULA_JOB_CREATED;
-}
-
-static int transition_valid(const char *before, const char *after) {
-  if (strcmp(before, "queued") == 0)
-    return strcmp(after, "running") == 0 || strcmp(after, "cancelled") == 0;
-  if (strcmp(before, "running") == 0)
-    return strcmp(after, "uncertain") == 0 || strcmp(after, "succeeded") == 0 ||
-        strcmp(after, "failed") == 0;
-  if (strcmp(before, "uncertain") == 0)
-    return strcmp(after, "succeeded") == 0 || strcmp(after, "failed") == 0;
-  return 0;
-}
-
-int aula_device_jobs_transition(aula_device_jobs *store, const char *id,
-    const char *state) {
-  json_t *job;
-  size_t index;
-  if (store == NULL || !store->healthy || !job_token(id, 20) || !job_state(state)) return 0;
-  json_array_foreach(json_object_get(store->document, "jobs"), index, job) {
-    if (strcmp(job_text(job, "id"), id) != 0) continue;
-    if (!transition_valid(job_text(job, "state"), state)) return 0;
-    if (json_object_set_new(job, "state", json_string(state)) != 0) return 0;
-    return journal_write(store);
-  }
-  return 0;
-}
-
 json_t *aula_device_jobs_list(const aula_device_jobs *store) {
   json_t *result, *job;
   size_t index;

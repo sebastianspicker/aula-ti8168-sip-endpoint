@@ -206,7 +206,6 @@ def main() -> int:
         if item.is_file():
             os.chmod(item, 0o444)
     for executable in (output / "bin/aula-service",
-                       output / "bin/verify-aula-ti8168-sip-endpoint-payload",
                        output / "etc/init.d/S99aula"):
         os.chmod(executable, 0o555)
     rewrite_runtime_prefix(output / "bin/aula-service", args.install_prefix)

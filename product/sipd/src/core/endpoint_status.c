@@ -24,7 +24,6 @@ void endpoint_log(aula_endpoint *endpoint, aula_log_level level,
   record.correlation_id = aula_call_get_correlation_id(endpoint->call);
   record.call_state = endpoint_call_state_name(aula_call_get_state(endpoint->call));
   record.reason_code = reason;
-  record.rx_rendering = endpoint->status.rx_rendering;
   (void)aula_log_write(endpoint->logger, &record);
 }
 

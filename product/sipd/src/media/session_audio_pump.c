@@ -100,11 +100,12 @@ aula_status aula_media_session_pump_audio_internal(aula_media_session *session,
                                                       aula_deadline deadline) {
   aula_media_frame frame;
   aula_status status;
-  if (!aula_media_session_direction_sends(session->audio_direction) ||
-      session->audio_muted != 0) return AULA_STATUS_AGAIN;
   (void)memset(&frame, 0, sizeof(frame));
   status = session->config.backend.vtable->read_audio_pcm(&session->config.backend, deadline, &frame);
   if (status != AULA_STATUS_OK) return status;
+  /* Drain the capture queue even when not sending; the frame is dropped. */
+  if (!aula_media_session_direction_sends(session->audio_direction) ||
+      session->audio_muted != 0) return AULA_STATUS_AGAIN;
   if (aula_media_validate_frame(&frame) != AULA_STATUS_OK ||
       frame.kind != AULA_MEDIA_AUDIO_PCM_S16LE) return AULA_STATUS_INVALID_DATA;
   if (media_session_aec_input(session, &frame)) {

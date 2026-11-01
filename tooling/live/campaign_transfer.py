@@ -205,7 +205,7 @@ def _tar_transfer(
         "[ \"$(ls -nd /run | awk '{print $3}')\" = 0 ]; "
         "! find /run -prune \\( -perm -020 -o -perm -002 \\) | grep -q .; "
         f"[ ! -e {remote} ] && [ ! -L {remote} ]; mkdir {remote}; chmod 0700 {remote}; "
-        f"trap 'rm -rf {remote}' 0 1 2 15; IFS= read -r manifest_bytes; "
+        f"trap 'rm -rf {remote}' 0; trap 'exit 129' 1; trap 'exit 130' 2; trap 'exit 143' 15; IFS= read -r manifest_bytes; "
         "case $manifest_bytes in ''|*[!0-9]*) exit 1 ;; esac; "
         f"dd bs=1 count=\"$manifest_bytes\" of={remote}/.manifest.tsv; "
         f"cat > {remote}/.archive.tar; chmod 0600 {remote}/.manifest.tsv {remote}/.archive.tar; "

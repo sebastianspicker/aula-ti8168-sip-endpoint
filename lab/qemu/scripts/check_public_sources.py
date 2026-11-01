@@ -26,12 +26,21 @@ CLASSES = {
 }
 RETIRED = "lab/emulator/uv.lock"
 MAX_FILE = 16 * 1024 * 1024
+ARTIFACT_SUFFIXES = (".bin", ".img", ".ubi", ".ubifs", ".cpio", ".uimage", ".jffs2", ".squashfs",
+                     ".elf", ".oob", ".dtb", ".rom", ".dump", ".tar", ".gz", ".xz", ".zst", ".lzma",
+                     ".zip", ".7z")
 
 
 def private_components(path: str) -> bool:
     # Any casing/location of these reserved corpus/output directory names is
     # private. This applies to the complete Git index, beyond inventoried roots.
     return any(part.casefold() in (".work", "evidence") for part in path.split("/"))
+
+
+def private_artifact(path: str) -> bool:
+    # Firmware and image payloads are private wherever they appear, including
+    # outside the inventoried roots.
+    return path.casefold().endswith(ARTIFACT_SUFFIXES)
 
 
 def relative(value: object) -> str:
@@ -201,16 +210,19 @@ def check(root: Path, manifest: bytes, *, index_paths: Mapping[str, str] | None 
         index_content = lambda blob: git_source(root, blob)
     if untracked_paths is None:
         untracked_paths = [path.decode("utf-8", "strict") for path in
-                           git(root, "ls-files", "--others", "--exclude-standard", "-z", "--", *SCOPES).split(b"\0") if path]
+                           git(root, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0") if path]
     for name in retired:
         if os.path.lexists(root / name):
             raise ValueError(f"retired public source restored: {name}")
     for name in untracked_paths:
-        relative(name)
-        if scoped(name) and name not in entries:
-            raise ValueError(f"unlisted nonignored working source/artifact: {name}")
+        if scoped(name):
+            relative(name)
+            if name not in entries:
+                raise ValueError(f"unlisted nonignored working source/artifact: {name}")
+        elif private_artifact(name):
+            raise ValueError(f"private firmware/image artifact in working tree: {name}")
     for name, blob in index_paths.items():
-        if private_components(name):
+        if private_components(name) or private_artifact(name):
             raise ValueError(f"private/generated artifact in Git index: {name}")
         if not scoped(name):
             continue

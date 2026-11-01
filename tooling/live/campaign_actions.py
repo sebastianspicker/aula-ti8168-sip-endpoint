@@ -56,7 +56,7 @@ def install(
         )
         command = (
             f"set -eu; base={remote}; "
-            "trap 'rm -rf \"$base\"' 0 1 2 15; "
+            "trap 'rm -rf \"$base\"' 0; trap 'exit 129' 1; trap 'exit 130' 2; trap 'exit 143' 15; "
             f"sh $base/deployment/targets/ti8168/install.sh --payload $base/.work/dist/aula-ti8168-sip-endpoint-live/runtime "
             f"--version {session.version_a} --manifest-sha256 {digest}; "
             f"sh $base/deployment/targets/ti8168/configure-private-lab.sh --sip-peer-ip {session.host_ipv4} "

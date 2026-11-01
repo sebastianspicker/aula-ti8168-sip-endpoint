@@ -190,6 +190,37 @@ static void test_log_volume_is_bounded_per_minute(void) {
   GATEWAY_CHECK(strstr(log.lines[31], "method=DELETE route=/zoom/api/v1/calls/active") != NULL);
 }
 
+static void test_successful_mutation_is_logged_after_refused_flood(void) {
+  static aula_gateway gateway;
+  static aula_gateway_response response;
+  static captured_log log;
+  static const uint8_t salt[AULA_GATEWAY_SALT_BYTES] = {5};
+  char set_cookie[256] = {0};
+  char csrf[65] = {0};
+  char cookie[96];
+  unsigned int index;
+  aula_gateway_request refused = base_request("GET", "/zoom/api/v1/status", 7000U);
+  aula_gateway_request mutation = base_request("DELETE", "/zoom/api/v1/calls/active", 7000U);
+  init_gateway(&gateway, &log);
+  GATEWAY_CHECK(aula_gateway_set_account(&gateway, "admin", "admin password",
+                                         AULA_GATEWAY_ROLE_ADMIN, salt));
+  GATEWAY_CHECK(gateway_new_session(&gateway, "admin", AULA_GATEWAY_ROLE_ADMIN, 7000U,
+                                    set_cookie, csrf) != NULL);
+  (void)snprintf(cookie, sizeof(cookie), "%.*s", (int)strcspn(set_cookie, ";"), set_cookie);
+  /* Unauthenticated requests exhaust the whole audit budget ... */
+  for (index = 0U; index < 35U; ++index)
+    (void)aula_gateway_handle(&gateway, &refused, status_ok, NULL, &response);
+  GATEWAY_CHECK(log.count == 30U);
+  /* ... yet a successful admin action in the same minute is still logged. */
+  mutation.cookie = cookie;
+  mutation.csrf_token = csrf;
+  mutation.idempotency_key = "mutation-key-0001";
+  GATEWAY_CHECK(aula_gateway_handle(&gateway, &mutation, status_ok, NULL, &response));
+  GATEWAY_CHECK(response.status < 400U);
+  GATEWAY_CHECK(log.count == 31U);
+  GATEWAY_CHECK(strstr(log.lines[30], "method=DELETE route=/zoom/api/v1/calls/active status=2") != NULL);
+}
+
 int main(void) {
   test_failed_login_is_logged_without_credentials();
   test_refused_reads_are_logged();
@@ -197,5 +228,6 @@ int main(void) {
   test_export_identifiers_are_not_logged();
   test_request_text_cannot_forge_lines();
   test_log_volume_is_bounded_per_minute();
+  test_successful_mutation_is_logged_after_refused_flood();
   return gateway_test_result("test_gateway_logging");
 }

@@ -228,6 +228,7 @@ aula_status aula_rtsp_native_schedule_reconnect(native_context *context,
                                                    aula_status cause);
 aula_status aula_rtsp_native_prepare_io(native_context *context);
 void aula_rtsp_native_arm_keepalive(native_context *context, uint64_t now_ns);
+size_t aula_rtsp_stream_parser_room(const aula_rtsp_stream_parser *parser);
 int aula_rtsp_stream_parser_session_timeout(
     const aula_rtsp_stream_parser *parser, uint32_t *out_seconds);
 

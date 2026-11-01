@@ -351,25 +351,3 @@ void aula_aac_decoder_destroy(aula_aac_decoder *decoder) {
   (void)decoder;
 #endif
 }
-
-aula_status aula_aac_decode_to_g711_pcm(aula_bytes access_unit,
-                                          const aula_aac_config *config,
-                                          aula_mutable_bytes *out_pcm) {
-  if (access_unit.data == NULL || access_unit.length == 0U ||
-      access_unit.length > AULA_AAC_MAX_ACCESS_UNIT_BYTES || config == NULL ||
-      out_pcm == NULL || (out_pcm->data == NULL && out_pcm->capacity != 0U) ||
-      config->audio_object_type != 2U || config->channels == 0U ||
-      config->channels > 2U || config->sample_rate == 0U) {
-    return AULA_STATUS_INVALID_ARGUMENT;
-  }
-  out_pcm->length = 0U;
-  {
-    aula_aac_decoder *decoder = NULL;
-    aula_status status = aula_aac_decoder_create(config, &decoder);
-    if (status == AULA_STATUS_OK) {
-      status = aula_aac_decoder_decode(decoder, access_unit, out_pcm);
-    }
-    aula_aac_decoder_destroy(decoder);
-    return status;
-  }
-}

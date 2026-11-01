@@ -84,37 +84,6 @@ typedef struct aula_config_view {
   aula_config_limits limits;
 } aula_config_view;
 
-typedef struct aula_config_operational_view {
-  const char *pid_file;
-  const char *media_backend;
-  const char *video_source;
-  const char *audio_source;
-  const char *media_bind_address;
-  const char *media_advertised_address;
-  const char *local_control_socket;
-  uint16_t local_control_socket_mode;
-  uint16_t rtp_mtu;
-  uint16_t local_rtp_port_min;
-  uint16_t local_rtp_port_max;
-  uint32_t media_child_uid;
-  uint32_t media_child_gid;
-  uint32_t control_gateway_uid;
-  uint32_t log_summary_interval_seconds;
-  uint32_t sip_transaction_timeout_ms;
-  uint32_t sip_max_retransmissions;
-  uint32_t sip_max_reconnect_attempts;
-  uint32_t rtsp_jitter_max_ms;
-  uint32_t rtsp_reconnect_limit;
-  uint32_t aec_reference_delay_frames;
-  int foreground;
-  int enable_local_control;
-  int enable_public_network;
-  int enable_tls;
-  int rtsp_use_udp;
-  int aec_enabled;
-  int aec_delay_calibrated;
-} aula_config_operational_view;
-
 /* Fixed local-media identity for a call snapshot.  NAT address translation is
  * intentionally not represented by this configuration boundary. */
 typedef struct aula_media_address_options {
@@ -148,21 +117,15 @@ aula_status aula_config_load_file_diagnosed(const char *path,
 /* Linux-only: parses a retained anonymous regular-file descriptor only after
  * verifying WRITE/GROW/SHRINK/SEAL kernel seals. The caller retains ownership
  * of descriptor; other platforms fail closed with UNSUPPORTED. */
-aula_status aula_config_load_fd(int descriptor, aula_config **out_config);
 aula_status aula_config_load_fd_diagnosed(int descriptor,
                                             aula_config **out_config,
                                             aula_config_diagnostic *diagnostic);
 const aula_config_view *aula_config_get_view(const aula_config *config);
 aula_status aula_config_get_log_config(const aula_config *config,
                                          aula_log_config *out_config);
-aula_status aula_config_get_operational_view(const aula_config *config,
-                                                aula_config_operational_view *out_view);
 aula_status aula_config_create_call_snapshot(const aula_config *config,
                                                aula_call_config **out_snapshot);
 const aula_config_view *aula_call_config_get_view(const aula_call_config *snapshot);
-aula_status aula_call_config_get_operational_view(
-    const aula_call_config *snapshot,
-    aula_config_operational_view *out_view);
 /* Populate immutable runtime inputs without exposing private config storage. */
 aula_status aula_call_config_get_runtime_options(
     const aula_call_config *snapshot,
@@ -172,9 +135,6 @@ aula_status aula_call_config_get_runtime_options(
 void aula_config_destroy(aula_config *config);
 void aula_call_config_destroy(aula_call_config *snapshot);
 
-/* Output is safe for diagnostics and must contain no credential material. */
-aula_status aula_config_format_redacted(const aula_config *config,
-                                          aula_mutable_bytes *output);
 /* Reads the already policy-validated, owner-only secret through a fresh
  * no-follow descriptor. The returned bytes exclude one optional line ending;
  * callers must wipe the output immediately after use. */

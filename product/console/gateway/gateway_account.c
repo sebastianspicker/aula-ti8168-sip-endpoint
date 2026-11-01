@@ -387,22 +387,11 @@ int aula_gateway_set_account(aula_gateway *gateway, const char *username, const 
   (void)snprintf(account.username, sizeof(account.username), "%s", username);
   (void)memset(gateway->accounts, 0, sizeof(gateway->accounts));
   gateway->accounts[0] = account;
-  gateway->account = account;
   gateway->account_revision = 1U;
   result = 1;
 cleanup:
   OPENSSL_cleanse(&account, sizeof(account));
   return result;
-}
-
-void gateway_sync_legacy_account(aula_gateway *gateway) {
-  size_t index;
-  (void)memset(&gateway->account, 0, sizeof(gateway->account));
-  for (index = 0U; index < AULA_GATEWAY_MAX_ACCOUNTS; ++index)
-    if (gateway->accounts[index].configured) {
-      gateway->account = gateway->accounts[index];
-      return;
-    }
 }
 
 const aula_gateway_account *aula_gateway_find_account(const aula_gateway *gateway, const char *username) {
@@ -415,12 +404,7 @@ const aula_gateway_account *aula_gateway_find_account(const aula_gateway *gatewa
 }
 
 static aula_gateway_account *find_account_mutable(aula_gateway *gateway, const char *username) {
-  size_t index;
-  if (gateway == NULL || !gateway_is_safe_username(username)) return NULL;
-  for (index = 0U; index < AULA_GATEWAY_MAX_ACCOUNTS; ++index)
-    if (gateway->accounts[index].configured && strcmp(gateway->accounts[index].username, username) == 0)
-      return &gateway->accounts[index];
-  return NULL;
+  return (aula_gateway_account *)aula_gateway_find_account(gateway, username);
 }
 
 unsigned int aula_gateway_account_count(const aula_gateway *gateway) {
@@ -465,7 +449,6 @@ int aula_gateway_upsert_account(aula_gateway *gateway, const char *username,
   (void)memcpy(replacement.salt, salt, sizeof(salt));
   (void)snprintf(replacement.username, sizeof(replacement.username), "%s", username);
   *account = replacement;
-  gateway_sync_legacy_account(gateway);
   result = 1;
 cleanup:
   OPENSSL_cleanse(salt, sizeof(salt));
@@ -477,7 +460,6 @@ int aula_gateway_delete_account(aula_gateway *gateway, const char *username) {
   aula_gateway_account *account = find_account_mutable(gateway, username);
   if (account == NULL) return 0;
   OPENSSL_cleanse(account, sizeof(*account));
-  gateway_sync_legacy_account(gateway);
   return 1;
 }
 

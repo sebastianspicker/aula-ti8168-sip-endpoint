@@ -69,7 +69,9 @@ static int policy_load(const char *optional, aula_gateway *gateway) {
 
 static void test_policy(void) {
   static aula_gateway gateway;
-  GATEWAY_CHECK(policy_load("", &gateway));
+  int loaded = policy_load("", &gateway);
+  GATEWAY_CHECK(loaded);
+  if (!loaded) return;
   GATEWAY_CHECK(strcmp(gateway.config.device_socket_path, AULA_DEVICE_SOCKET) == 0);
   GATEWAY_CHECK(gateway.config.expected_device_uid == 0);
   GATEWAY_CHECK(!gateway.config.development_device_provider);

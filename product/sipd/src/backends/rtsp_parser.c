@@ -316,6 +316,13 @@ aula_status aula_rtsp_stream_parser_push(aula_rtsp_stream_parser *parser,
   return AULA_STATUS_OK;
 }
 
+size_t aula_rtsp_stream_parser_room(const aula_rtsp_stream_parser *parser) {
+  /* push() first discards the consumed message, so that prefix is free. */
+  size_t retained = parser->message_active != 0 ? parser->length - parser->consumed
+                                                : parser->length;
+  return sizeof(parser->buffer) - retained;
+}
+
 void aula_rtsp_stream_parser_destroy(aula_rtsp_stream_parser *parser) { free(parser); }
 
 int aula_rtsp_stream_parser_session_timeout(

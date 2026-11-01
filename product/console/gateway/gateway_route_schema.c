@@ -54,7 +54,7 @@ int gateway_schema_call_request(const char *body) {
   dial_code = json_string_value(json_object_get(root, "dial_code"));
   valid = safe_control_text(meeting, 9U, 11U) && gateway_digits_only(meeting, 0) &&
       safe_control_text(profile, 1U, 32U) && gateway_schema_enum(body, "profile", profiles, 3U) &&
-      safe_control_text(passcode, 0U, 64U) && gateway_digits_only(passcode, 1) &&
+      safe_control_text(passcode, 0U, 32U) && gateway_digits_only(passcode, 1) &&
       safe_control_text(host_key, 0U, 10U) && gateway_digits_only(host_key, 1) &&
       safe_control_text(dial_code, 0U, 64U) && dial_code_valid(dial_code);
   if (valid) valid = gateway_schema_enum(body, "layout", layouts, 3U);

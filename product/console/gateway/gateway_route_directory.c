@@ -2,56 +2,10 @@
 
 #include "gateway_internal.h"
 
-#include <ctype.h>
 #include <openssl/crypto.h>
 #include <openssl/rand.h>
 #include <stdio.h>
 #include <string.h>
-
-static int directory_id(const char *value) {
-  size_t index;
-  if (value == NULL || value[0] == '\0' || strlen(value) > 32U) return 0;
-  for (index = 0U; value[index] != '\0'; ++index)
-    if ((unsigned char)value[index] < 0x21U || (unsigned char)value[index] > 0x7eU ||
-        (!isalnum((unsigned char)value[index]) && value[index] != '_' && value[index] != '-')) return 0;
-  return 1;
-}
-
-static int directory_name_character_is_safe(unsigned char character) {
-  return character >= 0x20U && character <= 0x7eU && character != '/' &&
-      character != '@' && character != '%' && character != '\\';
-}
-
-static int directory_name_has_sip_scheme(const char *value, size_t index, size_t length) {
-  return index + 3U < length && tolower((unsigned char)value[index]) == 's' &&
-      tolower((unsigned char)value[index + 1U]) == 'i' &&
-      tolower((unsigned char)value[index + 2U]) == 'p' && value[index + 3U] == ':';
-}
-
-static int directory_name(const char *value) {
-  size_t index, length;
-  if (value == NULL || value[0] == '\0' || strlen(value) > 64U) return 0;
-  length = strlen(value);
-  for (index = 0U; value[index] != '\0'; ++index) {
-    if (!directory_name_character_is_safe((unsigned char)value[index]) ||
-        directory_name_has_sip_scheme(value, index, length)) return 0;
-  }
-  return 1;
-}
-
-static int directory_profile(const char *value) {
-  return value != NULL && (strcmp(value, "zoom_direct") == 0 ||
-      strcmp(value, "zoom_proxy") == 0 || strcmp(value, "private_lab") == 0);
-}
-
-static int directory_layout(const char *value) {
-  return value != NULL && (strcmp(value, "gallery") == 0 ||
-      strcmp(value, "full_screen") == 0 || strcmp(value, "dual_video") == 0);
-}
-
-static int directory_meeting(const char *value) {
-  return value != NULL && strlen(value) >= 9U && strlen(value) <= 11U && gateway_digits_only(value, 0);
-}
 
 static aula_gateway_safe_reference *find_reference(aula_gateway_safe_reference *entries, const char *id) {
   size_t i;
@@ -113,7 +67,7 @@ static int directory_mutation_schema(json_t *root, int deleting, aula_gateway_sa
   const char *id, *name, *meeting, *profile, *layout;
   if (!json_is_object(root) || json_object_size(root) != (deleting ? 2U : 6U)) return 0;
   id = json_string_value(json_object_get(root, "id"));
-  if (!directory_id(id) || json_object_get(root, "revision") == NULL) return 0;
+  if (!gateway_safe_reference_id(id) || json_object_get(root, "revision") == NULL) return 0;
   if (deleting) {
     (void)snprintf(value->id, sizeof(value->id), "%s", id);
     return 1;
@@ -122,8 +76,8 @@ static int directory_mutation_schema(json_t *root, int deleting, aula_gateway_sa
   meeting = json_string_value(json_object_get(root, "meeting_id"));
   profile = json_string_value(json_object_get(root, "profile"));
   layout = json_string_value(json_object_get(root, "default_layout"));
-  if (!directory_name(name) || !directory_meeting(meeting) || !directory_profile(profile) ||
-      !directory_layout(layout)) return 0;
+  if (!gateway_safe_reference_name(name) || !gateway_safe_reference_meeting_id(meeting) || !gateway_safe_reference_profile(profile) ||
+      !gateway_safe_reference_layout(layout)) return 0;
   value->used = 1;
   (void)snprintf(value->id, sizeof(value->id), "%s", id);
   (void)snprintf(value->name, sizeof(value->name), "%s", name);
@@ -223,9 +177,9 @@ int gateway_record_recent(aula_gateway *gateway, const char *body) {
   aula_gateway_store_result store_result = AULA_GATEWAY_STORE_DURABLE;
   if (root == NULL) return 0;
   (void)memset(&value, 0, sizeof(value));
-  if (!directory_meeting(json_string_value(json_object_get(root, "meeting_id"))) ||
-      !directory_profile(json_string_value(json_object_get(root, "profile"))) ||
-      !directory_layout(json_string_value(json_object_get(root, "layout"))) ||
+  if (!gateway_safe_reference_meeting_id(json_string_value(json_object_get(root, "meeting_id"))) ||
+      !gateway_safe_reference_profile(json_string_value(json_object_get(root, "profile"))) ||
+      !gateway_safe_reference_layout(json_string_value(json_object_get(root, "layout"))) ||
       RAND_bytes(random, sizeof(random)) != 1 ||
       !gateway_hex_encode(random, sizeof(random), value.id, sizeof(value.id))) {
     json_decref(root);

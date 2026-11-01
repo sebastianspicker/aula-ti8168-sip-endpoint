@@ -142,9 +142,6 @@ typedef struct aula_gateway {
   char policy_bootstrap_code[129];
   char policy_preview_rtsp_ipv4[16];
   uint32_t policy_sipd_uid;
-  /* `account` remains the first configured account for v1 source compatibility.
-   * Authentication and authorization use `accounts`. */
-  aula_gateway_account account;
   aula_gateway_account accounts[AULA_GATEWAY_MAX_ACCOUNTS];
   unsigned int account_revision;
   aula_gateway_safe_reference directory[AULA_GATEWAY_MAX_DIRECTORY_ENTRIES];
@@ -162,6 +159,7 @@ typedef struct aula_gateway {
   uint64_t log_window;
   unsigned int log_lines;
   unsigned int log_read_lines;
+  unsigned int log_write_lines;
   unsigned int log_suppressed;
   pthread_mutex_t state_mutex;
   /* Daemon reads and mutations use independent serialized connections. */

@@ -9,7 +9,8 @@ set(AULA_SIPD_TESTS
     test_config_parse
     test_request_decode
     test_sdp
-    test_pjsip_options)
+    test_pjsip_options
+    test_media_rx)
 
 foreach(_aula_test IN LISTS AULA_SIPD_TESTS)
   add_executable(${_aula_test} ${_aula_test}.c)

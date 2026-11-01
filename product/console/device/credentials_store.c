@@ -25,18 +25,33 @@ static int hex_digest(const char *text) {
   return text != NULL && strlen(text) == 64 && strspn(text, "0123456789abcdef") == 64;
 }
 
-static int receipts_valid(json_t *receipts) {
+static int receipts_valid(json_t *receipts, int version) {
   size_t i, j;
   json_t *entry;
   if (!json_is_array(receipts) || json_array_size(receipts) > 32) return 0;
   json_array_foreach(receipts, i, entry) {
     const char *key = json_string_value(json_object_get(entry, "key"));
-    if (!json_is_object(entry) || json_object_size(entry) != 2 || !hex_digest(key) ||
+    if (!json_is_object(entry) || json_object_size(entry) != (version == 1 ? 2U : 3U) ||
+        !hex_digest(key) ||
         !hex_digest(json_string_value(json_object_get(entry, "fingerprint")))) return 0;
     for (j = 0; j < i; ++j)
       if (strcmp(key, json_string_value(json_object_get(json_array_get(receipts, j), "key"))) == 0) return 0;
   }
   return 1;
+}
+
+/* Version 2 receipts carry their own revision so old receipts can be evicted. */
+static int receipt_revisions_valid(json_t *receipts, json_int_t revision) {
+  size_t i;
+  json_t *entry;
+  json_int_t previous = 1;
+  json_array_foreach(receipts, i, entry) {
+    json_t *value = json_object_get(entry, "revision");
+    if (!json_is_integer(value) || json_integer_value(value) <= previous ||
+        json_integer_value(value) > revision) return 0;
+    previous = json_integer_value(value);
+  }
+  return json_array_size(receipts) == 0 || previous == revision;
 }
 
 static int credentials_state_valid(json_t *document) {
@@ -45,14 +60,30 @@ static int credentials_state_valid(json_t *document) {
   json_t *version = json_object_get(document, "version");
   json_t *revision = json_object_get(document, "revision");
   int present = json_is_object(credentials);
+  json_int_t number;
   if (!json_is_object(document) || json_object_size(document) != 4 ||
-      !json_is_integer(version) || json_integer_value(version) != 1 ||
-      !json_is_integer(revision) || !receipts_valid(receipts)) return 0;
-  if (json_integer_value(revision) != (json_int_t)json_array_size(receipts) + 1) return 0;
+      !json_is_integer(version) || !json_is_integer(revision)) return 0;
+  number = json_integer_value(version);
+  if ((number != 1 && number != 2) || !receipts_valid(receipts, (int)number) ||
+      json_integer_value(revision) < 1 || json_integer_value(revision) > INT_MAX) return 0;
+  if (number == 1 ? json_integer_value(revision) != (json_int_t)json_array_size(receipts) + 1
+      : !receipt_revisions_valid(receipts, json_integer_value(revision)) ||
+        (json_array_size(receipts) == 0) != (json_integer_value(revision) == 1)) return 0;
   if (!present) return json_is_null(credentials) && json_array_size(receipts) == 0;
   return json_array_size(receipts) > 0 && json_object_size(credentials) == 2 &&
       aula_device_credential_text(json_object_get(credentials, "username"), 64) &&
       aula_device_credential_text(json_object_get(credentials, "password"), 128);
+}
+
+/* A valid version-1 document becomes version 2 in memory; the file changes on
+ * the next save. Receipt i of a v1 document was accepted at revision i + 2. */
+static int upgrade_credentials_state(json_t *document) {
+  size_t i;
+  json_t *entry;
+  if (json_integer_value(json_object_get(document, "version")) != 1) return 1;
+  json_array_foreach(json_object_get(document, "receipts"), i, entry)
+    if (json_object_set_new(entry, "revision", json_integer((json_int_t)i + 2)) != 0) return 0;
+  return json_object_set_new(document, "version", json_integer(2)) == 0;
 }
 
 static int credentials_file_valid(int fd) {
@@ -90,11 +121,12 @@ int aula_device_credentials_open(int directory) {
   if (state_directory < 0) return 0;
   fd = openat(directory, "oem-credentials.json", O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
   if (fd < 0 && errno == ENOENT)
-    state = json_pack("{s:i,s:i,s:n,s:[]}", "version", 1, "revision", 1, "credentials", "receipts");
+    state = json_pack("{s:i,s:i,s:n,s:[]}", "version", 2, "revision", 1, "credentials", "receipts");
   else if (fd >= 0 && credentials_file_valid(fd))
     state = json_loadfd(fd, JSON_REJECT_DUPLICATES, &error);
   if (fd >= 0) close(fd);
-  state_healthy = credentials_state_valid(state) && recover_credentials_pending(directory);
+  state_healthy = credentials_state_valid(state) && upgrade_credentials_state(state) &&
+      recover_credentials_pending(directory);
   return state_healthy;
 }
 
@@ -164,14 +196,17 @@ const char *aula_device_credentials_update(json_t *arguments, const char *key) {
   if (duplicate != NULL) return duplicate;
   revision = json_integer_value(json_object_get(state, "revision"));
   if (revision != json_integer_value(json_object_get(arguments, "revision"))) return "revision_conflict";
-  if (json_array_size(json_object_get(state, "receipts")) == 32) return "capacity";
   next = json_deep_copy(state);
   credentials = json_pack("{s:O,s:O}", "username", json_object_get(arguments, "username"),
       "password", json_object_get(arguments, "password"));
-  receipt = json_pack("{s:s,s:s}", "key", key, "fingerprint", fingerprint);
+  receipt = json_pack("{s:s,s:s,s:I}", "key", key, "fingerprint", fingerprint,
+      "revision", revision + 1);
   okay = next != NULL && credentials != NULL && receipt != NULL;
   if (okay) okay = json_object_set(next, "credentials", credentials) == 0 &&
       json_object_set_new(next, "revision", json_integer(revision + 1)) == 0 &&
+      /* The oldest receipt makes room; its key then fails as revision_conflict. */
+      (json_array_size(json_object_get(next, "receipts")) < 32 ||
+       json_array_remove(json_object_get(next, "receipts"), 0) == 0) &&
       json_array_append(json_object_get(next, "receipts"), receipt) == 0;
   json_decref(credentials); json_decref(receipt);
   if (!okay) { json_decref(next); return "unavailable"; }
@@ -193,8 +228,7 @@ json_t *aula_device_credentials_receipt(const char *key) {
   if (!state_healthy || key == NULL) return NULL;
   json_array_foreach(json_object_get(state, "receipts"), index, receipt) {
     if (strcmp(key, json_string_value(json_object_get(receipt, "key"))) != 0) continue;
-    /* Receipts are append-only and each accepted write advances once. */
-    return json_pack("{s:i,s:b,s:s}", "revision", (int)index + 2,
+    return json_pack("{s:O,s:b,s:s}", "revision", json_object_get(receipt, "revision"),
         "credentials_present", 1, "connection", "unknown");
   }
   return NULL;

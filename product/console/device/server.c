@@ -94,12 +94,3 @@ int aula_device_serve_commands(int fd, uint32_t peer_uid, aula_device_read_fn re
   json_decref(response);
   return result;
 }
-
-int aula_device_serve_queries(int fd, aula_device_read_fn read_status,
-    aula_device_read_fn read_jobs) {
-  return aula_device_serve_commands(fd, (uint32_t)geteuid(), read_status, read_jobs, NULL);
-}
-
-int aula_device_serve_request(int fd, aula_device_read_fn read_status) {
-  return aula_device_serve_queries(fd, read_status, NULL);
-}

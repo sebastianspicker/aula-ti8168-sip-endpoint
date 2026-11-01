@@ -340,11 +340,6 @@ static aula_status control_process_poll(aula_control_server *server,
   return result;
 }
 
-aula_status aula_control_server_poll(aula_control_server *server,
-                                       aula_deadline deadline) {
-  return aula_control_server_poll_with_readiness(server, deadline, NULL, 0U);
-}
-
 aula_status aula_control_server_poll_with_readiness(
     aula_control_server *server, aula_deadline deadline,
     const int *readiness_descriptors, size_t readiness_count) {

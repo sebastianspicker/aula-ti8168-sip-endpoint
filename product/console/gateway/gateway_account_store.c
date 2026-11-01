@@ -99,7 +99,6 @@ int gateway_apply_loaded_account_v1(aula_gateway *gateway, json_t *root) {
   (void)snprintf(account.username, sizeof(account.username), "%s", username);
   (void)memset(gateway->accounts, 0, sizeof(gateway->accounts));
   gateway->accounts[0] = account;
-  gateway->account = account;
   gateway->bootstrap_disabled = json_is_true(json_object_get(root, "bootstrap_disabled"));
   gateway->account_revision = 1U;
   gateway->directory_revision = 1U;
@@ -151,7 +150,6 @@ int gateway_apply_loaded_accounts_v2(aula_gateway *gateway, json_t *root) {
   gateway->directory_revision = 1U;
   (void)memset(gateway->directory, 0, sizeof(gateway->directory));
   (void)memset(gateway->recents, 0, sizeof(gateway->recents));
-  gateway_sync_legacy_account(gateway);
   result = 1;
 cleanup:
   OPENSSL_cleanse(accounts, sizeof(accounts));
@@ -188,7 +186,6 @@ int gateway_apply_loaded_store_v3(aula_gateway *gateway, json_t *root) {
   gateway->bootstrap_disabled = json_is_true(json_object_get(root, "bootstrap_disabled"));
   gateway->account_revision = (unsigned int)json_integer_value(account_revision);
   gateway->directory_revision = (unsigned int)json_integer_value(directory_revision);
-  gateway_sync_legacy_account(gateway);
   result = 1;
 cleanup:
   OPENSSL_cleanse(accounts, sizeof(accounts));

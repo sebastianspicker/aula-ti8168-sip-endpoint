@@ -46,11 +46,14 @@ work=$(mktemp -d /tmp/aula-ti8168-sip-endpoint-live-verify.XXXXXX) || die 'canno
 entries=$work/entries
 files=$work/files
 paths=$work/paths
-trap 'rm -rf "$work"' 0 1 2 15
+trap 'rm -rf "$work"' 0
+trap 'exit 129' 1
+trap 'exit 130' 2
+trap 'exit 143' 15
 sed '1d' "$manifest" > "$entries"
 for required in \
     bin/aula-sipd bin/aula-gateway-fcgi bin/aula-device-control bin/nginx bin/aula-atomic-replace \
-    bin/aula-service bin/verify-aula-ti8168-sip-endpoint-payload \
+    bin/aula-service \
     etc/init.d/S99aula etc/nginx/nginx.conf etc/nginx/mime.types \
     etc/nginx/fastcgi_params etc/aula-ti8168-sip-endpoint/aula-sipd.conf.example \
     etc/aula-ti8168-sip-endpoint/gateway.conf.example ui/zoom/index.html

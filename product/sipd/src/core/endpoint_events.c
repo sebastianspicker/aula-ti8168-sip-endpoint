@@ -53,6 +53,18 @@ static void log_accept_failure(aula_endpoint *endpoint, const char *reason,
   (void)fflush(stderr);
 }
 
+/* The operator's mute and video-off choices hold for the whole call, across
+ * reconnects and re-INVITEs. Callers fail the new session if this fails. */
+static aula_status apply_operator_media(const aula_endpoint *endpoint,
+                                        aula_media_session *session) {
+  aula_status status = AULA_STATUS_OK;
+  if (endpoint->operator_audio_muted != 0)
+    status = aula_media_session_set_audio_muted(session, 1);
+  if (status == AULA_STATUS_OK && endpoint->operator_video_disabled != 0)
+    status = aula_media_session_set_video_transmit_enabled(session, 0);
+  return status;
+}
+
 static aula_status accept_invite(aula_endpoint *endpoint,
                                   const aula_sip_event *event) {
   aula_sdp_negotiated_session *negotiated = NULL;
@@ -79,6 +91,7 @@ static aula_status accept_invite(aula_endpoint *endpoint,
   }
   if (status == AULA_STATUS_OK) {
     status = aula_media_session_commit(endpoint->media);
+    if (status == AULA_STATUS_OK) status = apply_operator_media(endpoint, endpoint->media);
     if (status != AULA_STATUS_OK) {
       log_accept_failure(endpoint, "media_commit_failed", status);
     }
@@ -133,6 +146,7 @@ static aula_status remote_ack(aula_endpoint *endpoint,
       event->transaction.cseq_number != endpoint->reinvite_cseq)
     return AULA_STATUS_OK;
   status = aula_media_session_commit(endpoint->pending_media);
+  if (status == AULA_STATUS_OK) status = apply_operator_media(endpoint, endpoint->pending_media);
   if (status == AULA_STATUS_OK) {
     aula_pjsip_media_readiness_cancel();
     endpoint_destroy_media_session(&endpoint->media);

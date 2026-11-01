@@ -13,7 +13,7 @@ export PYTHONPYCACHEPREFIX := $(WORK)/cache/python
 # under .work/build/console, so targets must not run concurrently under -j.
 .NOTPARALLEL:
 
-.PHONY: build verify test sipd-build sipd-test sipd-host-config sipd-pjsip emulator-status emulator-test \
+.PHONY: build verify test deployment-test sipd-build sipd-test sipd-host-config sipd-pjsip emulator-status emulator-test \
 	emulator-ui emulator-ui-status emulator-ui-stop emulator-source-check \
 	console-device console-gateway console-test console-fastcgi-host \
 	console-fastcgi ui-install ui-build ui-test package-ti8168 package-qemu \
@@ -26,13 +26,16 @@ build: sipd-build console-device console-gateway ui-build
 verify: build test sipd-host-config emulator-status
 	@echo "Maintained host build, unit tests, and synthetic emulator entry point verified."
 
-test: sipd-test console-test emulator-test ui-test arm-userspace-test qemu-input-test emulator-source-check
+test: sipd-test console-test emulator-test ui-test arm-userspace-test qemu-input-test emulator-source-check deployment-test
 
 arm-userspace-test:
 	python3 -B -m unittest discover -s lab/arm-userspace/tests
 
 qemu-input-test:
 	python3 -B -m unittest discover -s lab/qemu/firmware/tests
+
+deployment-test:
+	python3 -B -m unittest discover -s deployment/tests
 
 emulator-source-check:
 	python3 -B -m unittest discover -s lab/qemu/tests

@@ -102,17 +102,6 @@ aula_status aula_sip_adapter_apply_policy(
   return AULA_STATUS_OK;
 }
 
-aula_status aula_sip_adapter_apply_settings(
-    aula_sip_adapter *adapter, aula_zoom_profile profile, int tls_verified) {
-  if (tls_verified != 0 && tls_verified != 1) {
-    return AULA_STATUS_INVALID_ARGUMENT;
-  }
-  /* Both UI-safe TLS states retain the deployment-validated TLS transport;
-   * only the daemon can truthfully report whether verification completed. */
-  return aula_sip_adapter_apply_policy(adapter, profile, 1,
-                                        AULA_TRANSPORT_TLS);
-}
-
 static void adapter_set_limit_defaults(aula_sip_adapter *adapter) {
   if (adapter->endpoint.limits.maximum_message_bytes == 0U)
     adapter->endpoint.limits.maximum_message_bytes = AULA_SIPD_MAX_SIP_MESSAGE_BYTES;

@@ -157,7 +157,7 @@ the prior configuration for recovery. Remove the key before rollback to a releas
 that does not recognize it. This setting is independent of the console profile.
 
 An operator-provisioned SIP CA bundle may be stored at
-`/var/lib/cbox/aula-ti8168-sip-endpoint/tls/sip-ca.crt`, owned by the SIP service UID (1000),
+`/var/lib/cbox/aula-ti8168-sip-endpoint/tls/sip-ca.crt`, owned by the `aula-sip` UID (`id -u aula-sip`),
 group 0, mode 0600. Configure `tls_ca_file` with its service-visible path,
 `/run/aula-state/tls/sip-ca.crt`; the vendor `/var` hierarchy is not
 traversable by the service. Preserve the ownership journal's paired `file:` and
@@ -230,6 +230,44 @@ Missing, duplicate, malformed, unowned, changed, or unexpected state fails
 closed. Do not delete preserved paths manually. Neither removal mode removes
 the separately owned root-SSH substrate, so a successful project purge is not
 restoration of the original device security posture.
+
+### Migrating a device installed before the service-ID fix
+
+Earlier installers gave `aula-web`, `aula-gateway`, `aula-sip` and all eight
+service groups the same ID, 1000, which a pre-existing account also uses. The
+fixed installer allocates distinct IDs, but only when it creates the identities.
+`--apply` keeps the journal and the group overlay, so a reinstall after
+`--apply` alone reuses the old IDs (and skips re-adding the users); migrate with
+a purge instead. The purge deletes the state files listed below, so copy them
+off the device first.
+
+1. Copy `gateway/account.json`, `sip/settings.json`, `tls/server.crt`,
+   `tls/server.key` and `tls/sip-ca.crt` from
+   `/var/lib/cbox/aula-ti8168-sip-endpoint` to a safe place.
+2. Run `live-remove.sh --purge-owned-state`. It stops services, restores the
+   passwd backup and removes the group bind mount. It ends with "owned
+   campaign root did not become empty" because it keeps `device/` (the
+   root-owned companion journal and OEM credentials, which the ID change does
+   not affect); that is expected, and the reinstall reuses it. If the passwd
+   restore itself fails, wait one minute for the managed root-SSH apply job and
+   rerun the purge.
+3. Reinstall with the fixed `install.sh`. Check that `id -u aula-web
+   aula-gateway aula-sip` prints three distinct values, none of them 1000.
+4. The installer re-chowns the state directories (`gateway`, `nginx`, `tls`,
+   `device`) on every run, but never the files inside them. `aula-sipd.conf`,
+   `gateway.conf` and the bootstrap token are generated fresh with the new UIDs;
+   do not restore them. Put the copied files back and re-own each one
+   explicitly (`B` is `/var/lib/cbox/aula-ti8168-sip-endpoint`):
+
+```sh
+chown aula-gateway:aula-gateway "$B/gateway/account.json"
+chown aula-sip:aula-sip "$B/sip/settings.json"
+chown root:aula-web-tls "$B/tls/server.crt" "$B/tls/server.key"
+chown aula-sip:root "$B/tls/sip-ca.crt"
+```
+
+Do not use `find -uid 1000` to find files to re-own: UID 1000 is also a
+pre-existing account, and its files must keep their owner.
 
 Physical acceptance requires the separately authorized campaign.
 

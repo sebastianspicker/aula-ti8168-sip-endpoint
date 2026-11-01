@@ -277,7 +277,3 @@ aula_status aula_config_load_fd_diagnosed(int descriptor,
   }
   return aula_config_load_descriptor(duplicate, 1, out_config, diagnostic);
 }
-
-aula_status aula_config_load_fd(int descriptor, aula_config **out_config) {
-  return aula_config_load_fd_diagnosed(descriptor, out_config, NULL);
-}

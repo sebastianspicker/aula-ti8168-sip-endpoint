@@ -63,7 +63,10 @@ neighbor=$(arp -an "$TARGET" | awk '/ at / { print $4; exit }')
 
 scan=$(mktemp -t aula-ti8168-sip-endpoint-live-ecdsa-scan.XXXXXX) || die 'cannot create temporary SSH scan file'
 known=$(mktemp -t aula-ti8168-sip-endpoint-live-known-hosts.XXXXXX) || { rm -f "$scan"; die 'cannot create temporary known-hosts file'; }
-trap 'rm -f "$scan" "$known"' EXIT HUP INT TERM
+trap 'rm -f "$scan" "$known"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 ssh-keyscan -p "$port" -T 5 -t ecdsa "$TARGET" > "$scan" 2>/dev/null || die 'cannot obtain current ECDSA SSH host key'
 matches=0
 while IFS= read -r scanned_line; do
@@ -83,7 +86,7 @@ start_arg=
 [ "$start" = 0 ] || start_arg=' --start'
 remote_legacy_guard='for legacy_path in /opt/ls200-zoom /var/lib/cbox/ls200-zoom /run/ls200-zoom-state /var/run/ls200-zoom-operation.lock; do if [ -e "$legacy_path" ] || [ -L "$legacy_path" ]; then printf "%s\n" "legacy installation is present; follow docs/operator/upgrade-to-aula.md before installing" >&2; exit 1; fi; done'
 remote_install_command="$remote_legacy_guard
-umask 077; base=/var/lib/cbox/aula-ti8168-sip-endpoint; incoming=\$base/.live-incoming-\$\$; mkdir -p \$incoming; chmod 0700 \$incoming; trap 'rm -rf \"\$incoming\"' EXIT HUP INT TERM; tar -xf - -C \$incoming; sh \$incoming/ti8168/install.sh --payload \$incoming/$payload_name --version $version --manifest-sha256 $manifest_sha$start_arg"
+umask 077; base=/var/lib/cbox/aula-ti8168-sip-endpoint; incoming=\$base/.live-incoming-\$\$; mkdir -p \$incoming; chmod 0700 \$incoming; trap 'rm -rf \"\$incoming\"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM; tar -xf - -C \$incoming; sh \$incoming/ti8168/install.sh --payload \$incoming/$payload_name --version $version --manifest-sha256 $manifest_sha$start_arg"
 tar -C "$(dirname "$payload")" -cf - "$payload_name" \
     -C "$SCRIPT_DIR/.." ti8168 | \
     ssh -p "$port" -o HostKeyAlgorithms=ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known" -o GlobalKnownHostsFile=/dev/null \

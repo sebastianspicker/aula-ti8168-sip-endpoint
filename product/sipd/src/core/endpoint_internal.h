@@ -22,6 +22,8 @@ struct aula_endpoint {
   aula_sdp_session *offer;
   aula_sdp_local_capabilities reserved;
   aula_media_session *pending_media;
+  int operator_audio_muted;
+  int operator_video_disabled;
   aula_sdp_local_capabilities pending_reserved;
   aula_sdp_negotiated_session *staged_reinvite;
   aula_control_server *control;
@@ -96,9 +98,6 @@ aula_status endpoint_write_event_snapshot(aula_endpoint *endpoint,
 aula_status endpoint_write_metrics(aula_endpoint *endpoint,
                                     aula_mutable_bytes *response);
 void endpoint_poll_media(aula_endpoint *endpoint, aula_deadline deadline);
-aula_deadline endpoint_effective_poll_deadline(const aula_endpoint *endpoint,
-                                                uint64_t now,
-                                                aula_deadline requested);
 uint64_t endpoint_deadline_after(uint64_t now, uint64_t delay_ns);
 aula_status endpoint_create_media_session(aula_endpoint *endpoint,
                                            aula_media_session **out_media);

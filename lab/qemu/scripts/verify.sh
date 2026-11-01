@@ -57,7 +57,10 @@ verify_patch_stack() {
             >/dev/null 2>&1 || true
         rmdir "$stack_root" 2>/dev/null || true
     }
-    trap cleanup_stack EXIT HUP INT TERM
+    trap cleanup_stack EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     git -C "$SOURCE_DIR" worktree add --detach "$stack_source" "$QEMU_COMMIT" \
         >/dev/null || die "cannot create temporary QEMU worktree"
     git -C "$stack_source" apply "$@" ||

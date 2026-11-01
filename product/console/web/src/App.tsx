@@ -24,6 +24,10 @@ export default function App() {
   }, [])
   const [page, setPage] = useState<Page>(() => legacy ? 'calls' : 'room')
   const [connection, setConnection] = useState<'live' | 'stale' | 'offline' | 'loading'>('loading')
+  useEffect(() => {
+    api.onSessionEnded = () => { setRole(null); setConnection('loading') }
+    return () => { api.onSessionEnded = null }
+  }, [])
   useEffect(() => { let active = true; void api.session().then(result => { if (active) setRole(result.data.role) }).catch(() => undefined).finally(() => { if (active) setCheckingSession(false) }); return () => { active = false } }, [])
   const logout = useCallback(() => { void api.logout().catch(() => undefined).finally(() => { setRole(null); setPage(legacy ? 'calls' : 'room'); setConnection('loading') }) }, [legacy])
   const setPageAndFocus = useCallback((next: Page) => { setPage(next); requestAnimationFrame(() => document.querySelector<HTMLElement>('#main-content')?.focus()) }, [])

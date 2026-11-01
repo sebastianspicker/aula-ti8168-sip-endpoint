@@ -251,10 +251,11 @@ aula-gateway: request method=POST route=/zoom/api/v1/auth/login status=401 code=
 Lines never contain request bodies, cookies, CSRF tokens, idempotency keys,
 usernames, query strings, or diagnostics export identifiers, and
 request-supplied text is reduced to a fixed character set so it cannot split
-or forge a line. Volume is bounded per minute by two budgets: 30 lines for
-state-changing and refused or failed requests, and a separate 12 lines (about one
-polling console tab) for
-successful reads, so console polling cannot crowd out the audit lines. The
+or forge a line. Volume is bounded per minute by three budgets: 30 lines for
+refused or failed requests, 12 lines (about one polling console tab) for
+successful reads, and 120 lines for successful state-changing requests, so
+neither console polling nor a flood of refused requests can hide an admin
+action. The
 first line written in the next minute reports how many lines were
 suppressed. `client` is the nginx-supplied address, present only on the
 login and bootstrap routes. Requests the FastCGI adapter rejects before the

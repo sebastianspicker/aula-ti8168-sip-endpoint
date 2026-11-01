@@ -233,7 +233,10 @@ require_inert_install() {
     done
 }
 acquire_lock
-trap cleanup_install EXIT HUP INT TERM
+trap cleanup_install EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 require_inert_install
 if [ -e "$JOURNAL" ] || [ -L "$JOURNAL" ]; then
     require_secure_file "$JOURNAL"
@@ -332,8 +335,8 @@ validate_root_ssh_overlay() {
 next_unused_id() {
     candidate=200
     while [ "$candidate" -le 65000 ]; do
-        if ! awk -F: -v value="$candidate" '$3 == value || $4 == value { found = 1 } END { exit found }' \
-            "$ROOT_PASSWD_SOURCE" "$IDENTITY/group"; then
+        if ! awk -F: -v value="$candidate" '$3 == value || $4 == value { found = 1 } END { exit !found }' \
+            "$ROOT_PASSWD_SOURCE" "$IDENTITY/group" ${ROOT_PASSWD_TEMP:+"$ROOT_PASSWD_TEMP"}; then
             printf '%s\n' "$candidate"
             return
         fi
@@ -416,6 +419,8 @@ install_service_users_into_root_ssh() {
     append_user aula-web aula-web; append_user aula-gateway aula-gateway; append_user aula-sip aula-sip
     chown 0:0 "$ROOT_PASSWD_TEMP"; chmod 0644 "$ROOT_PASSWD_TEMP"
     cmp -s "$ROOT_PASSWD_SOURCE" /etc/passwd || die 'root-SSH passwd bind view changed during update'
+    # Ignore signals until the changed passwd source is journaled; otherwise no rerun can restore it.
+    trap '' HUP INT TERM
     mv "$ROOT_PASSWD_TEMP" "$ROOT_PASSWD_SOURCE"
     require_secure_path_chain "$ROOT_SSH_APPLY"
     "$ROOT_SSH_APPLY" || die 'managed root-SSH apply failed after passwd update'
@@ -423,6 +428,9 @@ install_service_users_into_root_ssh() {
     record "root-ssh-passwd:$ROOT_PASSWD_SOURCE"
     record "root-ssh-passwd-backup:$ROOT_SSH_BACKUP"
     record "root-ssh-apply:$ROOT_SSH_APPLY"
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
 }
 
 validate_root_ssh_overlay
@@ -499,7 +507,7 @@ cp -Rp "$payload/." "$staging/"
 sh "$SCRIPT_DIR/verify-payload.sh" --payload "$staging" --manifest-sha256 "$manifest_sha" >/dev/null || die 'trusted staging verification failed'
 find "$staging" -type f -exec chmod a-w {} \;
 find "$staging" -type d -exec chmod a-w {} \;
-chmod 0555 "$staging/bin/aula-service" "$staging/bin/verify-aula-ti8168-sip-endpoint-payload" "$staging/etc/init.d/S99aula"
+chmod 0555 "$staging/bin/aula-service" "$staging/etc/init.d/S99aula"
 sh "$SCRIPT_DIR/verify-payload.sh" --payload "$staging" --manifest-sha256 "$manifest_sha" >/dev/null || die 'trusted staging revalidation failed after mode sealing'
 payload=$staging
 require_live_payload_layout

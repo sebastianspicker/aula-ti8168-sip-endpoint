@@ -156,10 +156,13 @@ static aula_status native_read_stream(native_context *c) {
   uint8_t input[AULA_RTSP_STREAM_BUFFER_BYTES];
   aula_status status;
   ssize_t received;
+  size_t room;
   status = native_drain_messages(c, (aula_bytes){NULL, 0U});
   if (status == AULA_STATUS_OK) return status;
   if (status != AULA_STATUS_AGAIN) return status;
-  received = read(c->fd, input, sizeof(input));
+  room = aula_rtsp_stream_parser_room(c->parser);
+  if (room == 0U) return aula_rtsp_native_schedule_reconnect(c, AULA_STATUS_LIMIT_EXCEEDED);
+  received = read(c->fd, input, room);
   if (received < 0) return (errno == EAGAIN || errno == EWOULDBLOCK) ?
       AULA_STATUS_AGAIN : aula_rtsp_native_schedule_reconnect(c, AULA_STATUS_IO_ERROR);
   if (received == 0) return aula_rtsp_native_schedule_reconnect(c, AULA_STATUS_END);

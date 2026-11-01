@@ -380,7 +380,7 @@ def _smoke(session: LiveSession, evidence: PhaseEvidence) -> None:
             )
             _ssh(
                 session, known, control,
-                f"set -eu; base={remote}; trap 'rm -rf \"$base\"' 0 1 2 15; "
+                f"set -eu; base={remote}; trap 'rm -rf \"$base\"' 0; trap 'exit 129' 1; trap 'exit 130' 2; trap 'exit 143' 15; "
                 "/var/lib/cbox/aula-ti8168-sip-endpoint/live-start.sh stop; "
                 "sh $base/deployment/targets/ti8168/install.sh "
                 f"--payload $base/.work/dist/aula-ti8168-sip-endpoint-live/runtime --version {session.version_b} "

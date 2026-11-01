@@ -147,6 +147,15 @@ class InventoryTests(unittest.TestCase):
             with self.subTest(path=path), self.assertRaisesRegex(ValueError, "index"):
                 self.check(index_paths={path: BLOB})
 
+    def test_firmware_images_fail_outside_inventoried_roots(self) -> None:
+        for path in ("docs/rootfs.ubi", "product/sipd/kernel.uImage", "deployment/nand.BIN",
+                     "docs/rootfs.bin.gz", "product/.ubi", "deployment/board.dtb"):
+            with self.subTest(index=path), self.assertRaisesRegex(ValueError, "private/generated artifact in Git index"):
+                self.check(index_paths={path: BLOB})
+            with self.subTest(untracked=path), self.assertRaisesRegex(ValueError, "private firmware/image artifact"):
+                self.check(untracked_paths=[*self.files, path])
+        self.assertEqual(self.check(untracked_paths=[*self.files, "docs/notes with spaces.md"]), 4)
+
     def test_extra_overlay_target_or_mismatched_header_fails(self) -> None:
         patch = self.root / "lab/qemu/patches/model.patch"
         patch.write_text(PATCH + "diff --git a/hw/arm/private.c b/hw/arm/private.c\n")

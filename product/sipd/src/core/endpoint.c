@@ -43,15 +43,6 @@ static uint64_t endpoint_service_deadline_ns(const aula_endpoint *endpoint,
   return deadline_ns;
 }
 
-aula_deadline endpoint_effective_poll_deadline(const aula_endpoint *endpoint,
-                                                uint64_t now,
-                                                aula_deadline requested) {
-  uint64_t service_deadline = endpoint_service_deadline_ns(endpoint, now);
-  if (service_deadline < requested.monotonic_ns)
-    requested.monotonic_ns = service_deadline;
-  return requested;
-}
-
 static void endpoint_record_poll_lateness(aula_endpoint *endpoint,
                                           uint64_t service_deadline,
                                           uint64_t now) {
@@ -231,7 +222,8 @@ static int endpoint_can_originate(const aula_endpoint *endpoint) {
   if (endpoint == NULL || endpoint->dialog != NULL || endpoint->media != NULL ||
       endpoint->pending_media != NULL) return 0;
   state = aula_call_get_state(endpoint->call);
-  return state == AULA_CALL_IDLE || state == AULA_CALL_TERMINATED;
+  return state == AULA_CALL_IDLE || state == AULA_CALL_TERMINATED ||
+         state == AULA_CALL_TERMINAL_FAILURE;
 }
 
 static int endpoint_invite_deadline_due(const aula_endpoint *endpoint,
@@ -253,7 +245,8 @@ static void endpoint_expire_invite(aula_endpoint *endpoint) {
 
 static aula_status endpoint_reset_terminated_call(aula_endpoint *endpoint) {
   aula_call *replacement = NULL;
-  if (aula_call_get_state(endpoint->call) != AULA_CALL_TERMINATED)
+  aula_call_state state = aula_call_get_state(endpoint->call);
+  if (state != AULA_CALL_TERMINATED && state != AULA_CALL_TERMINAL_FAILURE)
     return AULA_STATUS_OK;
   if (aula_call_create(&replacement) != AULA_STATUS_OK)
     return AULA_STATUS_INTERNAL_ERROR;
@@ -305,6 +298,8 @@ aula_status aula_endpoint_originate(
   if (request->profile != endpoint->sip_config.profile)
     return AULA_STATUS_SECURITY_ERROR;
   endpoint->last_endpoint_error = AULA_STATUS_OK;
+  endpoint->operator_audio_muted = 0;
+  endpoint->operator_video_disabled = 0;
   bounded = *request;
   if (bounded.profile != AULA_ZOOM_PROFILE_DIRECT_CRC)
     bounded.target_domain = endpoint->approved_target_domain;

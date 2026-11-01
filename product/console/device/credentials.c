@@ -8,7 +8,7 @@ int aula_device_credential_text(json_t *value, size_t maximum) {
   const char *text = json_string_value(value);
   size_t length = json_string_length(value);
   if (text == NULL || length == 0 || length > maximum || strlen(text) != length) return 0;
-  /* Preserve the version-1 persisted credential schema until migration. */
+  /* The persisted credential text rules are unchanged since version 1. */
   for (size_t i = 0; i < length; ++i)
     if ((unsigned char)text[i] < 32 || text[i] == 127 || text[i] == ':') return 0;
   return 1;

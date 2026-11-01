@@ -94,8 +94,6 @@ aula_status aula_control_server_create(const aula_control_config *config,
                                          aula_control_server **out_server);
 aula_status aula_control_server_publish_status(aula_control_server *server,
                                                  const aula_endpoint_status *status);
-aula_status aula_control_server_poll(aula_control_server *server,
-                                       aula_deadline deadline);
 void aula_control_server_destroy(aula_control_server *server);
 
 #ifdef __cplusplus

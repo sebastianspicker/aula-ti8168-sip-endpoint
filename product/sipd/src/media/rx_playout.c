@@ -54,8 +54,11 @@ aula_status aula_rx_playout_push(aula_rx_playout *playout,
                                    uint64_t now_ns) {
   unsigned int index;
   int slot = -1;
+  if (playout != NULL && packet != NULL && packet->payload.length == 0U) {
+    playout->stats.dropped_packets++;
+    return AULA_STATUS_AGAIN;
+  }
   if (playout == NULL || packet == NULL || packet->payload.data == NULL ||
-      packet->payload.length == 0U ||
       packet->payload.length > sizeof(playout->packets[0].payload)) {
     return AULA_STATUS_INVALID_ARGUMENT;
   }

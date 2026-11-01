@@ -65,7 +65,6 @@ int gateway_sync_parent_directory(int descriptor);
 int gateway_auth_budget_take(aula_gateway *gateway, const char *account_key,
                              const aula_gateway_request *request, unsigned int *retry_after);
 void gateway_disable_bootstrap_code(aula_gateway *gateway);
-void gateway_sync_legacy_account(aula_gateway *gateway);
 int gateway_safe_reference_id(const char *value);
 int gateway_safe_reference_name(const char *value);
 int gateway_safe_reference_meeting_id(const char *value);

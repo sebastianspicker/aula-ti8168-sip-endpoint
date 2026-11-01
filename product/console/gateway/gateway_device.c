@@ -2,6 +2,7 @@
 
 #include "../device/client.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,7 +25,7 @@ static int oem_status_projection(json_t *data) {
   json_t *revision = json_object_get(data, "revision");
   size_t i;
   if (!gateway_json_object_exact(data, keys, 3) || !json_is_integer(revision) ||
-      json_integer_value(revision) < 1 || json_integer_value(revision) > 33 ||
+      json_integer_value(revision) < 1 || json_integer_value(revision) > INT_MAX ||
       !json_is_boolean(json_object_get(data, "credentials_present"))) return 0;
   connection = json_string_value(json_object_get(data, "connection"));
   if (connection == NULL) return 0;

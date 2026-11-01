@@ -152,9 +152,13 @@ static aula_status endpoint_control_media(aula_endpoint *endpoint,
   if (decoded.action == AULA_CONTROL_MEDIA_VIDEO_TRANSMIT) {
     status = aula_media_session_set_video_transmit_enabled(
         endpoint->media, decoded.video_transmit_enabled);
+    if (status == AULA_STATUS_OK)
+      endpoint->operator_video_disabled = decoded.video_transmit_enabled == 0;
   } else if (decoded.action == AULA_CONTROL_MEDIA_AUDIO_MUTE) {
     status = aula_media_session_set_audio_muted(endpoint->media,
                                                   decoded.audio_muted);
+    if (status == AULA_STATUS_OK)
+      endpoint->operator_audio_muted = decoded.audio_muted != 0;
   } else if (decoded.action == AULA_CONTROL_MEDIA_KEYFRAME) {
     status = aula_media_session_request_video_keyframe(endpoint->media);
   } else if (decoded.action == AULA_CONTROL_MEDIA_LAYOUT_NEXT) {
@@ -454,6 +458,9 @@ static aula_status endpoint_request_hangup(aula_endpoint *endpoint,
         aula_sip_adapter_send_bye(endpoint->dialog);
   }
   if (state == AULA_CALL_BACKING_OFF && command == AULA_CONTROL_HANGUP) {
+    return AULA_STATUS_OK;
+  }
+  if (state == AULA_CALL_TERMINAL_FAILURE && command == AULA_CONTROL_HANGUP) {
     return AULA_STATUS_OK;
   }
   if (endpoint_state_is_quiescent(state)) {

@@ -195,9 +195,13 @@ aula_status aula_media_session_pump_video_internal(aula_media_session *session,
   int has_idr;
   int readiness_before_admission;
   aula_status status;
-  if (!aula_media_session_direction_sends(session->video_direction) ||
-      session->video_transmit_enabled == 0) return AULA_STATUS_AGAIN;
   status = media_session_read_video_frame(session, deadline, &frame);
+  /* Drain the capture queue even when not sending; the frame is dropped
+   * unchecked, so a malformed unsent frame cannot end the call. */
+  if (!aula_media_session_direction_sends(session->video_direction) ||
+      session->video_transmit_enabled == 0)
+    return status == AULA_STATUS_OK || status == AULA_STATUS_INVALID_DATA ?
+        AULA_STATUS_AGAIN : status;
   if (status == AULA_STATUS_OK) status = media_session_update_h264_parameters(session, &frame, &has_idr);
   if (status == AULA_STATUS_OK) {
     readiness_before_admission = session->video_transmission_ready;

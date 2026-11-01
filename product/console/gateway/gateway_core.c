@@ -119,17 +119,7 @@ int gateway_hex_encode(const uint8_t *input, size_t length, char *output, size_t
 }
 
 int gateway_hex_decode_32(const char *input, uint8_t output[AULA_GATEWAY_HASH_BYTES]) {
-  size_t index;
-  if (input == NULL || strlen(input) != AULA_GATEWAY_HASH_BYTES * 2U) return 0;
-  for (index = 0U; index < AULA_GATEWAY_HASH_BYTES; ++index) {
-    int high = isdigit((unsigned char)input[index * 2U]) ? input[index * 2U] - '0' :
-        (input[index * 2U] >= 'a' && input[index * 2U] <= 'f' ? input[index * 2U] - 'a' + 10 : -1);
-    int low = isdigit((unsigned char)input[index * 2U + 1U]) ? input[index * 2U + 1U] - '0' :
-        (input[index * 2U + 1U] >= 'a' && input[index * 2U + 1U] <= 'f' ? input[index * 2U + 1U] - 'a' + 10 : -1);
-    if (high < 0 || low < 0) return 0;
-    output[index] = (uint8_t)((high << 4U) | low);
-  }
-  return 1;
+  return gateway_hex_decode(input, output, AULA_GATEWAY_HASH_BYTES);
 }
 
 int gateway_hex_decode(const char *input, uint8_t *output, size_t output_length) {

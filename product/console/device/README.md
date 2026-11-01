@@ -37,9 +37,14 @@ The default status provider is unavailable, so no recording or stream activity
 is inferred from hardware. The job and credential APIs retain their persistent
 schemas and idempotency receipts. `jobs.list` exposes only bounded safe fields;
 there is no job worker or browser mutation workflow. Credentials remain
-write-only and do not alter console accounts or SIP credentials. Existing
-credential files remain under the protected deployment state path; the current
-schema and file names are retained for compatibility until a separate migration.
+write-only and do not alter console accounts or SIP credentials. Credential
+state lives under the protected deployment state path in
+`oem-credentials.json`, schema version 2: each idempotency receipt records the
+revision it produced and the 32 most recent receipts are kept, so credentials
+can be changed without a lifetime limit. A retry whose receipt was evicted
+carries an older revision and is rejected as `revision_conflict`. A version 1
+file is validated, converted in memory, and rewritten as version 2 on the next
+successful save.
 
 The installer provisions `device/` below persistent deployment state as a
 root-owned mode-0700 directory. The companion validates ancestors, opens an

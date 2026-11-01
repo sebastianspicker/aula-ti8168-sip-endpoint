@@ -141,6 +141,7 @@ cleanup_start() {
     trap - 0 1 2 15
     terminate_bounded_process
     [ -z "$rollback_candidate" ] || rm -f "$rollback_candidate"
+    [ -z "${journal_copy:-}" ] || rm -f "$journal_copy"
     [ "$owns_lock" = 0 ] || release_lock
 }
 validate_internal_lock() {
@@ -293,7 +294,20 @@ rollback_activation() {
         target=$(readlink "$CURRENT") || return 1
         case $target in releases/*) target_version=${target#releases/} ;; *) return 1 ;; esac
         case $target_version in ''|.|..|*[!A-Za-z0-9._-]*) return 1 ;; esac
-        rm -f "$CURRENT" || return 1
+        # Drop the link journal entry with the link so remove.sh does not demand a link that no longer exists.
+        journal_copy=
+        if [ "$(grep -Fxc "link:$CURRENT" "$JOURNAL")" -eq 1 ]; then
+            journal_copy=$(mktemp "$BASE/.live-owned-files.XXXXXX") || return 1
+            while IFS= read -r entry; do [ "$entry" = "link:$CURRENT" ] || printf '%s\n' "$entry" >> "$journal_copy"; done < "$JOURNAL" || return 1
+            chown 0:0 "$journal_copy" && chmod 0600 "$journal_copy" || return 1
+        fi
+        # Signals wait until the link and its journal entry are gone together.
+        trap '' 1 2 15
+        rm -f "$CURRENT" && { [ -z "$journal_copy" ] || mv "$journal_copy" "$JOURNAL"; }
+        deactivated=$?
+        trap 'exit 129' 1; trap 'exit 130' 2; trap 'exit 143' 15
+        [ "$deactivated" = 0 ] || return 1
+        journal_copy=
         durability_barrier
         printf '%s\n' 'live-start: deactivated failed first release' >&2
         return

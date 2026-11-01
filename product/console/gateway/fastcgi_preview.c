@@ -17,6 +17,7 @@
 
 #define AULA_PREVIEW_CONNECT_TIMEOUT_MS 2000
 #define AULA_PREVIEW_LEASE_POLL_MS 1000
+#define AULA_PREVIEW_IDLE_MS 10000U
 #define AULA_PREVIEW_ACCESS_UNIT_BYTES (2U * 1024U * 1024U)
 
 typedef struct preview_output {
@@ -248,17 +249,31 @@ static int wait_for_preview_input(int descriptor) {
   return -1;
 }
 
+static int preview_now_ms(uint64_t *milliseconds) {
+  struct timespec now;
+  if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return 0;
+  *milliseconds = (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
+  return 1;
+}
+
 static void pump_preview_connection(
     FCGX_Request *request, aula_fastcgi_server *server,
     const aula_gateway_preview_lease *lease, int descriptor,
     aula_preview_reader *reader, aula_preview_flv_mux *mux,
     preview_output *output) {
   uint8_t input[8192];
+  uint64_t last_input;
+  if (!preview_now_ms(&last_input)) return;
   while (lease_is_valid(server, lease)) {
     int readiness = wait_for_preview_input(descriptor);
+    uint64_t now;
     ssize_t received;
     if (readiness < 0) return;
-    if (readiness == 0) continue;
+    if (readiness == 0) {
+      if (!preview_now_ms(&now) || now - last_input > AULA_PREVIEW_IDLE_MS) return;
+      continue;
+    }
+    if (!preview_now_ms(&last_input)) return;
     received = recv(descriptor, input, sizeof(input), 0);
     if (received > 0) {
       if (!pump_reader(descriptor, reader, mux, output,

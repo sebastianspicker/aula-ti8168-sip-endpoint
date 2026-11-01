@@ -149,7 +149,6 @@ static int handle_bootstrap(aula_gateway *gateway, const aula_gateway_request *r
   uint8_t salt[AULA_GATEWAY_SALT_BYTES] = {0};
   unsigned retry = 0U;
   aula_gateway_account backup_accounts[AULA_GATEWAY_MAX_ACCOUNTS] = {{0}};
-  aula_gateway_account backup_account = {0};
   unsigned int backup_revision = 0U;
   int backup_disabled = 0;
   aula_gateway_store_result store_result;
@@ -180,13 +179,11 @@ static int handle_bootstrap(aula_gateway *gateway, const aula_gateway_request *r
     goto cleanup;
   }
   (void)memcpy(backup_accounts, gateway->accounts, sizeof(backup_accounts));
-  backup_account = gateway->account;
   backup_revision = gateway->account_revision;
   backup_disabled = gateway->bootstrap_disabled;
   if (!bootstrap_code_matches(gateway, code) || RAND_bytes(salt, sizeof(salt)) != 1 ||
       !aula_gateway_set_account(gateway, username, password, AULA_GATEWAY_ROLE_ADMIN, salt)) {
     (void)memcpy(gateway->accounts, backup_accounts, sizeof(backup_accounts));
-    gateway->account = backup_account;
     gateway->account_revision = backup_revision;
     gateway->bootstrap_disabled = backup_disabled;
     gateway_write_error(response, 403U, "BOOTSTRAP_INVALID", "bootstrap request rejected");
@@ -196,7 +193,6 @@ static int handle_bootstrap(aula_gateway *gateway, const aula_gateway_request *r
   store_result = aula_gateway_store_account(gateway);
   if (store_result == AULA_GATEWAY_STORE_NOT_COMMITTED) {
     (void)memcpy(gateway->accounts, backup_accounts, sizeof(backup_accounts));
-    gateway->account = backup_account;
     gateway->account_revision = backup_revision;
     gateway->bootstrap_disabled = backup_disabled;
     gateway_write_error(response, 500U, "PERSISTENCE_FAILED", "account state was not saved");
@@ -213,7 +209,6 @@ cleanup:
   if (root != NULL) json_decref(root);
   OPENSSL_cleanse(salt, sizeof(salt));
   OPENSSL_cleanse(backup_accounts, sizeof(backup_accounts));
-  OPENSSL_cleanse(&backup_account, sizeof(backup_account));
   return result;
 }
 

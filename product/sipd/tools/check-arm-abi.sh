@@ -71,7 +71,10 @@ fi
 # DT_NEEDED libraries in the supplied development sysroot without running ARM.
 providers=$(mktemp "${TMPDIR:-/tmp}/aula-sipd-abi-providers.XXXXXX")
 imports=$(mktemp "${TMPDIR:-/tmp}/aula-sipd-abi-imports.XXXXXX")
-trap 'rm -f "$providers" "$imports"' EXIT HUP INT TERM
+trap 'rm -f "$providers" "$imports"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 if [ -n "$needed_libraries" ]; then
     printf '%s\n' "$needed_libraries" | while IFS= read -r needed; do
         library=
