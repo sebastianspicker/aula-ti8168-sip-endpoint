@@ -21,6 +21,7 @@
 .windsurf/
 **/AGENTS.md
 **/CLAUDE.md
+**/CODEX.md
 **/GEMINI.md
 **/.cursorrules
 /.github/copilot-instructions.md
@@ -99,3 +100,10 @@ product/sipd/.cache/
 product/sipd/sysroots/
 product/sipd/toolchains/
 product/sipd/staging/
+
+# Local-only remediation and private scratch records.
+/.private/
+/scratch/
+/ALPHA_*.md
+/*_LEDGER.md
+/*-LEDGER.md

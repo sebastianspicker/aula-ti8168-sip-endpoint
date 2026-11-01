@@ -54,7 +54,9 @@ static int policy_load(const char *optional, aula_gateway *gateway) {
   if (saved_stderr >= 0) { dup2(saved_stderr, STDERR_FILENO); close(saved_stderr); }
   if (logs != NULL) {
     rewind(logs);
-    (void)fread(logged, 1, sizeof(logged) - 1U, logs);
+    size_t read_count = fread(logged, 1, sizeof(logged) - 1U, logs);
+    GATEWAY_CHECK(!ferror(logs));
+    logged[read_count] = '\0';
     fclose(logs);
   }
   last_warning = strstr(logged, "WARNING: gateway DEVELOPMENT device provider enabled") != NULL;

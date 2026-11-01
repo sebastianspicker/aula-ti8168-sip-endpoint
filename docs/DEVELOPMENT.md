@@ -49,9 +49,10 @@ Existing interactive emulator state is not used by verification.
 There is no repository-wide formatter target.
 
 Continuous integration (`.github/workflows/verify.yml`) runs `make ui-install`
-and `make verify` on Linux (gcc) and macOS (clang) for every push and pull
-request. Both jobs select Python 3.11 explicitly for the supported emulator
-floor.
+and `make verify` on Linux (gcc) and macOS (clang) automatically for
+Dependabot-authored pull requests, or by manual dispatch. Ordinary pushes and
+human-authored PRs do not start the general verification workflow. Both jobs
+select Python 3.11 explicitly for the supported emulator floor.
 
 ## Unit tests
 

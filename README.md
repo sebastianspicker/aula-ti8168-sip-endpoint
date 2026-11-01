@@ -4,6 +4,24 @@ Aula is a SIP endpoint and web console for TI8168 media boards. You can develop
 the console on a host, run the ARM application under QEMU, and test selected
 TI8168 peripherals before testing on a physical board.
 
+<details>
+<summary>Status and limitations</summary>
+
+Aula is independent experimental software for developing a TI8168 SIP
+endpoint and web console. Developed independently alongside my main
+professional work. It remains a starting point for development and
+adaptation, rather than a ready-to-use appliance. Host and selected QEMU
+checks cover specific behavior; full-board equivalence, sustained hardware
+media, public Zoom interoperability and production deployment remain
+unqualified.
+
+**Disclaimer.** Emulator results do not establish that a physical deployment
+is safe or supported. Validate your own target against the fidelity and
+operator guides, retain a recovery path, and take responsibility for device
+or deployment changes that could cause outages or data loss.
+
+</details>
+
 The **TI DM8168 EVM**, **Z3-DM8168-RPS**, and **iWave DM8168 Qseven SOM**
 provide board and module comparisons for this exploration. These examples do
 not establish a particular manufacturer, PCB identity, or supported deployment
@@ -17,6 +35,18 @@ audio, full clock/power control and board wiring remain incomplete; see the
 [fidelity matrix](lab/qemu/FIDELITY.md). This is development software, not a
 released appliance image. Public Zoom interoperability, production TLS,
 sustained hardware media and full recovery still need device testing.
+
+The development lanes share source checks, but neither replaces testing on the
+actual board:
+
+```mermaid
+flowchart LR
+    A[Choose a development lane] --> B[Host console with synthetic activity]
+    A --> C[ARM application in partial QEMU model]
+    B --> D[Offline checks and recorded limits]
+    C --> D
+    D --> E[Separate physical-board qualification]
+```
 
 ## What is here
 
@@ -61,6 +91,10 @@ synthetic emulator:
 make ui-install
 make verify
 ```
+
+General verification CI runs automatically only for Dependabot-authored PRs
+and can be dispatched manually. It does not install or deploy to a physical
+board; hardware acceptance remains a separate operator-controlled process.
 
 See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for component builds,
 optional integrations, and prerequisites.
