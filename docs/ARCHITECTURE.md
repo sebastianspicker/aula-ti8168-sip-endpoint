@@ -50,6 +50,94 @@ retain their separate unprivileged identities. The gateway is the only
 browser-facing HTTP-to-control adapter. The daemon has no network control
 listener.
 
+## How it runs
+
+### On the target
+
+This diagram shows which processes run on the board, which identity each one
+runs as, and how they connect.
+
+```mermaid
+flowchart LR
+    browser((Operator browser))
+    subgraph target [TI8168 target]
+        nginx["nginx<br/>user aula-web"]
+        gateway["aula-gateway-fcgi<br/>user aula-gateway"]
+        sipd["aula-sipd<br/>user aula-sip"]
+        device["aula-device-control<br/>root"]
+        accounts[(Accounts store)]
+        settings[(Runtime settings)]
+        journal[(Job journal)]
+    end
+    peer[SIP or Zoom CRC peer]
+
+    browser -->|"HTTPS /zoom/"| nginx
+    nginx -->|FastCGI| gateway
+    gateway -->|LSZ1 frames| sipd
+    gateway -->|device protocol| device
+    gateway --> accounts
+    sipd --> settings
+    device --> journal
+    sipd -->|"SIP, RTP/RTCP"| peer
+    classDef focus fill:#fde68a,stroke:#b45309,color:#1f2937
+    class gateway focus
+```
+
+[`start.sh`](../deployment/targets/ti8168/start.sh) starts the services in the
+order `device`, `sip`, `gateway`, `web`, then checks that each Unix socket
+exists: `/run/aula-device/control.sock`, `/run/aula-sipd/control.sock` and
+`/run/aula-console/gateway.fcgi.sock`. All three links are local Unix
+sockets. The gateway and the daemon check each other's peer UID, and the
+gateway also checks the companion's UID (`expected_device_uid`). As a result,
+the gateway is the only process that turns HTTP into control traffic. The daemon runs a single poll
+loop
+([`poll_foreground_endpoint`](../product/sipd/src/main.c) →
+`aula_endpoint_poll`). The loop serves the LSZ1 socket, the SIP adapter and the
+media sockets.
+
+### On a developer host (`make emulator-ui`)
+
+This diagram shows what `make emulator-ui` replaces with synthetic stand-ins.
+
+```mermaid
+flowchart LR
+    browser((Browser))
+    subgraph host [Developer host]
+        launcher["console.py"]
+        nginx["nginx :8443"]
+        gateway["aula-gateway-fcgi"]
+        providers["host.py providers"]
+        lsz1["LSZ1 stand-in"]
+        devsrv["device stand-in"]
+    end
+
+    browser -->|"HTTPS /zoom/"| nginx
+    nginx -->|FastCGI| gateway
+    gateway -->|LSZ1 frames| lsz1
+    gateway -->|device protocol| devsrv
+    launcher -.->|spawns| nginx
+    launcher -.->|spawns| gateway
+    launcher -.->|spawns| providers
+    providers -.->|inherited fd| lsz1
+    providers -.->|inherited fd| devsrv
+    classDef focus fill:#fde68a,stroke:#b45309,color:#1f2937
+    class lsz1,devsrv focus
+```
+
+The browser, nginx and the gateway are the real product builds. Only the
+two highlighted servers are synthetic. The launcher creates the Unix sockets
+and passes them to the providers as inherited file descriptors
+(`serve --fd` and `serve-device --fd`). This is how the emulator works
+inside a sandbox that cannot bind sockets. Synthetic state is stored in JSON
+files below `.work/`. No SIP, RTP or hardware is involved.
+
+Where in the code:
+
+- [`lab/emulator/examples/console.py`](../lab/emulator/examples/console.py): launcher, nginx config and gateway policy
+- [`lab/emulator/examples/host.py`](../lab/emulator/examples/host.py): creates the sockets and starts the providers
+- [`lab/emulator/src/aula_emulator/lsz1.py`](../lab/emulator/src/aula_emulator/lsz1.py) and [`device_server.py`](../lab/emulator/src/aula_emulator/device_server.py): the stand-in servers
+- [`deployment/targets/ti8168/start.sh`](../deployment/targets/ti8168/start.sh): service start order and identities on the target
+
 ## Components
 
 | Path | Responsibility | Owned state | Depends on |
@@ -167,6 +255,60 @@ its recovery states.
    operation, and returns an opcode-specific safe response.
 6. The gateway validates and projects the response before returning JSON.
 
+#### Example: joining a meeting
+
+This diagram follows a click on **Join** from the browser to the SIP peer.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Operator
+    participant ui as React app
+    participant nginx as nginx
+    participant gw as Gateway
+    participant sipd as aula-sipd
+    participant peer as SIP peer
+    U->>ui: Submit Join form
+    ui->>nginx: POST /zoom/api/v1/calls
+    nginx->>gw: FastCGI request
+    gw->>gw: session, role, CSRF, schema
+    gw->>sipd: LSZ1 ORIGINATE
+    sipd->>sipd: build target from profile
+    sipd--)peer: SIP INVITE
+    sipd-->>gw: LSZ1 response
+    gw-->>ui: JSON envelope
+    loop every 5 s
+        ui->>gw: GET /status, /calls
+        gw->>sipd: LSZ1 STATUS
+        sipd-->>gw: call state
+        gw-->>ui: projected state
+    end
+```
+
+In step 2, [`ConsoleApi.joinCall`](../product/console/web/src/api.ts) sends
+the form together with `X-CSRF-Token` and `Idempotency-Key` headers. In step
+4, the gateway rejects the request before any LSZ1 traffic if the route is
+not in `ROUTES`, the session lacks the operator role, Origin or CSRF fail, or
+`gateway_schema_call_request` rejects the body. Mutations are serialized on
+`control_mutex`, and reads use a separate lane. In step 6,
+`aula_endpoint_originate` ignores any destination sent by the browser. It
+uses the configured profile, the approved domain and the approved port to
+build the target, and only then starts the INVITE. The INVITE (step 7) is
+asynchronous, so the reply in steps 8–9 only reports that the request was
+accepted. The UI learns how the call progresses by polling (steps 10–13).
+
+Where in the code:
+
+- [`product/console/web/src/screens/CallsScreen.tsx`](../product/console/web/src/screens/CallsScreen.tsx): form handler that calls `api.joinCall`
+- [`product/console/web/src/hooks/useLivePolling.ts`](../product/console/web/src/hooks/useLivePolling.ts): 5-second refresh loop
+- [`product/console/gateway/fastcgi_main.c`](../product/console/gateway/fastcgi_main.c): `handle_fastcgi_request` → `aula_gateway_handle`
+- [`product/console/gateway/gateway_transaction.c`](../product/console/gateway/gateway_transaction.c): `prepare_gateway_transaction`, `execute_gateway_transaction`
+- [`product/console/gateway/gateway.c`](../product/console/gateway/gateway.c): `ROUTES` table (path, method, opcode, role, schema)
+- [`product/console/gateway/gateway_control.c`](../product/console/gateway/gateway_control.c): `aula_gateway_control_exchange` (LSZ1 client)
+- [`product/sipd/src/control/local.c`](../product/sipd/src/control/local.c): LSZ1 server socket
+- [`product/sipd/src/core/endpoint_control.c`](../product/sipd/src/core/endpoint_control.c): opcode dispatch
+- [`product/sipd/src/core/endpoint.c`](../product/sipd/src/core/endpoint.c): `aula_endpoint_originate`
+
 Raw SIP destinations, executable names, filesystem paths, environment strings,
 and arbitrary diagnostics are not accepted through HTTP. See
 [`gateway/README.md`](../product/console/gateway/README.md) for the mutex,
@@ -186,6 +328,41 @@ isolated authorized link. See
 [`product/sipd/README.md`](../product/sipd/README.md) for SDES/SRTP,
 payload-mapping, RTCP feedback, RTSP admission, and Zoom Direct CRC
 interoperability detail.
+
+This diagram shows the states a call goes through inside the daemon.
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> RESOLVING: start
+    RESOLVING --> INVITING: resolved
+    INVITING --> EARLY: provisional
+    INVITING --> ESTABLISHING_MEDIA: accepted
+    EARLY --> ESTABLISHING_MEDIA: accepted
+    ESTABLISHING_MEDIA --> ESTABLISHED: media_ready
+    ESTABLISHED --> TERMINATING: local hangup
+    TERMINATING --> TERMINATED: termination complete
+    ESTABLISHED --> TERMINATED: remote hangup
+    ESTABLISHED --> FAILED: timeout or error
+    FAILED --> BACKING_OFF: reconnect scheduled
+    BACKING_OFF --> RESOLVING: backoff elapsed
+    BACKING_OFF --> TERMINATED: local hangup
+    TERMINATED --> [*]
+```
+
+The diagram draws remote hangup and failure only from `ESTABLISHED`. In the
+code, both are accepted from any non-terminal state. A timeout, transport
+error, media error or transient failure moves the call to `FAILED`. A
+permanent failure moves it to `TERMINAL_FAILURE`, and shutdown moves any
+state to `STOPPED`. Both of those are left out of the diagram. Reaching
+`ESTABLISHED` resets the retry counter. A retry is scheduled only while the
+attempt count is within the configured maximum.
+
+Where in the code:
+
+- [`product/sipd/include/aula_sipd/call.h`](../product/sipd/include/aula_sipd/call.h): states and events
+- [`product/sipd/src/core/call.c`](../product/sipd/src/core/call.c): `aula_call_apply_event` and the per-state handlers
+- [`product/sipd/src/sip/`](../product/sipd/src/sip/): SIP adapter and the PJSIP driver that generate these events
 
 The maintained fake renderer exercises the bounded receive contract in
 synthetic environments. The target renderer factory currently returns
@@ -219,6 +396,41 @@ payload. The maintained target installer and remover operate on an owned
 physical target with separate authorization and recovery checks. The synthetic
 QEMU model has no product payload overlay or acceptance workflow; see
 [`deployment/README.md`](../deployment/README.md).
+
+This diagram shows how a physical-lab release goes from source to a running
+board.
+
+```mermaid
+flowchart LR
+    manifest[/"Reviewed input manifest"/]
+    build["make live-build"]
+    package["make live-package"]
+    payload[("Payload and SHA-256")]
+    campaign["make live-install"]
+    install["install.sh"]
+    start["start.sh"]
+    manifest --> build
+    build -->|"binaries and receipt"| package
+    package -->|"build-payload.py"| payload
+    payload --> campaign
+    campaign -->|"tar over SSH"| install
+    install -->|"--start"| start
+```
+
+`live-build` ([`tooling/live/build.py`](../tooling/live/build.py)) only
+accepts inputs listed in a hash-reviewed manifest. `live-package` calls
+[`build-payload.py`](../deployment/payload/build-payload.py), which writes the
+payload and `payload-manifest.sha256`. On the board,
+[`install.sh`](../deployment/targets/ti8168/install.sh) checks that digest
+before it activates a release. The `live-install` campaign step
+([`tooling/live/campaign.py`](../tooling/live/campaign.py)) is currently
+always refused: `require_private_identity_provider` stops it until separately
+reviewed private tooling exists. The last two hops therefore describe the
+intended path, not one this repository can complete by itself. CI
+([`.github/workflows/verify.yml`](../.github/workflows/verify.yml)) runs only
+`make verify` and the FastCGI host build on Linux and macOS. It never builds
+or deploys a payload.
+
 The name and installation-path migration is documented in the
 [Aula upgrade guide](operator/upgrade-to-aula.md).
 

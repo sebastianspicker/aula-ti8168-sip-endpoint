@@ -4,6 +4,8 @@ Aula is a SIP endpoint and web console for TI8168 media boards. You can develop
 the console on a host, run the ARM application under QEMU, and test selected
 TI8168 peripherals before testing on a physical board.
 
+> _Claude was used to polish and proof-read the code and documentation of this repository._
+
 <details>
 <summary>Status and limitations</summary>
 
