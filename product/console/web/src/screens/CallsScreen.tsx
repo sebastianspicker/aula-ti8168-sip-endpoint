@@ -20,9 +20,9 @@ export function CallsScreen({ role, onConnection, embedded = false }: { embedded
   const [keypadOpen, setKeypadOpen] = useState(false)
 
   const loadCalls = useCallback(async (signal: AbortSignal): Promise<CallData> => {
-    const [status, calls, directory, preview] = await Promise.all([api.status(signal), api.calls(signal), api.directory(signal), api.preview(signal).catch(() => null)])
+    const [status, calls, directory, preview] = await Promise.all([api.status(signal), api.calls(signal), api.directory(signal), embedded ? null : api.preview(signal).catch(() => null)])
     return { active: status.data, calls: calls.data, directory: directory.data, media: projectMedia(status.data), status: status.data, preview: preview?.data ?? null }
-  }, [])
+  }, [embedded])
   const { data, error, refresh } = useLivePolling({ load: loadCalls, onConnection })
 
   const active = data?.active

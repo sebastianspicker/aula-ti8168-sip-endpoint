@@ -201,6 +201,10 @@ def main() -> int:
     directory(args.ui_dist, "UI dist")
     regular(args.ui_dist / "index.html", "UI dist index")
 
+    # Build both configs first: a missing anchor must fail before the output exists.
+    nginx_text = nginx_config(args.nginx_config, args.install_prefix)
+    gateway_text = gateway_config(args.gateway_config)
+
     shutil.copytree(RUNTIME, output, copy_function=shutil.copy2, symlinks=False)
     for item in output.rglob("*"):
         if item.is_file():
@@ -219,11 +223,10 @@ def main() -> int:
     copy_file(args.atomic_replace, output / "bin/aula-atomic-replace", 0o555)
     copy_file(args.mime_types, output / "etc/nginx/mime.types", 0o444)
     copy_file(args.fastcgi_params, output / "etc/nginx/fastcgi_params", 0o444)
-    (output / "etc/nginx/nginx.conf").write_bytes(
-        nginx_config(args.nginx_config, args.install_prefix))
+    (output / "etc/nginx/nginx.conf").write_bytes(nginx_text)
     os.chmod(output / "etc/nginx/nginx.conf", 0o444)
     copy_file(args.sip_config, output / "etc/aula-ti8168-sip-endpoint/aula-sipd.conf.example", 0o444)
-    (output / "etc/aula-ti8168-sip-endpoint/gateway.conf.example").write_bytes(gateway_config(args.gateway_config))
+    (output / "etc/aula-ti8168-sip-endpoint/gateway.conf.example").write_bytes(gateway_text)
     os.chmod(output / "etc/aula-ti8168-sip-endpoint/gateway.conf.example", 0o444)
     # nginx serves the console below /zoom/ with a normal `root` directive.
     # Preserve that URI prefix in the payload so /zoom/index.html resolves to

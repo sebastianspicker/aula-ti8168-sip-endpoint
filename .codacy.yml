@@ -1,0 +1,6 @@
+---
+# Test code is verified by the test suites; keep Codacy on shipped and tooling source.
+exclude_paths:
+  - "**/tests/**"
+  # Loopback SIP test fixture for the QEMU rescue guest, not shipped.
+  - "lab/qemu/guest/legacy_sip_smoke.c"

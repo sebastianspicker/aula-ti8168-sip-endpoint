@@ -113,6 +113,13 @@ aula_status aula_rx_playout_push(aula_rx_playout *playout,
   return AULA_STATUS_OK;
 }
 
+void aula_rx_playout_skip(aula_rx_playout *playout, uint16_t sequence) {
+  if (playout == NULL || playout->have_expected_sequence == 0 ||
+      sequence != playout->expected_sequence ||
+      find_sequence(playout, sequence) >= 0) return;
+  playout->expected_sequence = (uint16_t)(sequence + 1U);
+}
+
 uint64_t aula_rx_playout_next_action_ns(const aula_rx_playout *playout,
                                          uint64_t now_ns) {
   int oldest;

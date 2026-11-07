@@ -112,7 +112,6 @@ typedef struct aula_sip_driver_limits {
 
 typedef struct aula_sip_reinvite {
   aula_bytes offer_sdp;
-  int requires_media_restart;
   aula_sip_transaction_identity request_transaction;
 } aula_sip_reinvite;
 
@@ -134,7 +133,6 @@ typedef struct aula_sip_transport_info {
   uint16_t rport;
   uint8_t remote_address[16];
   uint8_t remote_address_length;
-  uint8_t received_address[16];
   uint8_t received_address_length;
 } aula_sip_transport_info;
 

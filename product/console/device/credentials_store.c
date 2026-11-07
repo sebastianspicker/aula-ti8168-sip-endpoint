@@ -130,6 +130,18 @@ int aula_device_credentials_open(int directory) {
   return state_healthy;
 }
 
+/* After a failed save, re-run the startup path on the kept directory so a
+ * transient ENOSPC/EIO heals without a restart. */
+static int credentials_healthy(void) {
+  int directory;
+  if (state_healthy || state_directory < 0) return state_healthy;
+  directory = dup(state_directory);
+  if (directory < 0) return 0;
+  (void)aula_device_credentials_open(directory);
+  close(directory);
+  return state_healthy;
+}
+
 static int save_credentials(json_t *document) {
   char *body = json_dumps(document, JSON_COMPACT | JSON_SORT_KEYS);
   size_t offset = 0, length = body == NULL ? 0 : strlen(body);
@@ -189,7 +201,7 @@ const char *aula_device_credentials_update(json_t *arguments, const char *key) {
   json_t *next, *credentials, *receipt;
   json_int_t revision;
   int okay;
-  if (!state_healthy) return "unavailable";
+  if (!credentials_healthy()) return "unavailable";
   if (!aula_device_credentials_schema(arguments) || !hex_digest(key)) return "invalid";
   if (!arguments_digest(arguments, fingerprint)) return "unavailable";
   duplicate = credential_duplicate(key, fingerprint);
@@ -216,7 +228,7 @@ const char *aula_device_credentials_update(json_t *arguments, const char *key) {
 }
 
 json_t *aula_device_credentials_status(const char *connection) {
-  if (!state_healthy) return NULL;
+  if (!credentials_healthy()) return NULL;
   return json_pack("{s:O,s:b,s:s}", "revision", json_object_get(state, "revision"),
       "credentials_present", json_is_object(json_object_get(state, "credentials")),
       "connection", connection);

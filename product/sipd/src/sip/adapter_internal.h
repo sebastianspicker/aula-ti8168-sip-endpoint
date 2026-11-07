@@ -28,6 +28,7 @@ struct aula_sip_adapter {
   uint32_t max_retransmissions;
   uint32_t max_digest_retries;
   int allow_tcp_fallback;
+  int configured_tcp_fallback; /* config value; apply_policy derives the active flag from it */
   aula_sip_event_callback event_callback;
   void *event_context;
   aula_sip_credential_provider credential_provider;

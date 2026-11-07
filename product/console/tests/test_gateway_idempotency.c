@@ -202,6 +202,26 @@ static void test_schema_validation(aula_gateway *gateway, const session_fixture 
   GATEWAY_CHECK(fake->calls == calls_before + 1);
 }
 
+/* The daemon accepted the call: a failed recents write must not turn it into an error. */
+static void test_recent_write_failure_keeps_call_result(aula_gateway *gateway,
+                                                        const session_fixture *session,
+                                                        fake_control *fake) {
+  static aula_gateway_response response;
+  aula_gateway_request request = base_request("POST", "/zoom/api/v1/calls", 1006U);
+  const int calls_before = fake->calls;
+  request.cookie = session->cookie;
+  request.csrf_token = session->csrf;
+  request.idempotency_key = "idempotency-key-0004";
+  request.body = "{\"dial_code\":\"\",\"host_key\":\"\",\"layout\":\"gallery\","
+                 "\"meeting_id\":\"123456789\",\"passcode\":\"\",\"profile\":\"zoom_direct\"}";
+  gateway->config.account_store_path = "/nonexistent-aula-test-dir/account.json";
+  GATEWAY_CHECK(aula_gateway_handle(gateway, &request, fake_control_fn, fake, &response));
+  GATEWAY_CHECK(response.status == 200U);
+  GATEWAY_CHECK(strstr(response.body, "PERSISTENCE") == NULL);
+  GATEWAY_CHECK(fake->calls == calls_before + 1);
+  gateway->config.account_store_path = NULL;
+}
+
 int main(void) {
   static aula_gateway gateway;
   static fake_control fake;
@@ -221,5 +241,6 @@ int main(void) {
   test_key_is_scoped_to_route(&gateway, &session, &fake);
   test_failed_call_is_not_cached(&gateway, &session, &fake);
   test_schema_validation(&gateway, &session, &fake);
+  test_recent_write_failure_keeps_call_result(&gateway, &session, &fake);
   return gateway_test_result("test_gateway_idempotency");
 }

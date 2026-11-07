@@ -177,7 +177,8 @@ aula_status aula_sip_adapter_create(const aula_sip_endpoint_config *config,
   adapter->transaction_timeout_ms = config->transaction_timeout_ms == 0U ? 32000U : config->transaction_timeout_ms;
   adapter->max_retransmissions = config->max_retransmissions == 0U ? 7U : config->max_retransmissions;
   adapter->max_digest_retries = config->max_digest_retries == 0U ? 2U : config->max_digest_retries;
-  adapter->allow_tcp_fallback = config->allow_tcp_fallback != 0;
+  adapter->configured_tcp_fallback = config->allow_tcp_fallback != 0;
+  adapter->allow_tcp_fallback = adapter->configured_tcp_fallback;
   adapter->event_callback = config->event_callback;
   adapter->event_context = config->event_context;
   adapter->credential_provider = config->credential_provider;

@@ -3,6 +3,7 @@
 #include "gateway_internal.h"
 
 #include <openssl/crypto.h>
+#include <openssl/rand.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -95,10 +96,30 @@ static int user_mutation_precondition(const aula_gateway *gateway, const aula_ga
   return 1;
 }
 
-static int apply_user_mutation(aula_gateway *gateway, int deleting, const char *username,
-                               const char *password, aula_gateway_role role) {
-  if (deleting) return aula_gateway_delete_account(gateway, username);
-  return aula_gateway_upsert_account(gateway, username, password, role);
+/* Derives the password hash with the state lock released, as login does, so the 600k PBKDF2
+ * rounds do not stall every worker. Returns 0 with the lock held and the response written
+ * when the state changed meanwhile (revision or acting session); `hashed` reports whether
+ * salt and hash are usable. */
+static int hash_outside_lock(aula_gateway *gateway, const aula_gateway_session *session,
+                             const char *password, uint8_t salt[AULA_GATEWAY_SALT_BYTES],
+                             uint8_t hash[AULA_GATEWAY_HASH_BYTES], int *hashed,
+                             aula_gateway_response *response) {
+  const unsigned int revision = gateway->account_revision;
+  uint8_t session_id[sizeof(session->session_id)];
+  int stable;
+  (void)memcpy(session_id, session->session_id, sizeof(session_id));
+  gateway_state_unlock(gateway);
+  *hashed = RAND_bytes(salt, AULA_GATEWAY_SALT_BYTES) == 1 && gateway_password_hash(password, salt, hash);
+  if (!gateway_state_lock(gateway)) {
+    OPENSSL_cleanse(session_id, sizeof(session_id));
+    gateway_write_error(response, 500U, "INTERNAL", "account state is unavailable");
+    return 0;
+  }
+  stable = gateway->account_revision == revision && session->used &&
+      gateway_secure_equal(session->session_id, session_id, sizeof(session_id));
+  OPENSSL_cleanse(session_id, sizeof(session_id));
+  if (!stable) gateway_write_error(response, 409U, "REVISION_CONFLICT", "account state changed; retry");
+  return stable;
 }
 
 int gateway_handle_user_mutation(aula_gateway *gateway, aula_gateway_session *session,
@@ -110,7 +131,9 @@ int gateway_handle_user_mutation(aula_gateway *gateway, aula_gateway_session *se
   const aula_gateway_account *existing;
   aula_gateway_role role = AULA_GATEWAY_ROLE_VIEWER;
   int deleting = strcmp(request->method, "DELETE") == 0;
-  int had_existing;
+  int had_existing, hashed = 0, applied;
+  uint8_t salt[AULA_GATEWAY_SALT_BYTES] = {0};
+  uint8_t hash[AULA_GATEWAY_HASH_BYTES] = {0};
   aula_gateway_store_result store_result;
   aula_gateway_account backup_accounts[AULA_GATEWAY_MAX_ACCOUNTS];
   unsigned int backup_revision = 0U;
@@ -138,9 +161,19 @@ int gateway_handle_user_mutation(aula_gateway *gateway, aula_gateway_session *se
     gateway_write_error(response, 409U, "REVISION_CONFLICT", "account revision cannot advance");
     return 1;
   }
+  if (!deleting && !hash_outside_lock(gateway, session, password, salt, hash, &hashed, response)) {
+    json_decref(root);
+    OPENSSL_cleanse(salt, sizeof(salt));
+    OPENSSL_cleanse(hash, sizeof(hash));
+    return 1;
+  }
   (void)memcpy(backup_accounts, gateway->accounts, sizeof(backup_accounts));
   backup_revision = gateway->account_revision;
-  if (!apply_user_mutation(gateway, deleting, target_username, password, role)) {
+  applied = deleting ? aula_gateway_delete_account(gateway, target_username) :
+      hashed && gateway_install_account(gateway, target_username, role, salt, hash);
+  OPENSSL_cleanse(salt, sizeof(salt));
+  OPENSSL_cleanse(hash, sizeof(hash));
+  if (!applied) {
     (void)memcpy(gateway->accounts, backup_accounts, sizeof(backup_accounts));
     gateway->account_revision = backup_revision;
     json_decref(root);
@@ -169,6 +202,5 @@ int gateway_handle_user_mutation(aula_gateway *gateway, aula_gateway_session *se
   (void)snprintf(data, sizeof(data), "{\"username\":\"%s\",\"role\":\"%s\",\"revision\":%u}",
                  target_username, deleting ? "deleted" : role_name(role), gateway->account_revision);
   gateway_write_success(response, deleting ? 200U : (existing == NULL ? 201U : 200U), data);
-  (void)session;
   return 2;
 }

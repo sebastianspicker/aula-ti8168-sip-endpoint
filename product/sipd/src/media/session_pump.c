@@ -322,6 +322,8 @@ static aula_status media_session_drain_rtp(aula_media_session *session,
       }
       return status;
     }
+    /* The event consumed a sequence number; keep audio playout continuous. */
+    aula_rx_playout_skip(&stream->playout, packet.header.sequence_number);
   } else {
     status = media_session_queue_received_packet(stream, &packet);
     if (status != AULA_STATUS_OK && status != AULA_STATUS_AGAIN &&
@@ -443,6 +445,9 @@ aula_status aula_media_session_drain_stream_internal(
     aula_status status = aula_rtp_session_poll(stream->transport, &rtp_ready, &rtcp_ready);
     if (status == AULA_STATUS_AGAIN) return count == 0U ? AULA_STATUS_AGAIN : AULA_STATUS_OK;
     if (status != AULA_STATUS_OK) return status;
+    /* Full playout: leave datagrams in the kernel buffer instead of dropping them. */
+    if (rtp_ready != 0 && receive_rtp != 0 &&
+        stream->playout.count >= AULA_RX_PLAYOUT_MAX_PACKETS) return AULA_STATUS_OK;
     if (rtcp_ready != 0 && receive_rtp == 0) {
       status = media_session_drain_rtcp(session, stream, &packet_buffer,
                                         receive_rtp, &continue_drain);

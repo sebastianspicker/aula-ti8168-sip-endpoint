@@ -426,33 +426,38 @@ unsigned int aula_gateway_admin_count(const aula_gateway *gateway) {
   return count;
 }
 
-int aula_gateway_upsert_account(aula_gateway *gateway, const char *username,
-                                 const char *password, aula_gateway_role role) {
+int gateway_install_account(aula_gateway *gateway, const char *username, aula_gateway_role role,
+                            const uint8_t salt[AULA_GATEWAY_SALT_BYTES],
+                            const uint8_t hash[AULA_GATEWAY_HASH_BYTES]) {
   aula_gateway_account *account;
   aula_gateway_account replacement = {0};
   size_t index;
-  uint8_t salt[AULA_GATEWAY_SALT_BYTES] = {0};
-  int result = 0;
   if (gateway == NULL || !gateway_is_safe_username(username) ||
-      role < AULA_GATEWAY_ROLE_VIEWER || role > AULA_GATEWAY_ROLE_ADMIN)
-    goto cleanup;
-  if (RAND_bytes(salt, sizeof(salt)) != 1 ||
-      !gateway_password_hash(password, salt, replacement.password_hash)) goto cleanup;
+      role < AULA_GATEWAY_ROLE_VIEWER || role > AULA_GATEWAY_ROLE_ADMIN) return 0;
   account = find_account_mutable(gateway, username);
   if (account == NULL) {
     for (index = 0U; index < AULA_GATEWAY_MAX_ACCOUNTS; ++index)
       if (!gateway->accounts[index].configured) { account = &gateway->accounts[index]; break; }
   }
-  if (account == NULL) goto cleanup;
+  if (account == NULL) return 0;
   replacement.configured = 1;
   replacement.role = role;
-  (void)memcpy(replacement.salt, salt, sizeof(salt));
+  (void)memcpy(replacement.salt, salt, AULA_GATEWAY_SALT_BYTES);
+  (void)memcpy(replacement.password_hash, hash, AULA_GATEWAY_HASH_BYTES);
   (void)snprintf(replacement.username, sizeof(replacement.username), "%s", username);
   *account = replacement;
-  result = 1;
-cleanup:
-  OPENSSL_cleanse(salt, sizeof(salt));
   OPENSSL_cleanse(&replacement, sizeof(replacement));
+  return 1;
+}
+
+int aula_gateway_upsert_account(aula_gateway *gateway, const char *username,
+                                 const char *password, aula_gateway_role role) {
+  uint8_t salt[AULA_GATEWAY_SALT_BYTES] = {0};
+  uint8_t hash[AULA_GATEWAY_HASH_BYTES] = {0};
+  int result = RAND_bytes(salt, sizeof(salt)) == 1 && gateway_password_hash(password, salt, hash) &&
+      gateway_install_account(gateway, username, role, salt, hash);
+  OPENSSL_cleanse(salt, sizeof(salt));
+  OPENSSL_cleanse(hash, sizeof(hash));
   return result;
 }
 

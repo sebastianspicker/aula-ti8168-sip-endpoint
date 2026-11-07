@@ -2,12 +2,21 @@
  * gateway, driven end to end through aula_gateway_handle() with a fake control
  * daemon.  Accounts live in memory only; no account store file is involved.
  * PBKDF2 runs 600000 iterations, so the tests create and log in few accounts. */
+#if defined(__APPLE__)
+#define _DARWIN_C_SOURCE 1
+#else
+#define _GNU_SOURCE 1
+#endif
 #define _POSIX_C_SOURCE 200809L
 
 #include "gateway.h"
 #include "gateway_test.h"
 
 #include "aula_sipd/control_protocol.h"
+
+#include <limits.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #define TEST_ORIGIN "https://aula.test"
 #define VIEWER_PASSWORD "viewer-password-1"
@@ -361,6 +370,60 @@ static void test_logout_invalidates_cookie(aula_gateway *gateway,
   GATEWAY_CHECK(fake->calls == calls_before);
 }
 
+/* User creation and password change hash with the state lock released and still land correctly. */
+static void test_user_mutation_hashes_outside_lock(void) {
+  static aula_gateway gateway;
+  static aula_gateway_response response;
+  session_fixture admin;
+  aula_gateway_config config;
+  aula_gateway_request request;
+  const char *base = getenv("TMPDIR");
+  char directory[PATH_MAX], resolved[PATH_MAX], store[PATH_MAX + 16];
+  (void)snprintf(directory, sizeof(directory), "%s/aula-users-XXXXXX", base != NULL && *base != '\0' ? base : "/tmp");
+  if (mkdtemp(directory) == NULL || realpath(directory, resolved) == NULL) {
+    GATEWAY_CHECK(0);
+    return;
+  }
+  (void)snprintf(store, sizeof(store), "%s/account.json", resolved);
+  (void)memset(&config, 0, sizeof(config));
+  (void)memset(&admin, 0, sizeof(admin));
+  config.account_store_path = store;
+  config.allowed_origin = TEST_ORIGIN;
+  config.log_line = gateway_test_discard_log;
+  aula_gateway_init(&gateway, &config);
+  GATEWAY_CHECK(aula_gateway_upsert_account(&gateway, "admin_user", OPERATOR_PASSWORD,
+                                            AULA_GATEWAY_ROLE_ADMIN));
+  gateway.account_revision = 1U;
+  GATEWAY_CHECK(login(&gateway, "admin_user", OPERATOR_PASSWORD, "10.0.1.1", 1000U, &response, &admin));
+  request = base_request("POST", "/zoom/api/v1/users", 1001U);
+  request.cookie = admin.cookie;
+  request.csrf_token = admin.csrf;
+  request.idempotency_key = IDEMPOTENCY_KEY;
+  request.body = "{\"username\":\"new_viewer\",\"password\":\"" VIEWER_PASSWORD "\","
+                 "\"role\":\"viewer\",\"revision\":1}";
+  GATEWAY_CHECK(aula_gateway_handle(&gateway, &request, NULL, NULL, &response));
+  GATEWAY_CHECK(response.status == 201U);
+  GATEWAY_CHECK(login(&gateway, "new_viewer", VIEWER_PASSWORD, "10.0.1.2", 1002U, &response, NULL));
+  GATEWAY_CHECK(response.status == 200U);
+  /* Password change: the stale revision is refused, the current one applies. */
+  request.idempotency_key = IDEMPOTENCY_KEY_TWO;
+  request.body = "{\"username\":\"new_viewer\",\"password\":\"changed-password-9\","
+                 "\"role\":\"viewer\",\"revision\":1}";
+  GATEWAY_CHECK(aula_gateway_handle(&gateway, &request, NULL, NULL, &response));
+  GATEWAY_CHECK(response.status == 409U);
+  request.body = "{\"username\":\"new_viewer\",\"password\":\"changed-password-9\","
+                 "\"role\":\"viewer\",\"revision\":2}";
+  request.idempotency_key = "idempotency-key-0003";
+  GATEWAY_CHECK(aula_gateway_handle(&gateway, &request, NULL, NULL, &response));
+  GATEWAY_CHECK(response.status == 200U);
+  GATEWAY_CHECK(login(&gateway, "new_viewer", "changed-password-9", "10.0.1.3", 1003U, &response, NULL));
+  GATEWAY_CHECK(response.status == 200U);
+  GATEWAY_CHECK(login(&gateway, "new_viewer", VIEWER_PASSWORD, "10.0.1.4", 1004U, &response, NULL));
+  GATEWAY_CHECK(response.status == 401U);
+  (void)unlink(store);
+  (void)rmdir(resolved);
+}
+
 int main(void) {
   static aula_gateway gateway;
   static fake_control fake;
@@ -388,5 +451,6 @@ int main(void) {
   test_mutation_guards(&gateway, &operator_session, &viewer, &fake);
   test_role_enforcement(&gateway, &viewer, &operator_session, &fake);
   test_logout_invalidates_cookie(&gateway, &viewer, &fake);
+  test_user_mutation_hashes_outside_lock();
   return gateway_test_result("test_gateway_auth");
 }

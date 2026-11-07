@@ -364,7 +364,11 @@ class Supervisor:
         if certificate.exists() and key.exists():
             private_file(certificate)
             private_file(key)
-            return
+            # Reuse only a certificate valid for another day; an expired one
+            # makes readiness fail with no hint, so issue a fresh pair instead.
+            if subprocess.run(["openssl", "x509", "-checkend", "86400", "-noout", "-in", str(certificate)],
+                              capture_output=True, check=False).returncode == 0:
+                return
         if certificate.is_symlink() or key.is_symlink():
             raise ValueError("TLS files cannot be symlinks")
         with tempfile.TemporaryDirectory(prefix="tls-", dir=self.runtime) as name:

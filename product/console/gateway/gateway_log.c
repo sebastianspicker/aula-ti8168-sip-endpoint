@@ -61,8 +61,8 @@ static int request_is_read(const aula_gateway_request *request) {
 /* Takes one line from the audit (`audit`), write (`write`) or read budget for
  * the current minute. Reports lines any budget dropped in the previous minute
  * through `suppressed`. */
-static int take_log_budget(aula_gateway *gateway, uint64_t now, int audit, int write,
-                           unsigned int *suppressed) {
+static int take_log_budget_locked(aula_gateway *gateway, uint64_t now, int audit, int write,
+                                  unsigned int *suppressed) {
   uint64_t window = now / GATEWAY_LOG_WINDOW_SECONDS;
   unsigned int *lines = audit ? &gateway->log_lines :
       write ? &gateway->log_write_lines : &gateway->log_read_lines;
@@ -70,7 +70,6 @@ static int take_log_budget(aula_gateway *gateway, uint64_t now, int audit, int w
       write ? GATEWAY_LOG_WRITE_LINES_PER_WINDOW : GATEWAY_LOG_READ_LINES_PER_WINDOW;
   int allowed;
   *suppressed = 0U;
-  if (!gateway_state_lock(gateway)) return 0;
   if (window != gateway->log_window) {
     *suppressed = gateway->log_suppressed;
     gateway->log_window = window;
@@ -82,6 +81,14 @@ static int take_log_budget(aula_gateway *gateway, uint64_t now, int audit, int w
   allowed = *lines < limit;
   if (allowed) ++*lines;
   else if (gateway->log_suppressed < UINT_MAX) ++gateway->log_suppressed;
+  return allowed;
+}
+
+static int take_log_budget(aula_gateway *gateway, uint64_t now, int audit, int write,
+                           unsigned int *suppressed) {
+  int allowed;
+  if (!gateway_state_lock(gateway)) return 0;
+  allowed = take_log_budget_locked(gateway, now, audit, write, suppressed);
   gateway_state_unlock(gateway);
   return allowed;
 }
@@ -127,5 +134,18 @@ void gateway_log_request(aula_gateway *gateway, const aula_gateway_request *requ
                  "aula-gateway: request method=%s route=%s status=%u code=%s client=%s ms=%llu",
                  method, route, handled ? response->status : 500U, code, client,
                  (unsigned long long)elapsed_milliseconds);
+  emit(gateway, line);
+}
+
+void gateway_log_notice_locked(aula_gateway *gateway, uint64_t now, const char *text) {
+  char line[128];
+  unsigned int suppressed;
+  if (!take_log_budget_locked(gateway, now, 1, 0, &suppressed)) return;
+  if (suppressed != 0U) {
+    (void)snprintf(line, sizeof(line),
+                   "aula-gateway: request log suppressed=%u in the previous minute", suppressed);
+    emit(gateway, line);
+  }
+  (void)snprintf(line, sizeof(line), "aula-gateway: %s", text);
   emit(gateway, line);
 }

@@ -3,6 +3,7 @@
 #include "backends/rtsp_private.h"
 #include "media/rx_playout.h"
 #include "media/rx_shim_private.h"
+#include "aula_sipd/h264.h"
 #include "aula_sipd/rtcp.h"
 #include "aula_test.h"
 
@@ -145,9 +146,30 @@ static void test_rtsp_uri_rejects_trailing_parent(void) {
                                             "192.168.1.10", &uri) != AULA_STATUS_OK);
 }
 
+static void test_playout_skip_keeps_sequence_continuous(void) {
+  static const uint8_t byte = 0x5aU;
+  aula_rx_playout playout;
+  aula_rtp_packet packet = make_packet(10U, &byte, 1U);
+  aula_rtp_packet out;
+  uint8_t payload[16];
+  int discontinuity = 1;
+  aula_rx_playout_init(&playout, 1U, 1000U);
+  AULA_CHECK_STATUS(aula_rx_playout_push(&playout, &packet, 0U), AULA_STATUS_OK);
+  AULA_CHECK_STATUS(aula_rx_playout_take(&playout, 0U, &out, payload, sizeof(payload),
+                                         &discontinuity), AULA_STATUS_OK);
+  aula_rx_playout_skip(&playout, 11U);
+  packet = make_packet(12U, &byte, 1U);
+  AULA_CHECK_STATUS(aula_rx_playout_push(&playout, &packet, 1U), AULA_STATUS_OK);
+  AULA_CHECK_STATUS(aula_rx_playout_take(&playout, 2U, &out, payload, sizeof(payload),
+                                         &discontinuity), AULA_STATUS_OK);
+  AULA_CHECK(out.header.sequence_number == 12U);
+  AULA_CHECK(discontinuity == 0);
+}
+
 int main(void) {
   test_playout_empty_payload_and_wrap();
   test_playout_resyncs_after_sequence_jump();
+  test_playout_skip_keeps_sequence_continuous();
   test_parser_room();
   test_rtsp_uri_rejects_trailing_parent();
   test_receiver_report_loss_clamp();

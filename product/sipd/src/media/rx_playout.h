@@ -40,6 +40,9 @@ void aula_rx_playout_reset(aula_rx_playout *playout);
 aula_status aula_rx_playout_push(aula_rx_playout *playout,
                                    const aula_rtp_packet *packet,
                                    uint64_t now_ns);
+/* Accounts for a sequence number consumed outside the buffer (DTMF).  Only
+ * the next expected sequence is skipped; anything else is ignored. */
+void aula_rx_playout_skip(aula_rx_playout *playout, uint16_t sequence);
 /* Returns the first instant at which take can change state.  A missing packet
  * being held for reordering reports the hold expiry instead of an already-due
  * playout instant, preventing a busy poll loop. */

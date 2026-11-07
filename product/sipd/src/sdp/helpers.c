@@ -370,6 +370,18 @@ static void aula_sdp_log_rtpmap_failure(aula_status status,
   (void)fflush(stderr);
 }
 
+static void aula_sdp_apply_pending_fmtp(aula_sdp_stored_media *media,
+                                          uint8_t payload_type) {
+  aula_sdp_codec *codec = aula_sdp_find_codec(media, payload_type);
+  size_t index;
+  if (codec == NULL) return;
+  for (index = 0U; index < media->pending_fmtp_count; ++index) {
+    if (media->pending_fmtp_pt[index] == payload_type)
+      (void)memcpy(media->fmtp[codec - media->codecs], media->pending_fmtp[index],
+                   AULA_SDP_MAX_FMTP_BYTES);
+  }
+}
+
 aula_status aula_sdp_parse_rtpmap(aula_sdp_stored_media *media,
                                     char *value) {
   char *encoding = NULL;
@@ -396,8 +408,10 @@ aula_status aula_sdp_parse_rtpmap(aula_sdp_stored_media *media,
     else if ((int)kind >= 0)
       status = aula_sdp_add_rtpmap_codec(media, payload_type, kind, rate,
                                           channels);
-    if (status == AULA_STATUS_OK)
+    if (status == AULA_STATUS_OK) {
       media->mapped_payload_types[payload_type] = 1U;
+      aula_sdp_apply_pending_fmtp(media, payload_type);
+    }
   }
   if (status != AULA_STATUS_OK)
     aula_sdp_log_rtpmap_failure(status, media, payload_type, rate, channels,
@@ -410,7 +424,6 @@ aula_status aula_sdp_parse_fmtp(aula_sdp_stored_media *media,
   char *space = strchr(value, ' ');
   uint8_t payload_type;
   aula_sdp_codec *codec;
-  size_t index;
   if (media == NULL || space == NULL || space == value || space[1] == '\0') {
     return AULA_STATUS_INVALID_DATA;
   }
@@ -421,15 +434,19 @@ aula_status aula_sdp_parse_fmtp(aula_sdp_stored_media *media,
   if (media->declared_payload_types[payload_type] == 0U) {
     return AULA_STATUS_INVALID_DATA;
   }
+  if (!aula_sdp_valid_text(space)) return AULA_STATUS_INVALID_DATA;
+  /* An over-long fmtp stays empty: H.264 then fails its own compatibility rule. */
+  if (strlen(space) >= AULA_SDP_MAX_FMTP_BYTES) return AULA_STATUS_OK;
   codec = aula_sdp_find_codec(media, payload_type);
-  if (codec == NULL) {
-    return AULA_STATUS_OK;
+  if (codec != NULL) {
+    (void)memcpy(media->fmtp[codec - media->codecs], space, strlen(space) + 1U);
+  } else if (media->mapped_payload_types[payload_type] == 0U &&
+             media->pending_fmtp_count < AULA_SDP_MAX_CODECS) {
+    /* a=fmtp may precede its a=rtpmap; attached when the rtpmap arrives. */
+    media->pending_fmtp_pt[media->pending_fmtp_count] = payload_type;
+    (void)memcpy(media->pending_fmtp[media->pending_fmtp_count++], space,
+                 strlen(space) + 1U);
   }
-  if (!aula_sdp_valid_text(space) || strlen(space) >= AULA_SDP_MAX_FMTP_BYTES) {
-    return AULA_STATUS_INVALID_DATA;
-  }
-  index = (size_t)(codec - media->codecs);
-  (void)memcpy(media->fmtp[index], space, strlen(space) + 1U);
   return AULA_STATUS_OK;
 }
 

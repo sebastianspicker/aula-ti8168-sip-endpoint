@@ -115,6 +115,26 @@ static void test_control_requires_a_dedicated_gateway_uid(void) {
   AULA_CHECK_STATUS(load(text, &diagnostic), AULA_STATUS_OK);
 }
 
+static void test_control_socket_parent_matches_server_rule(void) {
+  aula_config_diagnostic diagnostic;
+  char socket_directory[sizeof(test_directory) + 8U];
+  char text[768];
+  (void)snprintf(socket_directory, sizeof(socket_directory), "%s/sock", test_directory);
+  AULA_CHECK(mkdir(socket_directory, 0700) == 0);
+  (void)snprintf(text, sizeof(text),
+                 "[runtime]\nforeground = true\npid_file = %s/aula.pid\n"
+                 "[control]\nenable_local_control = true\n"
+                 "unix_socket_path = %s/control.sock\ngateway_uid = 1201\n",
+                 test_directory, socket_directory);
+  /* The server refuses a sticky world-writable parent, so --check-config must. */
+  AULA_CHECK(chmod(socket_directory, 01777) == 0);
+  AULA_CHECK_STATUS(load(text, &diagnostic), AULA_STATUS_CONFIGURATION_ERROR);
+  AULA_CHECK(strcmp(diagnostic.setting, "control.unix_socket_path") == 0);
+  AULA_CHECK(chmod(socket_directory, 0700) == 0);
+  AULA_CHECK_STATUS(load(text, &diagnostic), AULA_STATUS_OK);
+  (void)rmdir(socket_directory);
+}
+
 static void test_file_errors_are_reported(void) {
   aula_config *config = NULL;
   aula_config_diagnostic diagnostic;
@@ -144,6 +164,7 @@ int main(void) {
   test_values_are_never_echoed();
   test_validation_errors_name_the_setting();
   test_control_requires_a_dedicated_gateway_uid();
+  test_control_socket_parent_matches_server_rule();
   test_file_errors_are_reported();
   /* Only the one file this test created and its mkdtemp directory. */
   (void)unlink(test_file);

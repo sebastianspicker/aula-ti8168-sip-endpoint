@@ -19,6 +19,8 @@ SERVICE_PID_ROOT=/var/run/aula-ti8168-sip-endpoint
 RUNTIME_ROOT=/run/aula-state/current
 AUTOSTART_ENABLED=$BASE/autostart-enabled
 LOCK=/var/run/aula-ti8168-sip-endpoint-operation.lock
+# 1 while this run's stage/recovery files exist but no transaction records them.
+staged_untransacted=0
 
 die() { printf '%s\n' "configure-private-lab: $*" >&2; exit 1; }
 usage() {
@@ -142,7 +144,13 @@ acquire_lock() {
     mkdir "$LOCK" 2>/dev/null || die 'another live operation is active or its lock requires reconciliation'
     printf '%s\n' "$$" > "$LOCK/pid" || { rmdir "$LOCK" 2>/dev/null || true; die 'cannot record live operation lock owner'; }
 }
-release_lock() { rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null || true; }
+release_lock() {
+    # A transaction file owns the stage/recovery files; without one they are this run's orphans.
+    if [ "$staged_untransacted" = 1 ] && [ ! -e "$PRIVATE_LAB_TX" ] && [ ! -L "$PRIVATE_LAB_TX" ]; then
+        rm -f "$CONFIG_STAGE" "$TLS_CERT_STAGE" "$TLS_KEY_STAGE" "$TLS_CERT_RECOVERY" "$TLS_KEY_RECOVERY"
+    fi
+    rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null || true
+}
 transaction_value_once() {
     key=$1
     awk -F= -v key="$key" '
@@ -413,6 +421,11 @@ if [ "$replace_tls" = 1 ]; then
     require_tls_file_contract "$TLS_KEY"
     old_cert_digest=$(require_journaled_hash "$TLS_CERT")
     old_key_digest=$(require_journaled_hash "$TLS_KEY")
+    cert_digest=$(sha256_file "$tls_cert") || die 'cannot hash TLS certificate input'
+    key_digest=$(sha256_file "$tls_key") || die 'cannot hash TLS key input'
+    valid_sha256 "$cert_digest" && valid_sha256 "$key_digest" || die 'TLS replacement hash is unsafe'
+    [ "$cert_digest:$key_digest" != "$old_cert_digest:$old_key_digest" ] || die 'TLS replacement pair is unchanged'
+    staged_untransacted=1
     cp "$TLS_CERT" "$TLS_CERT_RECOVERY"
     cp "$TLS_KEY" "$TLS_KEY_RECOVERY"
     cp "$tls_cert" "$TLS_CERT_STAGE"
@@ -429,6 +442,7 @@ if [ "$replace_tls" = 1 ]; then
     [ "$cert_digest:$key_digest" != "$old_cert_digest:$old_key_digest" ] || die 'TLS replacement pair is unchanged'
     sync || die 'TLS replacement staging durability barrier failed'
     write_tls_renew_transaction "$old_cert_digest" "$old_key_digest" "$cert_digest" "$key_digest"
+    staged_untransacted=0
     complete_private_lab_transaction
     printf '%s\n' 'configure-private-lab: managed TLS certificate and key replaced while services remained stopped'
     exit 0
@@ -445,6 +459,7 @@ if [ -n "$tls_cert" ]; then
         die 'managed TLS material already exists'
 fi
 
+staged_untransacted=1
 cat > "$CONFIG_STAGE" <<EOF
 [runtime]
 foreground = true
@@ -522,5 +537,6 @@ else
     sync || die 'private-lab staged configuration durability barrier failed'
     write_private_lab_transaction "$previous_config" "$config_digest" none
 fi
+staged_untransacted=0
 complete_private_lab_transaction
 printf '%s\n' 'configure-private-lab: numeric private-lab configuration and supplied ephemeral TLS material installed'

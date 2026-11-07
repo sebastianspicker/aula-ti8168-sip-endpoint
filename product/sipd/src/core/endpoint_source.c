@@ -5,7 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define AULA_ENDPOINT_SOURCE_DISCOVERY_MAX_NS UINT64_C(5000000000)
+/* shortcut: 500 ms cap on call-time discovery, move discovery off the main thread if cameras need longer */
+#define AULA_ENDPOINT_SOURCE_DISCOVERY_MAX_NS UINT64_C(500000000)
 
 /* Synthetic baseline black-frame parameter sets for the fixture backend. */
 static const aula_sdp_codec BASELINE_VIDEO_CODECS[] = {
@@ -56,7 +57,9 @@ aula_status endpoint_discover_source_h264(aula_endpoint *endpoint) {
   deadline.monotonic_ns = endpoint_deadline_after(now_ns, budget_ns);
   status = aula_rtsp_native_discover_h264(
       &endpoint->backend_config, deadline, &capability);
-  if (status != AULA_STATUS_OK) return status;
+  /* A later timeout or failure reuses the last successful discovery. */
+  if (status != AULA_STATUS_OK)
+    return endpoint->source_h264_profile_present != 0 ? AULA_STATUS_OK : status;
   (void)memcpy(endpoint->source_h264_profile_level_id,
                capability.profile_level_id,
                sizeof(endpoint->source_h264_profile_level_id));

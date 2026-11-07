@@ -143,10 +143,8 @@ struct aula_rtsp_stream_parser {
 };
 
 typedef struct aula_rtsp_gst_context {
-  char device_property[320];
   aula_rtsp_uri video_uri;
   aula_rtsp_uri setup_uri;
-  int audio_read_fd;
   int rtsp_fd;
   aula_child_process child;
   aula_rtsp_stream_parser *parser;

@@ -262,6 +262,8 @@ def main() -> None:
     parser.add_argument("qemu", type=Path)
     parser.add_argument("--json", type=Path, help="write machine-readable public-only receipt")
     args = parser.parse_args()
+    if args.json is not None and (args.json.exists() or args.json.is_symlink()):
+        parser.error(f"receipt already exists, choose a new path: {args.json}")
     qemu = args.qemu.resolve(strict=True)
     assertions = 0
     reset_events: list[dict] = []

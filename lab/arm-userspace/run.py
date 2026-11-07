@@ -78,6 +78,11 @@ def create_output(value: Path) -> Path:
             current.mkdir(mode=0o700)
         else:
             current.mkdir(mode=0o700, exist_ok=True)
+            # Same rule as lab/qemu/firmware/private_output.py: no shared parents.
+            info = current.stat()
+            if current.is_relative_to(allowed) and (
+                    info.st_uid != os.getuid() or info.st_mode & 0o022):
+                raise ValueError("output parents below .work must be owned and not group/other writable")
     return requested
 
 

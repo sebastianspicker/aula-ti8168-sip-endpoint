@@ -166,6 +166,8 @@ def main() -> int:
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
     args = parser.parse_args()
+    if args.evidence.exists() or args.evidence.is_symlink():
+        parser.error(f"evidence file already exists, choose a new path: {args.evidence}")
     try:
         result = smoke(args)
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:

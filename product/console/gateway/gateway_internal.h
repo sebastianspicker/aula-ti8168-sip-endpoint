@@ -82,6 +82,8 @@ int gateway_apply_loaded_store_v3(aula_gateway *gateway, json_t *root);
 void gateway_log_request(aula_gateway *gateway, const aula_gateway_request *request,
                          const aula_gateway_response *response, int handled,
                          uint64_t elapsed_milliseconds);
+/* Emits one fixed line from the audit budget. The caller holds the state lock. */
+void gateway_log_notice_locked(aula_gateway *gateway, uint64_t now, const char *text);
 
 /* ---- gateway_session.c: session lifecycle and request authentication ---- */
 
@@ -212,6 +214,11 @@ int gateway_handle_directory_mutation(aula_gateway *gateway, const aula_gateway_
 int gateway_write_directory(const aula_gateway *gateway, aula_gateway_response *response);
 int gateway_write_recents(const aula_gateway *gateway, aula_gateway_response *response);
 int gateway_record_recent(aula_gateway *gateway, const char *body);
+
+/* Stores an already derived account hash; used by aula_gateway_upsert_account and the user routes. */
+int gateway_install_account(aula_gateway *gateway, const char *username, aula_gateway_role role,
+                            const uint8_t salt[AULA_GATEWAY_SALT_BYTES],
+                            const uint8_t hash[AULA_GATEWAY_HASH_BYTES]);
 
 /* ---- gateway_route_users.c: HTTP-driven account mutation ---- */
 

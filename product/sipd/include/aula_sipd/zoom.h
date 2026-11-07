@@ -50,7 +50,6 @@ typedef struct aula_zoom_dial_request {
 
 typedef struct aula_zoom_dial_target {
   aula_zoom_profile profile;
-  int requires_proxy_registration;
   aula_transport transport;
   uint16_t port;
   int has_explicit_port;

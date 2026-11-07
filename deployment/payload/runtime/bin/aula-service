@@ -36,4 +36,8 @@ esac
     printf '%s\n' "error: production component is absent: $executable" >&2
     exit 78
 }
+# shortcut: rotates only at service start; add a size-capped writer if a single run outgrows 1 MiB
+if [ -f "$log" ] && [ "$(wc -c < "$log")" -gt 1048576 ]; then
+    mv -f "$log" "$log.1"
+fi
 exec "$@" >> "$log" 2>&1

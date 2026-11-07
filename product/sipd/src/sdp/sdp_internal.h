@@ -21,6 +21,9 @@ typedef struct aula_sdp_stored_media {
   aula_sdp_media value;
   aula_sdp_codec codecs[AULA_SDP_MAX_CODECS];
   char fmtp[AULA_SDP_MAX_CODECS][AULA_SDP_MAX_FMTP_BYTES];
+  char pending_fmtp[AULA_SDP_MAX_CODECS][AULA_SDP_MAX_FMTP_BYTES];
+  uint8_t pending_fmtp_pt[AULA_SDP_MAX_CODECS];
+  uint8_t pending_fmtp_count;
   uint8_t declared_payload_types[128];
   uint8_t mapped_payload_types[128];
   uint8_t feedback_payload[128];

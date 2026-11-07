@@ -86,6 +86,20 @@ static void test_v1_upgrade(int directory) {
   aula_device_credentials_close();
 }
 
+/* A blocked pending file fails the save; once it is gone the next call heals without a reopen. */
+static void test_recovery_after_failed_save(int directory) {
+  GATEWAY_CHECK(aula_device_credentials_open(directory));
+  GATEWAY_CHECK(mkdirat(directory, "oem-credentials.pending", 0700) == 0);
+  GATEWAY_CHECK(strcmp(update(1, 1), "persistence_uncertain") == 0);
+  GATEWAY_CHECK(strcmp(update(1, 1), "unavailable") == 0);
+  GATEWAY_CHECK(status_revision() == -1);
+  GATEWAY_CHECK(unlinkat(directory, "oem-credentials.pending", AT_REMOVEDIR) == 0);
+  GATEWAY_CHECK(status_revision() == 1);
+  GATEWAY_CHECK(strcmp(update(1, 1), "succeeded") == 0);
+  GATEWAY_CHECK(status_revision() == 2);
+  aula_device_credentials_close();
+}
+
 int main(void) {
   const char *base = getenv("TMPDIR");
   char path[1024];
@@ -99,6 +113,8 @@ int main(void) {
     test_eviction(directory);
     unlinkat(directory, FILE_NAME, 0);
     test_v1_upgrade(directory);
+    unlinkat(directory, FILE_NAME, 0);
+    test_recovery_after_failed_save(directory);
     unlinkat(directory, FILE_NAME, 0);
     close(directory);
   }

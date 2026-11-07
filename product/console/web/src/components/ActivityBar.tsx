@@ -3,6 +3,7 @@ import { api } from '../api'
 import { useLivePolling, type ConnectionState } from '../hooks/useLivePolling'
 import type { ApiError, Role } from '../types'
 import { readText } from '../types'
+import { projectCallState } from '../statusProjection'
 import { Button, ErrorNotice } from './ui'
 import { DeviceActivities } from './DeviceActivities'
 
@@ -12,7 +13,7 @@ export function ActivityBar({ role, onRoom, onConnection }: { role: Role; onRoom
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<ApiError | null>(null)
   const state = readText(data, 'call_state') ?? 'unknown'
-  const active = ['active', 'connected', 'connecting', 'resolving', 'inviting', 'early', 'establishing_media', 'established', 'terminating'].includes(state)
+  const { active } = projectCallState(state)
   const hangup = async () => {
     setBusy(true); setFailure(null)
     try { await api.hangup(); await refresh() }

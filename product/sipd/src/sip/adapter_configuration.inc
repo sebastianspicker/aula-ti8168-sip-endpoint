@@ -97,8 +97,8 @@ aula_status aula_sip_adapter_apply_policy(
   adapter->endpoint.profile = profile;
   adapter->endpoint.enable_tls = enable_tls;
   adapter->endpoint.preferred_transport = preferred_transport;
-  if (!adapter_policy_keeps_tcp_fallback(profile, enable_tls, preferred_transport))
-    adapter->allow_tcp_fallback = 0;
+  adapter->allow_tcp_fallback = adapter->configured_tcp_fallback != 0 &&
+      adapter_policy_keeps_tcp_fallback(profile, enable_tls, preferred_transport);
   return AULA_STATUS_OK;
 }
 

@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { connectionLabel, directionLabel, previewLabel, projectCallState, projectMedia } from './statusProjection'
 
 describe('projectCallState', () => {
+  it('treats retrying and failed calls as active so they can be hung up', () => {
+    expect(projectCallState('backing_off').active).toBe(true)
+    expect(projectCallState('failed').active).toBe(true)
+    expect(projectCallState('idle').active).toBe(false)
+  })
   it('keeps a completed hang-up distinct from missing status', () => {
     expect(projectCallState('terminated')).toEqual({
       active: false, emptyTitle: 'No active call',

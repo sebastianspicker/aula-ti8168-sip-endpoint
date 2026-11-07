@@ -144,22 +144,15 @@ static int backend_event_response(aula_gateway *gateway, const route_plan *plan,
   return 1;
 }
 
-static int backend_recent_call(aula_gateway *gateway, const aula_gateway_session *session,
-                               const aula_gateway_request *request, const route_plan *plan,
-                               aula_gateway_response *response) {
+/* The daemon already accepted the call, so a failed recents write never replaces that result. */
+static int backend_recent_call(aula_gateway *gateway, const aula_gateway_request *request) {
   int store_result;
   if (strcmp(request->path, "/zoom/api/v1/calls") != 0 || strcmp(request->method, "POST") != 0) return 1;
   store_result = gateway_record_recent(gateway, request->body);
-  if (store_result == 1) return 1;
-  if (store_result == 2) {
-    gateway_write_error(response, 503U, "PERSISTENCE_UNCERTAIN",
-                        "recent call was committed but restart durability was not confirmed");
-    gateway_save_mutation(gateway, session, request, plan, response);
-    return 0;
-  }
-  gateway_write_error(response, 500U, "PERSISTENCE_FAILED", "recent call state was not saved");
-  gateway_save_mutation(gateway, session, request, plan, response);
-  return 0;
+  if (store_result != 1)
+    gateway_log_notice_locked(gateway, request->now, store_result == 2 ?
+        "recent call saved but restart durability was not confirmed" : "recent call state was not saved");
+  return 1;
 }
 
 static int backend_status_shape(const aula_gateway *gateway, const route_plan *plan,
@@ -262,7 +255,7 @@ int gateway_finish_backend_response(aula_gateway *gateway, const aula_gateway_se
     gateway_write_error(response, 502U, "BACKEND_PROTOCOL", "control daemon returned invalid JSON");
   } else if (backend_event_response(gateway, plan, normalized, response)) {
     /* handled */
-  } else if (!backend_recent_call(gateway, identity, request, plan, response)) {
+  } else if (!backend_recent_call(gateway, request)) {
     /* handled */
   } else if (!backend_status_shape(gateway, plan, request, normalized)) {
     gateway_write_error(response, 502U, "BACKEND_PROTOCOL", "control daemon status could not be shaped");

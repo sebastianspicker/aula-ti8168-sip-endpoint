@@ -167,7 +167,9 @@ static aula_status validate_regular_file(const char *path) {
   return status;
 }
 
-static aula_status validate_output_path(const char *path) {
+/* control_socket applies the server's rule from src/control/local.c: parent owned
+ * by the daemon, no group or other write bit, sticky or not. */
+static aula_status validate_output_path(const char *path, int control_socket) {
   char parent[PATH_MAX];
   char *slash;
   struct stat existing;
@@ -186,7 +188,9 @@ static aula_status validate_output_path(const char *path) {
   }
   *slash = '\0';
   if (lstat(parent, &parent_details) != 0 || !S_ISDIR(parent_details.st_mode) ||
-      ((parent_details.st_mode & 0022U) != 0U && (parent_details.st_mode & S_ISVTX) == 0U)) {
+      (control_socket != 0
+           ? parent_details.st_uid != geteuid() || (parent_details.st_mode & 0022U) != 0U
+           : (parent_details.st_mode & 0022U) != 0U && (parent_details.st_mode & S_ISVTX) == 0U)) {
     return AULA_STATUS_CONFIGURATION_ERROR;
   }
   return AULA_STATUS_OK;
@@ -338,7 +342,7 @@ static const char *output_path_reason(aula_status status) {
 
 static aula_status validate_runtime_paths(const aula_config *config,
                                           aula_config_diagnostic *diagnostic) {
-  aula_status status = validate_output_path(config->pid_file);
+  aula_status status = validate_output_path(config->pid_file, 0);
   if (status != AULA_STATUS_OK) {
     aula_config_diagnose(diagnostic, status, 0U, "runtime.pid_file",
                          output_path_reason(status));
@@ -354,7 +358,7 @@ static aula_status validate_runtime_paths(const aula_config *config,
     return status;
   }
   if (!config->view.enable_local_control) return AULA_STATUS_OK;
-  status = validate_output_path(config->local_control_socket);
+  status = validate_output_path(config->local_control_socket, 1);
   if (status != AULA_STATUS_OK)
     aula_config_diagnose(diagnostic, status, 0U, "control.unix_socket_path",
                          output_path_reason(status));

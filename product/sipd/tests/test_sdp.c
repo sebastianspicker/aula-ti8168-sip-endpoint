@@ -383,9 +383,39 @@ static void test_answer_rejects_invalid_arguments(void) {
   aula_sdp_session_destroy(offer);
 }
 
+static void test_parse_fmtp_before_rtpmap(void) {
+  aula_sdp_session *session = parse_offer_text(
+      "v=0\r\no=- 1 1 IN IP4 192.168.1.10\r\ns=-\r\nc=IN IP4 192.168.1.10\r\nt=0 0\r\n"
+      "m=video 40000 RTP/AVP 96\r\n"
+      "a=fmtp:96 " SDP_VIDEO_FMTP "\r\n"
+      "a=rtpmap:96 H264/90000\r\n"
+      "m=audio 40002 RTP/AVP 0 101\r\n"
+      "a=rtpmap:0 PCMU/8000\r\na=rtpmap:101 telephone-event/8000\r\n");
+  aula_sdp_session_destroy(session);
+}
+
+static void test_parse_overlong_fmtp_is_ignored(void) {
+  char text[1024];
+  char filler[201];
+  aula_sdp_session *session = NULL;
+  memset(filler, 'a', 200U);
+  filler[200] = '\0';
+  (void)snprintf(text, sizeof(text),
+      "v=0\r\no=- 1 1 IN IP4 192.168.1.10\r\ns=-\r\nc=IN IP4 192.168.1.10\r\nt=0 0\r\n"
+      "m=video 40000 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\n"
+      "a=fmtp:96 " SDP_VIDEO_FMTP "\r\n"
+      "m=audio 40002 RTP/AVP 0 101\r\n"
+      "a=rtpmap:0 PCMU/8000\r\na=rtpmap:101 telephone-event/8000\r\n"
+      "a=fmtp:101 %s\r\n", filler);
+  AULA_CHECK_STATUS(aula_sdp_parse_offer(text_bytes(text), &session), AULA_STATUS_OK);
+  aula_sdp_session_destroy(session);
+}
+
 int main(void) {
   test_parse_valid_offer();
   test_parse_accepts_lf_and_session_direction();
+  test_parse_fmtp_before_rtpmap();
+  test_parse_overlong_fmtp_is_ignored();
   test_parse_rejects_malformed_input();
   test_parse_rejects_bad_media();
   test_serialize_round_trip();

@@ -223,15 +223,16 @@ aula_status endpoint_control_settings(aula_endpoint *endpoint,
   status = endpoint_settings_validate_candidate(endpoint, decoded.profile,
                                                 decoded.media_managed);
   if (status != AULA_STATUS_OK) return status;
-  if (endpoint->adapter == NULL) return AULA_STATUS_STATE_ERROR;
+  if (endpoint->adapter == NULL || endpoint->view == NULL) return AULA_STATUS_STATE_ERROR;
   previous_profile = endpoint->sip_config.profile;
   previous_enable_tls = endpoint->sip_config.enable_tls;
   previous_transport = endpoint->sip_config.preferred_transport;
+  /* private_lab uses the config-file values, as a restart would. */
   candidate_enable_tls = decoded.profile == AULA_ZOOM_PROFILE_PRIVATE_LAB
-                             ? previous_enable_tls
+                             ? endpoint->view->enable_tls
                              : 1;
   candidate_transport = decoded.profile == AULA_ZOOM_PROFILE_PRIVATE_LAB
-                            ? previous_transport
+                            ? endpoint->view->transport
                             : AULA_TRANSPORT_TLS;
   /* Adapter publication is bounded and in-memory.  Apply it first so every
    * possible adapter rejection happens before the durable rename.  If any

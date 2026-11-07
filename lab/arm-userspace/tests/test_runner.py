@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -76,6 +77,28 @@ class RunnerTests(unittest.TestCase):
                 (root / ".work" / "link").symlink_to(root, target_is_directory=True)
                 with self.assertRaises(ValueError):
                     runner.create_output(root / ".work" / "link" / "escape")
+
+    def test_sip_smoke_refuses_to_overwrite_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            evidence = Path(temporary) / "evidence.json"
+            evidence.write_text("passing run\n")
+            argv = ["sip_smoke.py", "--qemu-arm", "qemu-arm", "--sysroot", temporary, "--binary", temporary,
+                    "--evidence", str(evidence)]
+            with patch.object(sys, "argv", argv), patch.object(sip, "smoke") as smoke, \
+                    self.assertRaises(SystemExit):
+                sip.main()
+            smoke.assert_not_called()
+            self.assertEqual(evidence.read_text(), "passing run\n")
+
+    def test_output_rejects_writable_existing_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            with patch.object(runner, "ROOT", root):
+                shared = root / ".work" / "shared"
+                shared.mkdir(parents=True)
+                shared.chmod(0o777)
+                with self.assertRaises(ValueError):
+                    runner.create_output(shared / "run")
 
     def test_missing_cross_tool_writes_failure_without_executing_host_tools(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
