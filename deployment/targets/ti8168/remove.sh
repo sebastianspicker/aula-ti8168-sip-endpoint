@@ -24,6 +24,7 @@ PURGE_TX=$BASE/purge-transaction
 ROLLBACK_TX=$BASE/rollback-transaction
 STARTER=$BASE/live-start.sh
 INTERNAL_LOCK=aula-ti8168-sip-endpoint-live-internal-v1; SIP_CA=$BASE/tls/sip-ca.crt; SIP_CA_UID=$(id -u aula-sip 2>/dev/null || true); SIP_CA_GID=0
+DEVICE_UID=0
 
 die() { printf '%s\n' "live-remove: $*" >&2; exit 1; }
 durability_barrier() { sync || die 'filesystem durability barrier failed'; }
@@ -66,11 +67,12 @@ validate_root_ssh_overlay() {
     cmp -s "$ROOT_PASSWD_SOURCE" /etc/passwd || die 'managed root-SSH passwd source does not match its active bind view'
 }
 
-purge=0
-case ${1:-} in
-    --apply) ;;
-    --purge-owned-state) purge=1 ;;
-    *) printf '%s\n' "usage: $0 {--apply|--purge-owned-state}" >&2; exit 64 ;;
+purge=0 purge_device=0
+case ${1:-}:${2:-} in
+    --apply:) ;;
+    --purge-owned-state:) purge=1 ;;
+    --purge-owned-state:--purge-device-state) purge=1 purge_device=1 ;;
+    *) printf '%s\n' "usage: $0 {--apply|--purge-owned-state [--purge-device-state]}" >&2; exit 64 ;;
 esac
 [ "$(id -u)" = 0 ] || die 'must run as root on the target'
 if [ -f "$JOURNAL" ] && [ ! -L "$JOURNAL" ]; then
@@ -92,6 +94,12 @@ root_owned_not_writable() {
 require_secure_path_chain() { path=$1; while [ "$path" != / ]; do root_owned_not_writable "$path" || die "unsafe root-owned path chain: $path"; path=$(dirname "$path"); done; }
 acquire_lock() {
     if mkdir "$LOCK" 2>/dev/null; then printf '%s\n' "$$" > "$LOCK/pid"; return; fi
+    # A crash between mkdir and the pid write leaves an empty lock; reclaim it once it is stale.
+    if [ -d "$LOCK" ] && [ ! -L "$LOCK" ] && [ ! -e "$LOCK/pid" ] && [ ! -L "$LOCK/pid" ] &&
+       [ -n "$(find "$LOCK" -prune -mmin +1 2>/dev/null)" ]; then
+        rmdir "$LOCK" 2>/dev/null || true
+        if mkdir "$LOCK" 2>/dev/null; then printf '%s\n' "$$" > "$LOCK/pid"; return; fi
+    fi
     [ -f "$LOCK/pid" ] && [ ! -L "$LOCK/pid" ] || die 'another live operation is active'
     pid=$(cat "$LOCK/pid"); case $pid in ''|*[!0-9]*) die 'live operation lock is unsafe' ;; esac
     kill -0 "$pid" 2>/dev/null && die 'another live operation is active'
@@ -192,7 +200,7 @@ validate_runtime_leaf() {
     [ -f "$1" ] && [ ! -L "$1" ] || die "campaign runtime state is unsafe: $relative"
     [ "$relative" != tls/sip-ca.crt ] || { sip_ca_ownership_ok "$1" || die 'SIP CA ownership is unsafe'; find "$1" -prune -perm 0600 | grep -Fx "$1" >/dev/null || die 'SIP CA mode is unsafe'; }
     case $relative in
-        gateway/account.json|gateway/service.log|nginx/service.log|nginx/nginx-error.log|nginx/nginx-access.log|nginx/nginx.pid|sip/settings.json|sip/service.log|tls/server.crt|tls/server.key|tls/sip-ca.crt|aula-sipd.conf|gateway.conf|bootstrap-token) ;;
+        gateway/account.json|gateway/service.log|nginx/service.log|nginx/nginx-error.log|nginx/nginx-access.log|nginx/nginx.pid|sip/settings.json|sip/service.log|tls/server.crt|tls/server.key|tls/sip-ca.crt|aula-sipd.conf|aula-sipd.conf.before|gateway.conf|bootstrap-token) ;;
         *) die "unexpected object blocks owned-state purge: $relative" ;;
     esac
 }
@@ -223,9 +231,39 @@ validate_service_directory() {
 $(find "$directory" -mindepth 1 -maxdepth 1 -print)
 EOF
 }
+# install.sh creates $BASE/device as root:root 0700; the device companion adds
+# only these names.  Anything else blocks the purge before it deletes anything.
+validate_device_state() {
+    device=$BASE/device
+    [ -e "$device" ] || [ -L "$device" ] || return 0
+    [ "$purge_device" = 1 ] || die "campaign device state exists: $device; rerun with --purge-device-state to remove it"
+    [ -d "$device" ] && [ ! -L "$device" ] || die "campaign device directory is unsafe: $device"
+    [ "$(ls -nd "$device" | awk 'NR == 1 { print $3 }')" = "$DEVICE_UID" ] && find "$device" -prune -perm 0700 | grep -q . ||
+        die "campaign device directory ownership or mode is unsafe: $device"
+    while IFS= read -r object; do
+        [ -z "$object" ] || {
+            case ${object##*/} in
+                jobs.json|jobs.pending|jobs.lock|listener.lock|oem-credentials.json|oem-credentials.pending|service.log) ;;
+                *) die "unexpected object blocks device-state purge: $object" ;;
+            esac
+            [ -f "$object" ] && [ ! -L "$object" ] || die "campaign device state is unsafe: $object"
+        }
+    done <<EOF
+$(find "$device" -mindepth 1 -maxdepth 1 -print)
+EOF
+}
+remove_device_state() {
+    validate_device_state
+    [ -d "$BASE/device" ] || return 0
+    for leaf in jobs.json jobs.pending jobs.lock listener.lock oem-credentials.json oem-credentials.pending service.log; do
+        rm -f "$BASE/device/$leaf"
+    done
+    rmdir "$BASE/device" || die 'campaign device directory did not become empty'
+}
 validate_runtime_state() {
+    validate_device_state
     for directory in "$BASE/gateway" "$BASE/nginx" "$BASE/sip" "$BASE/tls"; do validate_service_directory "$directory"; done
-    for leaf in "$BASE/aula-sipd.conf" "$BASE/gateway.conf" "$BASE/bootstrap-token"; do [ ! -e "$leaf" ] && [ ! -L "$leaf" ] || validate_runtime_leaf "$leaf"; done
+    for leaf in "$BASE/aula-sipd.conf" "$BASE/aula-sipd.conf.before" "$BASE/gateway.conf" "$BASE/bootstrap-token"; do [ ! -e "$leaf" ] && [ ! -L "$leaf" ] || validate_runtime_leaf "$leaf"; done
 }
 purge_runtime_state() {
     validate_runtime_state
@@ -235,7 +273,7 @@ purge_runtime_state() {
     for directory in "$BASE/nginx/client_body_temp" "$BASE/nginx/fastcgi_temp"; do
         [ ! -d "$directory" ] || rmdir "$directory" || die "owned nginx runtime directory did not become empty: $directory"
     done
-    rm -f "$BASE/aula-sipd.conf" "$BASE/gateway.conf" "$BASE/bootstrap-token"
+    rm -f "$BASE/aula-sipd.conf" "$BASE/aula-sipd.conf.before" "$BASE/gateway.conf" "$BASE/bootstrap-token"
     rm -f "$IDENTITY/group" "$IDENTITY/group.before" "$ROOT_SSH_BACKUP"
     for directory in "$BASE/gateway" "$BASE/nginx" "$BASE/sip" "$BASE/tls" "$IDENTITY" "$RELEASES"; do
         [ ! -d "$directory" ] || rmdir "$directory" || die "owned directory did not become empty: $directory"
@@ -431,6 +469,7 @@ finalize_purge() {
     # This is reachable only after `state-purged` was durably recorded.  The
     # final unlinks are exact recovery artifacts; rmdir still rejects any
     # unexpected object rather than deleting it.
+    remove_device_state
     rm -f "$BASE/live-start.sh" "$BASE/live-autostart.sh" "$BASE/live-rollback.sh"
     rm -f "$JOURNAL"; durability_barrier
     rm -f "$BASE/live-remove.sh" "$BASE/live-transaction-records.sh" "$BASE/live-verify-payload.sh"; durability_barrier

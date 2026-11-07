@@ -215,6 +215,12 @@ case $payload_kb:$free_kb in *[!0-9:]*|:*) die 'cannot determine persistent free
 
 acquire_lock() {
     if mkdir "$LOCK" 2>/dev/null; then printf '%s\n' "$$" > "$LOCK/pid"; return; fi
+    # A crash between mkdir and the pid write leaves an empty lock; reclaim it once it is stale.
+    if [ -d "$LOCK" ] && [ ! -L "$LOCK" ] && [ ! -e "$LOCK/pid" ] && [ ! -L "$LOCK/pid" ] &&
+       [ -n "$(find "$LOCK" -prune -mmin +1 2>/dev/null)" ]; then
+        rmdir "$LOCK" 2>/dev/null || true
+        if mkdir "$LOCK" 2>/dev/null; then printf '%s\n' "$$" > "$LOCK/pid"; return; fi
+    fi
     [ -f "$LOCK/pid" ] && [ ! -L "$LOCK/pid" ] || die 'another live operation is active'
     pid=$(cat "$LOCK/pid"); case $pid in ''|*[!0-9]*) die 'live operation lock is unsafe' ;; esac
     kill -0 "$pid" 2>/dev/null && die 'another live operation is active'
@@ -223,8 +229,15 @@ acquire_lock() {
 }
 release_lock() { rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null || true; }
 live_helper_temporary=
+# Remove only this run's exact temporaries; version is charset-validated and $$ is ours.
+remove_own_temporaries() {
+    own_staging=$RELEASES/.staging-$version-$$; own_current=$BASE/.current-$version-$$
+    if [ -d "$own_staging" ] && [ ! -L "$own_staging" ]; then rm -rf "$own_staging" || true; fi
+    if [ -L "$own_current" ]; then rm -f "$own_current" || true; fi
+}
 cleanup_install() {
     [ -z "$live_helper_temporary" ] || rm -f "$live_helper_temporary" || true
+    remove_own_temporaries
     release_lock
 }
 require_inert_install() {
@@ -336,7 +349,7 @@ next_unused_id() {
     candidate=200
     while [ "$candidate" -le 65000 ]; do
         if ! awk -F: -v value="$candidate" '$3 == value || $4 == value { found = 1 } END { exit !found }' \
-            "$ROOT_PASSWD_SOURCE" "$IDENTITY/group" ${ROOT_PASSWD_TEMP:+"$ROOT_PASSWD_TEMP"}; then
+            "$ROOT_PASSWD_SOURCE" "${GROUP_FILE:-$IDENTITY/group}" ${ROOT_PASSWD_TEMP:+"$ROOT_PASSWD_TEMP"}; then
             printf '%s\n' "$candidate"
             return
         fi
@@ -347,9 +360,9 @@ next_unused_id() {
 
 append_group() {
     name=$1; members=$2; gid=$(next_unused_id)
-    printf '%s:x:%s:%s\n' "$name" "$gid" "$members" >> "$IDENTITY/group"
+    printf '%s:x:%s:%s\n' "$name" "$gid" "$members" >> "${GROUP_FILE:-$IDENTITY/group}"
 }
-group_id() { awk -F: -v name="$1" '$1 == name { print $3; found = 1 } END { exit !found }' "$IDENTITY/group"; }
+group_id() { awk -F: -v name="$1" '$1 == name { print $3; found = 1 } END { exit !found }' "${GROUP_FILE:-$IDENTITY/group}"; }
 append_user() { name=$1; primary=$2; uid=$(next_unused_id); gid=$(group_id "$primary") || die "missing primary group $primary"; printf '%s:x:%s:%s:Aula Zoom service:/nonexistent:/sbin/nologin\n' "$name" "$uid" "$gid" >> "$ROOT_PASSWD_TEMP"; }
 user_id() { awk -F: -v name="$1" '$1 == name { print $3; found = 1 } END { exit !found }' /etc/passwd; }
 require_configured_uid() {
@@ -381,18 +394,27 @@ require_live_payload_layout() {
 prepare_group_view() {
     if mounted_from "$IDENTITY/group" /etc/group; then return; fi
     [ "$(mount_root_for_target /etc/group)" = none ] || die 'group bind mount is not owned by this profile'
-    if [ -e "$IDENTITY/group" ] || [ -e "$IDENTITY/group.before" ]; then
+    if grep -Fx "file:$IDENTITY/group" "$JOURNAL" >/dev/null 2>&1; then
         [ -f "$IDENTITY/group" ] && [ ! -L "$IDENTITY/group" ] || die 'saved group overlay is unsafe'
         mount -o bind "$IDENTITY/group" /etc/group || die 'cannot restore managed group bind mount'
         return
     fi
-    cp /etc/group "$IDENTITY/group.before"
-    cp "$IDENTITY/group.before" "$IDENTITY/group"
-    cmp -s /etc/group "$IDENTITY/group.before" || die 'visible group changed while preparing managed overlay'
-    chmod 0644 "$IDENTITY/group" "$IDENTITY/group.before"
-    for name in aula-web aula-gateway aula-sip aula-control aula-web-gateway aula-web-tls aula-media-video aula-media-audio; do
-        grep -q "^$name:" "$ROOT_PASSWD_SOURCE" "$IDENTITY/group" && die "service identity already exists outside this profile: $name"
+    # Unjournaled files are leftovers of a run that died before publishing; rebuild from the visible view.
+    group_new=$IDENTITY/.group.new; group_before_new=$IDENTITY/.group.before.new
+    for leftover in "$IDENTITY/group" "$IDENTITY/group.before" "$group_new" "$group_before_new"; do
+        if [ -e "$leftover" ] || [ -L "$leftover" ]; then
+            [ -f "$leftover" ] && [ ! -L "$leftover" ] || die 'saved group overlay is unsafe'
+            rm -f "$leftover"
+        fi
     done
+    cp /etc/group "$group_before_new"
+    cp "$group_before_new" "$group_new"
+    cmp -s /etc/group "$group_before_new" || die 'visible group changed while preparing managed overlay'
+    chmod 0644 "$group_new" "$group_before_new"
+    for name in aula-web aula-gateway aula-sip aula-control aula-web-gateway aula-web-tls aula-media-video aula-media-audio; do
+        grep -q "^$name:" "$ROOT_PASSWD_SOURCE" "$group_new" && die "service identity already exists outside this profile: $name"
+    done
+    GROUP_FILE=$group_new
     append_group aula-web ''
     append_group aula-gateway ''
     append_group aula-sip ''
@@ -401,17 +423,26 @@ prepare_group_view() {
     append_group aula-web-tls 'aula-web'
     append_group aula-media-video 'aula-sip'
     append_group aula-media-audio 'aula-sip'
-    cmp -s /etc/group "$IDENTITY/group.before" || die 'refusing to stack over a changed group view'
+    GROUP_FILE=
+    cmp -s /etc/group "$group_before_new" || die 'refusing to stack over a changed group view'
+    mv "$group_before_new" "$IDENTITY/group.before"
+    record "file:$IDENTITY/group.before"
+    mv "$group_new" "$IDENTITY/group"
+    record "file:$IDENTITY/group"
     mount -o bind "$IDENTITY/group" /etc/group || die 'cannot install managed group bind mount'
     record "mount:/etc/group:$IDENTITY/group"
-    record "file:$IDENTITY/group"
-    record "file:$IDENTITY/group.before"
 }
 
 install_service_users_into_root_ssh() {
     if grep -Fx "root-ssh-passwd:$ROOT_PASSWD_SOURCE" "$JOURNAL" >/dev/null 2>&1; then return; fi
-    [ ! -e "$ROOT_SSH_BACKUP" ] || die 'root-SSH passwd backup already exists without journal ownership'
-    cp -p "$ROOT_PASSWD_SOURCE" "$ROOT_SSH_BACKUP"
+    if [ -e "$ROOT_SSH_BACKUP" ] || [ -L "$ROOT_SSH_BACKUP" ]; then
+        # A run that died before journaling leaves a backup of the still-unchanged source; any other backup is foreign.
+        if [ ! -f "$ROOT_SSH_BACKUP" ] || [ -L "$ROOT_SSH_BACKUP" ] || ! cmp -s "$ROOT_SSH_BACKUP" "$ROOT_PASSWD_SOURCE"; then
+            die 'root-SSH passwd backup already exists without journal ownership'
+        fi
+    else
+        cp -p "$ROOT_PASSWD_SOURCE" "$ROOT_SSH_BACKUP"
+    fi
     chmod 0600 "$ROOT_SSH_BACKUP"
     ROOT_PASSWD_TEMP=$ROOT_SSH_PROVISION/account-overlays/$ROOT_SSH_USER/.passwd.aula-ti8168-sip-endpoint.$$
     [ ! -e "$ROOT_PASSWD_TEMP" ] && [ ! -L "$ROOT_PASSWD_TEMP" ] || die 'root-SSH passwd temporary path already exists'
@@ -499,22 +530,31 @@ record "file:$MEDIA_GATE_RECORD"
 
 reconcile_bootstrap_transaction
 release=$RELEASES/$version
-[ ! -e "$release" ] && [ ! -L "$release" ] || die "release already exists: $release"
-staging=$RELEASES/.staging-$version-$$
-[ ! -e "$staging" ] && [ ! -L "$staging" ] || die "staging path already exists: $staging"
-mkdir "$staging"
-cp -Rp "$payload/." "$staging/"
-sh "$SCRIPT_DIR/verify-payload.sh" --payload "$staging" --manifest-sha256 "$manifest_sha" >/dev/null || die 'trusted staging verification failed'
-find "$staging" -type f -exec chmod a-w {} \;
-find "$staging" -type d -exec chmod a-w {} \;
-chmod 0555 "$staging/bin/aula-service" "$staging/etc/init.d/S99aula"
-sh "$SCRIPT_DIR/verify-payload.sh" --payload "$staging" --manifest-sha256 "$manifest_sha" >/dev/null || die 'trusted staging revalidation failed after mode sealing'
-payload=$staging
-require_live_payload_layout
-mv "$staging" "$release"
-sh "$SCRIPT_DIR/verify-payload.sh" --payload "$release" --manifest-sha256 "$manifest_sha" >/dev/null || die 'trusted installed release verification failed'
-record "release:$version"
-record "release-sha256:$version:$manifest_sha"
+publish_release() {
+    if [ -e "$release" ] || [ -L "$release" ]; then
+        # A crash between the publishing rename and its journal row leaves a release only the manifest digest can vouch for.
+        ! grep -Fx "release:$version" "$JOURNAL" >/dev/null 2>&1 || die "release already exists: $release"
+        [ -d "$release" ] && [ ! -L "$release" ] || die "release already exists: $release"
+        sh "$SCRIPT_DIR/verify-payload.sh" --payload "$release" --manifest-sha256 "$manifest_sha" >/dev/null || die "release already exists: $release"
+    else
+        staging=$RELEASES/.staging-$version-$$
+        [ ! -e "$staging" ] && [ ! -L "$staging" ] || die "staging path already exists: $staging"
+        mkdir "$staging"
+        cp -Rp "$payload/." "$staging/"
+        sh "$SCRIPT_DIR/verify-payload.sh" --payload "$staging" --manifest-sha256 "$manifest_sha" >/dev/null || die 'trusted staging verification failed'
+        find "$staging" -type f -exec chmod a-w {} \;
+        find "$staging" -type d -exec chmod a-w {} \;
+        chmod 0555 "$staging/bin/aula-service" "$staging/etc/init.d/S99aula"
+        sh "$SCRIPT_DIR/verify-payload.sh" --payload "$staging" --manifest-sha256 "$manifest_sha" >/dev/null || die 'trusted staging revalidation failed after mode sealing'
+        payload=$staging
+        require_live_payload_layout
+        mv "$staging" "$release"
+    fi
+    sh "$SCRIPT_DIR/verify-payload.sh" --payload "$release" --manifest-sha256 "$manifest_sha" >/dev/null || die 'trusted installed release verification failed'
+    record "release:$version"
+    record "release-sha256:$version:$manifest_sha"
+}
+publish_release
 
 # Seed only absent operator state.  Later releases validate dynamic UID anchors
 # rather than replacing files that an operator may have configured.

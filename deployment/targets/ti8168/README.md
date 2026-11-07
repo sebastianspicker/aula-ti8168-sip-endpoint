@@ -227,7 +227,12 @@ sh /var/lib/cbox/aula-ti8168-sip-endpoint/live-remove.sh --purge-owned-state
 ```
 
 Missing, duplicate, malformed, unowned, changed, or unexpected state fails
-closed. Do not delete preserved paths manually. Neither removal mode removes
+closed. `install.sh` always creates `device/` (job store, OEM credentials, service
+log). The purge refuses to start, before deleting anything, while `device/`
+exists; add `--purge-device-state` to remove it. The flag deletes only a
+root-owned 0700 real directory holding exactly the known files (`jobs.json`,
+`jobs.pending`, `jobs.lock`, `listener.lock`, `oem-credentials.json`,
+`oem-credentials.pending`, `service.log`) and rejects anything else. Do not delete preserved paths manually. Neither removal mode removes
 the separately owned root-SSH substrate, so a successful project purge is not
 restoration of the original device security posture.
 
@@ -244,11 +249,10 @@ off the device first.
 1. Copy `gateway/account.json`, `sip/settings.json`, `tls/server.crt`,
    `tls/server.key` and `tls/sip-ca.crt` from
    `/var/lib/cbox/aula-ti8168-sip-endpoint` to a safe place.
-2. Run `live-remove.sh --purge-owned-state`. It stops services, restores the
-   passwd backup and removes the group bind mount. It ends with "owned
-   campaign root did not become empty" because it keeps `device/` (the
-   root-owned companion journal and OEM credentials, which the ID change does
-   not affect); that is expected, and the reinstall reuses it. If the passwd
+2. Run `live-remove.sh --purge-owned-state --purge-device-state`. It stops
+   services, restores the passwd backup, removes the group bind mount and
+   removes `device/` (the companion job store and OEM credentials; copy
+   those off too if you need them). If the passwd
    restore itself fails, wait one minute for the managed root-SSH apply job and
    rerun the purge.
 3. Reinstall with the fixed `install.sh`. Check that `id -u aula-web

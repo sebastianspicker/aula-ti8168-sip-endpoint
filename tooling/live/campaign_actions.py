@@ -99,7 +99,7 @@ def remove(
         before = remote_baseline(session, known, control)
         ssh(session, known, control, "set -eu; /var/lib/cbox/aula-ti8168-sip-endpoint/live-start.sh stop; "
             "/var/lib/cbox/aula-ti8168-sip-endpoint/live-start.sh disable-autostart; "
-            "sh /var/lib/cbox/aula-ti8168-sip-endpoint/live-remove.sh --purge-owned-state", capture=False, timeout=300.0)
+            "sh /var/lib/cbox/aula-ti8168-sip-endpoint/live-remove.sh --purge-owned-state --purge-device-state", capture=False, timeout=300.0)
         after = remote_baseline(session, known, control)
     restored = all(baseline.get(key) == after[key] for key in immutable_keys) and after["profile"] == "absent"
     if not restored:

@@ -12,6 +12,7 @@ MEDIA_GATE_RECORD=$BASE/media-ready-gate
 VENDOR_MEDIA_WAIT=/usr/share/media/wait_media_ready
 SENTINEL=/run/aula-ti8168-sip-endpoint-autostart.ok
 STARTUP_LOG=/run/aula-ti8168-sip-endpoint-autostart.log
+ATTEMPT=/run/aula-ti8168-sip-endpoint-autostart.attempt
 AUTOSTART_ENABLED=$BASE/autostart-enabled
 JOURNAL=$BASE/live-owned-files
 
@@ -56,6 +57,7 @@ prepare_startup_log() {
 [ -f "$AUTOSTART_ENABLED" ] && [ ! -L "$AUTOSTART_ENABLED" ] && root_owned_not_writable "$AUTOSTART_ENABLED" && [ "$(cat "$AUTOSTART_ENABLED")" = enabled-v1 ] || exit 0
 [ -f "$JOURNAL" ] && [ ! -L "$JOURNAL" ] && root_owned_not_writable "$JOURNAL" && grep -Fxc "file:$AUTOSTART_ENABLED" "$JOURNAL" | grep -qx 1 || exit 0
 [ ! -e "$SENTINEL" ] && [ ! -L "$SENTINEL" ] || exit 0
+[ ! -e "$ATTEMPT" ] && [ ! -L "$ATTEMPT" ] || exit 0
 validate_current && safe_executable "$STARTER" && validated_preflight || exit 0
 [ ! -e "$SENTINEL" ] && [ ! -L "$SENTINEL" ] || exit 0
 validate_current && safe_executable "$STARTER" && validated_preflight || exit 0
@@ -63,6 +65,8 @@ if "$STARTER" health >/dev/null 2>&1; then
     record_healthy_sentinel || exit 0
     exit 0
 fi
+# One attempt per boot: /run is tmpfs, so the marker disappears on reboot.
+(set -C; : > "$ATTEMPT") 2>/dev/null || exit 0
 prepare_startup_log || exit 0
 "$STARTER" start >"$STARTUP_LOG" 2>&1 || exit 0
 "$STARTER" health >/dev/null 2>&1 || exit 0

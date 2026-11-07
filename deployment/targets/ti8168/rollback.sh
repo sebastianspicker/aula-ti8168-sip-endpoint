@@ -32,6 +32,12 @@ require_release() {
 }
 acquire_lock() {
     if mkdir "$LOCK" 2>/dev/null; then printf '%s\n' "$$" > "$LOCK/pid"; return; fi
+    # A crash between mkdir and the pid write leaves an empty lock; reclaim it once it is stale.
+    if [ -d "$LOCK" ] && [ ! -L "$LOCK" ] && [ ! -e "$LOCK/pid" ] && [ ! -L "$LOCK/pid" ] &&
+       [ -n "$(find "$LOCK" -prune -mmin +1 2>/dev/null)" ]; then
+        rmdir "$LOCK" 2>/dev/null || true
+        if mkdir "$LOCK" 2>/dev/null; then printf '%s\n' "$$" > "$LOCK/pid"; return; fi
+    fi
     [ -f "$LOCK/pid" ] && [ ! -L "$LOCK/pid" ] || die 'another live operation is active'
     pid=$(cat "$LOCK/pid"); case $pid in ''|*[!0-9]*) die 'live operation lock is unsafe' ;; esac
     kill -0 "$pid" 2>/dev/null && die 'another live operation is active'

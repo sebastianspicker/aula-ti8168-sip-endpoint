@@ -19,6 +19,7 @@ SERVICE_PID_ROOT=/var/run/aula-ti8168-sip-endpoint
 RUNTIME_ROOT=/run/aula-state/current
 AUTOSTART_ENABLED=$BASE/autostart-enabled
 LOCK=/var/run/aula-ti8168-sip-endpoint-operation.lock
+CONFIG_BEFORE=$CONFIG.before
 # 1 while this run's stage/recovery files exist but no transaction records them.
 staged_untransacted=0
 
@@ -257,7 +258,12 @@ validate_private_lab_tls_transaction() {
 publish_private_lab_transaction() {
     tls_mode=$1
     config_digest=$2
-    [ "$current_config" = "$config_digest" ] || mv "$CONFIG_STAGE" "$CONFIG"
+    if [ "$current_config" != "$config_digest" ]; then
+        # Keep the previous bytes (not only their hash) for manual rollback.
+        cp "$CONFIG" "$CONFIG_BEFORE" || die 'cannot back up the previous SIP configuration'
+        chmod 0600 "$CONFIG_BEFORE"
+        mv "$CONFIG_STAGE" "$CONFIG"
+    fi
     if [ "$tls_mode" = pair ]; then
         [ -e "$TLS_KEY" ] || [ -L "$TLS_KEY" ] || mv "$TLS_KEY_STAGE" "$TLS_KEY"
         [ -e "$TLS_CERT" ] || [ -L "$TLS_CERT" ] || mv "$TLS_CERT_STAGE" "$TLS_CERT"
@@ -452,8 +458,8 @@ settings_file=$(value_once settings_file) || die 'installed runtime settings pat
 case $gateway_uid in ''|*[!0-9]*) die 'installed gateway UID is unsafe' ;; esac
 case $settings_file in /run/aula-state/sip/settings.json) ;; *) die 'installed runtime settings path is not the managed path' ;; esac
 if [ -n "$tls_cert" ]; then
-    [ -f "$tls_cert" ] && [ ! -L "$tls_cert" ] && [ -f "$tls_key" ] && [ ! -L "$tls_key" ] ||
-        die 'TLS inputs must be regular non-symlink files'
+    require_tls_input "$tls_cert"
+    require_tls_input "$tls_key"
     [ -d "$TLS" ] && [ ! -L "$TLS" ] || die 'managed TLS directory is absent or unsafe'
     [ ! -e "$TLS_CERT" ] && [ ! -L "$TLS_CERT" ] && [ ! -e "$TLS_KEY" ] && [ ! -L "$TLS_KEY" ] ||
         die 'managed TLS material already exists'
