@@ -46,7 +46,8 @@ if [ ! -f "$archive" ]; then
     mv -f "$archive.part" "$archive"
 fi
 actual=$(shasum -a 256 "$archive" | awk '{print $1}')
-[ "$actual" = "$digest" ] || fail "archive digest $actual does not match the pinned $digest"
+# Drop a bad cached download so the next run fetches it again.
+[ "$actual" = "$digest" ] || { rm -f "$archive"; fail "archive digest $actual does not match the pinned $digest"; }
 
 [ -d "$source_dir" ] || tar -xzf "$archive" -C "$build_root"
 [ -d "$source_dir/pjlib/build" ] || fail "archive did not contain pjproject-$commit"

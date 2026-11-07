@@ -2,7 +2,7 @@ import { Grid2X2, KeyRound, Keyboard, MicOff, PhoneCall, PhoneOff, RefreshCw, Vi
 import { useCallback, useState } from 'react'
 import { api } from '../api'
 import { CallEvidence, SourceCounters } from '../components/CallEvidence'
-import { previewLabel, projectActiveCall, projectCallState, projectMedia } from '../statusProjection'
+import { previewLabel, projectCallState, projectMedia } from '../statusProjection'
 import type { ApiError, CallRequest, JsonRecord, Role } from '../types'
 import { isRecord, readNumber, readText } from '../types'
 import { Button, EmptyState, ErrorNotice, Freshness, LoadingRows, Notice, ValueRow } from '../components/ui'
@@ -21,7 +21,7 @@ export function CallsScreen({ role, onConnection, embedded = false }: { embedded
 
   const loadCalls = useCallback(async (signal: AbortSignal): Promise<CallData> => {
     const [status, calls, directory, preview] = await Promise.all([api.status(signal), api.calls(signal), api.directory(signal), api.preview(signal).catch(() => null)])
-    return { active: projectActiveCall(status.data), calls: calls.data, directory: directory.data, media: projectMedia(status.data), status: status.data, preview: preview?.data ?? null }
+    return { active: status.data, calls: calls.data, directory: directory.data, media: projectMedia(status.data), status: status.data, preview: preview?.data ?? null }
   }, [])
   const { data, error, refresh } = useLivePolling({ load: loadCalls, onConnection })
 

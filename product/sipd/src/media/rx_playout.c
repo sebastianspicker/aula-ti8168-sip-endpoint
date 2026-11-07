@@ -6,6 +6,12 @@ static int sequence_before(uint16_t left, uint16_t right) {
   return (int16_t)(left - right) < 0;
 }
 
+static int sequence_far(uint16_t sequence, uint16_t expected) {
+  int16_t distance = (int16_t)(sequence - expected);
+  return distance > (int16_t)AULA_RX_PLAYOUT_RESYNC_DISTANCE ||
+      distance < -(int16_t)AULA_RX_PLAYOUT_RESYNC_DISTANCE;
+}
+
 static int find_sequence(const aula_rx_playout *playout, uint16_t sequence) {
   unsigned int index;
   for (index = 0U; index < AULA_RX_PLAYOUT_MAX_PACKETS; ++index) {
@@ -61,6 +67,16 @@ aula_status aula_rx_playout_push(aula_rx_playout *playout,
   if (playout == NULL || packet == NULL || packet->payload.data == NULL ||
       packet->payload.length > sizeof(playout->packets[0].payload)) {
     return AULA_STATUS_INVALID_ARGUMENT;
+  }
+  if (playout->have_expected_sequence != 0 &&
+      sequence_far(packet->header.sequence_number, playout->expected_sequence)) {
+    /* A sequence restart or a stray packet: follow it instead of dropping
+     * every packet until the stream wraps back. */
+    aula_rx_playout_stats stats = playout->stats;
+    aula_rx_playout_reset(playout);
+    playout->stats = stats;
+    playout->stats.dropped_packets++;
+    playout->resync_pending = 1;
   }
   if (playout->have_expected_sequence != 0 &&
       sequence_before(packet->header.sequence_number, playout->expected_sequence)) {
@@ -156,6 +172,7 @@ aula_status aula_rx_playout_take(aula_rx_playout *playout, uint64_t now_ns,
   playout->expected_sequence = (uint16_t)(playout->expected_sequence + 1U);
   playout->next_playout_ns = playout_saturating_add(
       now_ns, playout->packet_interval_ns);
-  *out_discontinuity = discontinuity;
+  *out_discontinuity = discontinuity || playout->resync_pending;
+  playout->resync_pending = 0;
   return AULA_STATUS_OK;
 }

@@ -12,6 +12,7 @@
 #include "aula_test.h"
 #include "control/control_private.h"
 
+#include <signal.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -271,7 +272,15 @@ static void test_unauthorized_peer_is_refused(test_context *context) {
   free(server);
 }
 
+static void test_stop_signal_survives_later_hangup(void) {
+  AULA_CHECK_STATUS(aula_platform_install_signal_handlers(), AULA_STATUS_OK);
+  AULA_CHECK(raise(SIGTERM) == 0);
+  AULA_CHECK(raise(SIGHUP) == 0);
+  AULA_CHECK(aula_platform_take_signal_request() == AULA_SIGNAL_STOP);
+}
+
 int main(void) {
+  test_stop_signal_survives_later_hangup();
   test_context context;
   aula_control_server *server;
   (void)memset(&context, 0, sizeof(context));

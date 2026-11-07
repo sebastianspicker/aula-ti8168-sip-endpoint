@@ -28,7 +28,8 @@ if [ ! -f "$archive" ]; then
     mv "$archive.part" "$archive"
 fi
 actual=$(shasum -a 256 "$archive" | awk '{print $1}')
-[ "$actual" = "$digest" ] || { echo "nginx archive digest mismatch" >&2; exit 1; }
+# Drop a bad cached download so the next run fetches it again.
+[ "$actual" = "$digest" ] || { rm -f "$archive"; echo "nginx archive digest mismatch" >&2; exit 1; }
 if python3 - "$build/build.json" "$prefix/sbin/nginx" "$digest" <<'PY'
 from pathlib import Path
 import hashlib, json, sys

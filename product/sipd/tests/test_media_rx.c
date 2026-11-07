@@ -46,6 +46,34 @@ static void test_playout_empty_payload_and_wrap(void) {
   }
 }
 
+static void test_playout_resyncs_after_sequence_jump(void) {
+  static const uint8_t byte = 0x5aU;
+  aula_rx_playout playout;
+  aula_rtp_packet packet;
+  aula_rtp_packet out;
+  uint8_t payload[16];
+  int discontinuity = 0;
+  aula_rx_playout_init(&playout, 1U, 1U);
+  packet = make_packet(100U, &byte, 1U);
+  AULA_CHECK_STATUS(aula_rx_playout_push(&playout, &packet, 0U), AULA_STATUS_OK);
+  AULA_CHECK_STATUS(aula_rx_playout_take(&playout, 1U, &out, payload, sizeof(payload),
+                                         &discontinuity), AULA_STATUS_OK);
+  /* One stray far-ahead packet must not stall the real stream. */
+  packet = make_packet(20100U, &byte, 1U);
+  AULA_CHECK_STATUS(aula_rx_playout_push(&playout, &packet, 2U), AULA_STATUS_OK);
+  AULA_CHECK_STATUS(aula_rx_playout_take(&playout, 10U, &out, payload, sizeof(payload),
+                                         &discontinuity), AULA_STATUS_OK);
+  packet = make_packet(102U, &byte, 1U);
+  AULA_CHECK_STATUS(aula_rx_playout_push(&playout, &packet, 11U), AULA_STATUS_OK);
+  AULA_CHECK_STATUS(aula_rx_playout_take(&playout, 12U, &out, payload, sizeof(payload),
+                                         &discontinuity), AULA_STATUS_OK);
+  AULA_CHECK(out.header.sequence_number == 102U);
+  AULA_CHECK(discontinuity == 1);
+  /* A sender that restarts its sequence on the same SSRC is followed too. */
+  packet = make_packet(5U, &byte, 1U);
+  AULA_CHECK_STATUS(aula_rx_playout_push(&playout, &packet, 13U), AULA_STATUS_OK);
+}
+
 static aula_bytes interleaved_partial(uint8_t *buffer, size_t length) {
   (void)memset(buffer, 0, length);
   buffer[0] = '$';
@@ -109,9 +137,19 @@ static void test_receiver_report_loss_clamp(void) {
   AULA_CHECK_STATUS(aula_rtcp_build_receiver_report(&metrics, &output), AULA_STATUS_OK);
 }
 
+static void test_rtsp_uri_rejects_trailing_parent(void) {
+  aula_rtsp_uri uri;
+  AULA_CHECK_STATUS(aula_rtsp_parse_authorized_uri("rtsp://192.168.1.10/stream",
+                                                   "192.168.1.10", &uri), AULA_STATUS_OK);
+  AULA_CHECK(aula_rtsp_parse_authorized_uri("rtsp://192.168.1.10/stream/..",
+                                            "192.168.1.10", &uri) != AULA_STATUS_OK);
+}
+
 int main(void) {
   test_playout_empty_payload_and_wrap();
+  test_playout_resyncs_after_sequence_jump();
   test_parser_room();
+  test_rtsp_uri_rejects_trailing_parent();
   test_receiver_report_loss_clamp();
   return aula_test_result("test_media_rx");
 }

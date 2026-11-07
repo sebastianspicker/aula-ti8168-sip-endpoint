@@ -169,6 +169,23 @@ static void test_valid_config_loads(void) {
   aula_config_destroy(config);
 }
 
+static void test_validator_matches_control_server_minimum(void) {
+  /* The control server refuses requests below 8 bytes; --check-config must too. */
+  static char text[TEST_CONFIG_BYTES];
+  char *value;
+  aula_config *config = NULL;
+  int length = snprintf(text, sizeof(text), config_template, "", test_pid_path,
+                        test_settings_path, "");
+  AULA_CHECK(length > 0 && (size_t)length < sizeof(text));
+  value = strstr(text, "control_message_bytes = 2048");
+  AULA_CHECK(value != NULL);
+  if (value == NULL) return;
+  (void)memcpy(value, "control_message_bytes =    4", 28U);
+  AULA_CHECK(write_config(text));
+  AULA_CHECK(aula_config_load_file(test_config_path, &config) != AULA_STATUS_OK);
+  aula_config_destroy(config);
+}
+
 static void test_loader_rejects_bad_syntax(void) {
   /* An unknown key, a duplicate key and an unknown section are policy
    * violations; a structurally malformed line is invalid data. */
@@ -351,6 +368,7 @@ int main(void) {
   }
   test_valid_config_loads();
   test_loader_rejects_bad_syntax();
+  test_validator_matches_control_server_minimum();
   test_loader_enforces_size_limits();
   test_loader_refuses_unsafe_files();
   test_trim();

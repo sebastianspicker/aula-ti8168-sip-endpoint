@@ -120,7 +120,7 @@ static int relocate_pipe_fds_above_stdio(int pipe_fds[2]) {
     relocated[index] = fcntl(pipe_fds[index], F_DUPFD, 3);
     if (relocated[index] < 0 || fcntl(relocated[index], F_SETFD, FD_CLOEXEC) != 0) {
       if (relocated[index] >= 0) (void)close(relocated[index]);
-      if (relocated[0] >= 0) (void)close(relocated[0]);
+      if (index > 0U) (void)close(relocated[0]);
       return 0;
     }
   }

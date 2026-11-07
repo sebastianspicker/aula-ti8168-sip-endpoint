@@ -4,6 +4,8 @@
 #include "../device/client.h"
 #include "../device/transport.h"
 #include <sys/socket.h>
+#include <limits.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -21,12 +23,15 @@ static void test_peer(void) {
 static int last_warning;
 
 static int policy_load(const char *optional, aula_gateway *gateway) {
-#if defined(__APPLE__)
-  char path[] = "/private/tmp/aula-device-policy-XXXXXX";
-#else
-  char path[] = "/tmp/aula-device-policy-XXXXXX";
-#endif
-  int fd = mkstemp(path);
+  /* The policy loader rejects symlinked parents, so resolve TMPDIR first. */
+  const char *base = getenv("TMPDIR");
+  char resolved[PATH_MAX];
+  char path[PATH_MAX + 32];
+  int fd;
+  if (base == NULL || *base == '\0') base = "/tmp";
+  if (realpath(base, resolved) == NULL) return 0;
+  snprintf(path, sizeof(path), "%s/aula-device-policy-XXXXXX", resolved);
+  fd = mkstemp(path);
   FILE *file = fd < 0 ? NULL : fdopen(fd, "w");
   aula_gateway_config config = {0};
   int result;

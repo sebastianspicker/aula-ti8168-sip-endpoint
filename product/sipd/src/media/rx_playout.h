@@ -4,6 +4,8 @@
 #include "aula_sipd/rtp.h"
 
 #define AULA_RX_PLAYOUT_MAX_PACKETS 8U
+/* Packets further than this from the expected sequence restart the buffer. */
+#define AULA_RX_PLAYOUT_RESYNC_DISTANCE 64U
 
 typedef struct aula_rx_playout_packet {
   aula_rtp_header header;
@@ -28,6 +30,7 @@ typedef struct aula_rx_playout {
   uint64_t reorder_hold_ns;
   unsigned int count;
   int have_expected_sequence;
+  int resync_pending;
   aula_rx_playout_stats stats;
 } aula_rx_playout;
 

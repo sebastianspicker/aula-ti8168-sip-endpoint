@@ -1,7 +1,6 @@
 import { isRecord, readNumber, readText, type JsonRecord } from './types'
 
 const record = (value: unknown): JsonRecord | null => isRecord(value) ? value : null
-export function projectActiveCall(status: JsonRecord): JsonRecord { return status }
 export function projectCallState(state: string | null | undefined) {
   const active = ['active', 'connected', 'connecting', 'resolving', 'inviting',
     'early', 'establishing_media', 'established', 'terminating', 'failed', 'backing_off'].includes(state ?? '')

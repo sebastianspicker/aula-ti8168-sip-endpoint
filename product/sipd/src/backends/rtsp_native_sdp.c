@@ -99,7 +99,7 @@ static int native_sdp_decimal(const uint8_t *line, size_t length,
   start = *cursor;
   while (*cursor < length && line[*cursor] >= '0' && line[*cursor] <= '9') {
     uint32_t digit = (uint32_t)(line[*cursor] - '0');
-    if (value > (maximum - digit) / 10U) return 0;
+    if (digit > maximum || value > (maximum - digit) / 10U) return 0;
     value = value * 10U + digit;
     (*cursor)++;
   }

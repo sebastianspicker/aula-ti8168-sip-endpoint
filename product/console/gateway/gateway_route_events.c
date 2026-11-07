@@ -75,10 +75,9 @@ int gateway_record_events(aula_gateway *gateway, const char *body) {
     const char *type = json_string_value(json_object_get(item, "type"));
     const char *message = json_string_value(json_object_get(item, "message"));
     int recorded = event_already_recorded(gateway, id, type, message);
-    if (recorded < 0) {
-      json_decref(root);
-      return 0;
-    }
+    /* A conflicting id means aula-sipd restarted its revision counter: the
+     * held history belongs to the old process, so drop it. */
+    if (recorded < 0) (void)memset(gateway->events, 0, sizeof(gateway->events));
     if (recorded > 0) continue;
     (void)memmove(&gateway->events[1], &gateway->events[0],
                   sizeof(gateway->events) - sizeof(gateway->events[0]));

@@ -45,7 +45,8 @@ if [ ! -f "$archive" ]; then
     mv -f "$archive.part" "$archive"
 fi
 actual=$(shasum -a 256 "$archive" | awk '{print $1}')
-[ "$actual" = "$digest" ] || fail "archive digest $actual does not match the pinned $digest"
+# Drop a bad cached download so the next run fetches it again.
+[ "$actual" = "$digest" ] || { rm -f "$archive"; fail "archive digest $actual does not match the pinned $digest"; }
 
 # Always build from a fresh extraction of the verified archive, never from a
 # tree left by an earlier run. The scratch tree lives in the system temporary

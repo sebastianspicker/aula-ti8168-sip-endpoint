@@ -355,7 +355,9 @@ static aula_status media_session_drain_rtcp(aula_media_session *session,
     }
     return status;
   }
-  if (aula_rtcp_visit_feedback(
+  /* The sender SSRC below lives in bytes 4..7; a shorter packet has none. */
+  if (packet_buffer->length < 8U ||
+      aula_rtcp_visit_feedback(
           (aula_bytes){packet_buffer->data, packet_buffer->length}, NULL, NULL) !=
       AULA_STATUS_OK) {
     session->rejected_packets++;

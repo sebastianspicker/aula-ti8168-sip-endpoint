@@ -245,7 +245,7 @@ static int media_security_policy_is_valid(aula_media_security_policy policy) {
 static int limit_is_within(uint32_t value, uint32_t minimum, uint32_t maximum) { return value >= minimum && value <= maximum; }
 static int packet_limits_are_valid(const aula_config *config) {
   const aula_config_limits *limits = &config->view.limits;
-  return limit_is_within(limits->sip_message_bytes, 1U, AULA_SIPD_MAX_SIP_MESSAGE_BYTES) && limit_is_within(limits->sdp_bytes, 1U, AULA_SIPD_MAX_SDP_BYTES) && limit_is_within(limits->rtp_packet_bytes, 256U, AULA_SIPD_MAX_RTP_PACKET_BYTES) && limit_is_within(limits->video_access_unit_bytes, 1U, AULA_SIPD_MAX_VIDEO_ACCESS_UNIT_BYTES) && limit_is_within(limits->audio_frame_bytes, 1U, AULA_SIPD_MAX_AUDIO_FRAME_BYTES) && limit_is_within(limits->control_message_bytes, 1U, AULA_SIPD_MAX_CONTROL_MESSAGE_BYTES);
+  return limit_is_within(limits->sip_message_bytes, 1U, AULA_SIPD_MAX_SIP_MESSAGE_BYTES) && limit_is_within(limits->sdp_bytes, 1U, AULA_SIPD_MAX_SDP_BYTES) && limit_is_within(limits->rtp_packet_bytes, 256U, AULA_SIPD_MAX_RTP_PACKET_BYTES) && limit_is_within(limits->video_access_unit_bytes, 1U, AULA_SIPD_MAX_VIDEO_ACCESS_UNIT_BYTES) && limit_is_within(limits->audio_frame_bytes, 1U, AULA_SIPD_MAX_AUDIO_FRAME_BYTES) && limit_is_within(limits->control_message_bytes, 8U, AULA_SIPD_MAX_CONTROL_MESSAGE_BYTES);
 }
 static int aec_settings_are_valid(const aula_config *config) {
   return (config->view.aec_enabled == 0 || config->view.aec_enabled == 1) &&

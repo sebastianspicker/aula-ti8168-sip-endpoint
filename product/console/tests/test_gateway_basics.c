@@ -100,11 +100,24 @@ static void test_unauthenticated_requests_are_refused(void) {
   GATEWAY_CHECK(unexpected_control_calls == 0);
 }
 
+static void test_reused_event_id_after_daemon_restart_is_recorded(void) {
+  static aula_gateway gateway;
+  aula_gateway_init(&gateway, NULL);
+  GATEWAY_CHECK(gateway_record_events(&gateway,
+      "{\"events\":[{\"id\":\"call-state-3\",\"type\":\"call_state\",\"message\":\"inviting\"}]}"));
+  /* aula-sipd restarted: its revision counter reuses id 3 for another state. */
+  GATEWAY_CHECK(gateway_record_events(&gateway,
+      "{\"events\":[{\"id\":\"call-state-3\",\"type\":\"call_state\",\"message\":\"failed\"}]}"));
+  GATEWAY_CHECK(strcmp(gateway.events[0].message, "failed") == 0);
+  GATEWAY_CHECK(!gateway.events[1].used);
+}
+
 int main(void) {
   test_parse_content_length();
   test_redact();
   test_clock_is_monotonic_and_nonzero();
   test_oversized_idempotent_reply_is_not_truncated();
   test_unauthenticated_requests_are_refused();
+  test_reused_event_id_after_daemon_restart_is_recorded();
   return gateway_test_result("test_gateway_basics");
 }

@@ -53,14 +53,6 @@ def qtest_command(
         )
 
 
-def qtest_step(stream: socket.socket, nanoseconds: int) -> None:
-    command = f"clock_step {nanoseconds}"
-    stream.sendall(command.encode() + b"\n")
-    response = recv_line(stream)
-    if not response.startswith("OK"):
-        raise RuntimeError(f"qtest command {command!r}: got {response!r}")
-
-
 def qmp_hmp(qmp: socket.socket, command: str) -> str:
     send_json(
         qmp,

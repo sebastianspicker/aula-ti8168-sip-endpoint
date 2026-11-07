@@ -6,7 +6,8 @@ umask 077
 SCRIPT_DIR=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 die() { printf '%s\n' "live-transfer: $*" >&2; exit 1; }
 usage() { printf '%s\n' "usage: $0 --target PRIVATE_IPV4 --payload ABSOLUTE_PATH --manifest-sha256 SHA256 --version VERSION --user OPERATOR --interface IFACE --expected-mac MAC --host-key SHA256:FINGERPRINT [--port 5100] [--start] [--apply]" >&2; exit 64; }
-normalize_mac() { printf '%s' "$1" | tr 'A-F:-' 'a-f  ' | tr -cd '0-9a-f'; }
+# macOS arp drops leading zeros (0:1c:...), so pad one-digit octets.
+normalize_mac() { printf '%s\n' "$1" | tr 'A-F-' 'a-f:' | awk -F: '{ o = ""; for (i = 1; i <= NF; i++) o = o (length($i) == 1 ? "0" $i : $i); print o }' | tr -cd '0-9a-f'; }
 valid_private_unicast_ipv4() {
     printf '%s\n' "$1" | awk -F. 'NF != 4 { exit 1 } { for (i=1;i<=4;i++) if ($i !~ /^(0|[1-9][0-9]*)$/ || $i > 255) exit 1 } ($1 == 10 && ($2 != 0 || $3 != 0 || $4 != 0) && ($2 != 255 || $3 != 255 || $4 != 255)) || ($1 == 172 && $2 >= 16 && $2 <= 31 && ($2 != 16 || $3 != 0 || $4 != 0) && ($2 != 31 || $3 != 255 || $4 != 255)) || ($1 == 192 && $2 == 168 && ($3 != 0 || $4 != 0) && ($3 != 255 || $4 != 255)) { exit 0 } { exit 1 }'
 }

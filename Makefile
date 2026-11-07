@@ -143,7 +143,7 @@ package-ti8168:
 		--mime-types "$(MIME_TYPES)" --fastcgi-params "$(FASTCGI_PARAMS)" \
 		--sip-config product/sipd/config/aula-sipd.example.conf \
 		--gateway-config product/console/gateway/config/aula-console.example.conf \
-		--output $(PAYLOAD)
+		--install-prefix /run/aula-state --output $(PAYLOAD)
 
 package-qemu:
 	@echo "QEMU payload packaging is unavailable for the synthetic machine model" >&2; exit 2

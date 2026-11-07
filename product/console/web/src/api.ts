@@ -61,12 +61,10 @@ export class ConsoleApi {
     return { ...result, data: data as OemCredentialsStatus }
   }
   schedule = (signal?: AbortSignal) => this.request<JsonRecord>('/schedule', { signal })
-  deviceSettings = (signal?: AbortSignal) => this.request<JsonRecord>('/device/settings', { signal })
 
   status = (signal?: AbortSignal) => this.request<JsonRecord>('/status', { signal })
   events = (signal?: AbortSignal) => this.request<JsonRecord>('/events', { signal })
   calls = (signal?: AbortSignal) => this.request<JsonRecord>('/calls', { signal })
-  activeCall = (signal?: AbortSignal) => this.request<JsonRecord>('/calls/active', { signal })
   directory = (signal?: AbortSignal) => this.request<JsonRecord>('/directory', { signal })
   saveDirectory = (entry: DirectoryRequest, revision: number, signal?: AbortSignal) =>
     this.request<JsonRecord>('/directory', { signal, method: 'POST', body: { ...entry, revision } })

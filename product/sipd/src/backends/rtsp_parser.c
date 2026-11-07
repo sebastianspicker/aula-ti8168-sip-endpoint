@@ -335,12 +335,15 @@ int aula_rtsp_stream_parser_session_timeout(
 
 static int rtsp_safe_path(const char *path) {
   const char *cursor;
+  size_t length;
   if (path == NULL || path[0] != '/') return 0;
   for (cursor = path; *cursor != '\0'; ++cursor) {
     if (!aula_rtsp_path_character((unsigned char)*cursor)) return 0;
   }
+  length = strlen(path);
   return strstr(path, "//") == NULL && strstr(path, "/../") == NULL &&
-      strcmp(path, "/..") != 0 && strcmp(path, "/") != 0;
+      !(length >= 3U && strcmp(path + length - 3U, "/..") == 0) &&
+      strcmp(path, "/") != 0;
 }
 
 static int parse_ipv4_octet(const char **cursor, uint8_t *out_octet) {

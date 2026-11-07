@@ -25,7 +25,10 @@
 #include <sys/random.h>
 #endif
 
-static volatile sig_atomic_t platform_signal_request = AULA_SIGNAL_NONE;
+/* Separate flags: a later SIGHUP must never replace a pending stop, and stop
+ * stays set so a signal between read and clear cannot be lost. */
+static volatile sig_atomic_t platform_stop_requested = 0;
+static volatile sig_atomic_t platform_reload_requested = 0;
 
 #if defined(__linux__)
 static aula_status parse_linux_birth_token(char *buffer, uint64_t *out_token) {
@@ -135,13 +138,13 @@ aula_status aula_platform_random_bytes(aula_mutable_bytes *output) {
   descriptor = open("/dev/urandom", O_RDONLY | O_CLOEXEC); if (descriptor < 0) return AULA_STATUS_IO_ERROR;
   status = fill_random_descriptor(descriptor, output, offset); (void)close(descriptor); return status;
 }
-static void platform_signal_handler(int number) { if (number == SIGTERM || number == SIGINT) platform_signal_request = AULA_SIGNAL_STOP; else if (number == SIGHUP) platform_signal_request = AULA_SIGNAL_RELOAD; }
+static void platform_signal_handler(int number) { if (number == SIGTERM || number == SIGINT) platform_stop_requested = 1; else if (number == SIGHUP) platform_reload_requested = 1; }
 aula_status aula_platform_install_signal_handlers(void) {
   struct sigaction action; (void)memset(&action, 0, sizeof(action)); action.sa_handler = platform_signal_handler;
   if (sigemptyset(&action.sa_mask) != 0) return AULA_STATUS_IO_ERROR;
   return (sigaction(SIGTERM, &action, NULL) == 0 && sigaction(SIGINT, &action, NULL) == 0 && sigaction(SIGHUP, &action, NULL) == 0) ? AULA_STATUS_OK : AULA_STATUS_IO_ERROR;
 }
-aula_signal_request aula_platform_take_signal_request(void) { sig_atomic_t request = platform_signal_request; platform_signal_request = AULA_SIGNAL_NONE; return request == AULA_SIGNAL_STOP ? AULA_SIGNAL_STOP : request == AULA_SIGNAL_RELOAD ? AULA_SIGNAL_RELOAD : AULA_SIGNAL_NONE; }
+aula_signal_request aula_platform_take_signal_request(void) { if (platform_stop_requested != 0) return AULA_SIGNAL_STOP; if (platform_reload_requested != 0) { platform_reload_requested = 0; return AULA_SIGNAL_RELOAD; } return AULA_SIGNAL_NONE; }
 aula_status aula_platform_get_child_identity(int pid, aula_child_process *out_child) {
   aula_status status;
   if (pid <= 0 || out_child == NULL) return AULA_STATUS_INVALID_ARGUMENT;
