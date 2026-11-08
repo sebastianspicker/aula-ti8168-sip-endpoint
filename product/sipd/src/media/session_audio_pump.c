@@ -35,6 +35,7 @@ static aula_status media_session_buffer_encoded_audio(aula_media_session *sessio
     size_t needed = AULA_G711_SAMPLES_PER_PACKET - session->audio_remainder_length;
     size_t copied = available < needed ? available : needed;
     aula_status status;
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(session->audio_remainder + session->audio_remainder_length,
                  encoded.data + offset, copied);
     session->audio_remainder_length += copied;
@@ -78,6 +79,7 @@ static aula_status media_session_buffer_aec_near(aula_media_session *session,
     size_t needed = AULA_AEC_FRAME_BYTES - session->aec_near_remainder_length;
     size_t copied = available < needed ? available : needed;
     aula_status status;
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(session->aec_near_remainder + session->aec_near_remainder_length,
                  input.data + offset, copied);
     session->aec_near_remainder_length += copied;

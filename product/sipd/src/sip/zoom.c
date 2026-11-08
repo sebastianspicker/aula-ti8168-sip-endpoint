@@ -15,6 +15,7 @@ static int zoom_digits(const char *value, size_t maximum, int optional) {
   size_t index;
   size_t length;
   if (value == NULL) return optional;
+  /* Flawfinder: ignore - argument NUL-terminated */
   length = strlen(value);
   if (length == 0U) return optional || 0;
   if (length >= maximum) return 0;
@@ -59,6 +60,7 @@ static int zoom_domain_is_valid(const char *value) {
 
 static int zoom_uri_has_crc_domain(const char *domain) {
   size_t length = strcspn(domain, ":;");
+  /* Flawfinder: ignore - argument NUL-terminated */
   return length == strlen(AULA_ZOOM_CRC_DOMAIN) &&
          strncmp(domain, AULA_ZOOM_CRC_DOMAIN, length) == 0;
 }
@@ -134,12 +136,14 @@ static void zoom_dial_fields(const aula_zoom_dial_request *request,
 
 static aula_status zoom_append_field(aula_mutable_bytes *output, size_t *used,
                                       const char *field, int add_separator) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t field_length = strlen(field);
   if (add_separator != 0) {
     if (*used + 1U >= output->capacity) return AULA_STATUS_LIMIT_EXCEEDED;
     output->data[(*used)++] = (uint8_t)'.';
   }
   if (field_length >= output->capacity - *used) return AULA_STATUS_LIMIT_EXCEEDED;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(output->data + *used, field, field_length);
   *used += field_length;
   return AULA_STATUS_OK;

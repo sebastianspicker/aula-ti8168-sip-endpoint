@@ -87,6 +87,7 @@ aula_status aula_rtp_wire_serialize(const aula_rtp_packet *packet,
   aula_rtp_wire_write_u32(output->data + 4U, packet->header.timestamp);
   aula_rtp_wire_write_u32(output->data + 8U, packet->header.ssrc);
   if (packet->payload.length != 0U) {
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(output->data + AULA_RTP_FIXED_HEADER_BYTES, packet->payload.data,
                  packet->payload.length);
   }

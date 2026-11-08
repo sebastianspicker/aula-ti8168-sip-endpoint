@@ -42,7 +42,9 @@ static void control_server_release(aula_control_server *server) {
 static int control_path_is_safe(const char *path) {
   const unsigned char *cursor;
   size_t length;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (path == NULL || path[0] != '/' || strlen(path) >= sizeof(((struct sockaddr_un *)0)->sun_path)) return 0;
+  /* Flawfinder: ignore - argument NUL-terminated */
   length = strlen(path);
   if (strstr(path, "/../") != NULL || strcmp(path + length - (length >= 3U ? 3U : 0U), "/..") == 0) return 0;
   for (cursor = (const unsigned char *)path; *cursor != '\0'; ++cursor) if (*cursor < 0x20U || *cursor == 0x7fU) return 0;

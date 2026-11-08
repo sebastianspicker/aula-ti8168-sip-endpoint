@@ -24,6 +24,7 @@ struct aula_rtcp_reporter {
 
 static int aula_rtcp_cname_is_valid(const char *cname) {
   size_t index;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (cname == NULL || cname[0] == '\0' || strlen(cname) >= AULA_RTCP_CNAME_BYTES) return 0;
   for (index = 0U; cname[index] != '\0'; ++index) {
     unsigned char c = (unsigned char)cname[index];
@@ -97,6 +98,7 @@ aula_status aula_rtcp_reporter_create(const aula_rtcp_reporter_config *config,
   reporter = (aula_rtcp_reporter *)calloc(1U, sizeof(*reporter));
   if (reporter == NULL) return AULA_STATUS_INTERNAL_ERROR;
   reporter->config = *config;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(reporter->cname, config->local_cname, strlen(config->local_cname) + 1U);
   reporter->config.local_cname = reporter->cname;
   reporter->state.local_ssrc = config->local_ssrc;

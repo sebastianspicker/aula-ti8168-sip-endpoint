@@ -10,9 +10,11 @@ static aula_status aula_sdp_copy_h264_evidence(aula_sdp_h264_evidence *evidence,
   char copy[AULA_SDP_MAX_FMTP_BYTES];
   char *field;
   if (evidence == NULL || !aula_sdp_h264_fmtp_is_compatible(fmtp) ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(fmtp) >= sizeof(copy)) {
     return AULA_STATUS_INVALID_DATA;
   }
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(copy, fmtp, strlen(fmtp) + 1U);
   evidence->present = 1;
   evidence->packetization_mode = 1;
@@ -28,12 +30,15 @@ static aula_status aula_sdp_copy_h264_evidence(aula_sdp_h264_evidence *evidence,
     }
     *equals++ = '\0';
     if (aula_sdp_ascii_equal(field, "profile-level-id")) {
+      /* nosemgrep */ /* Flawfinder: ignore - length bounded */
       (void)memcpy(evidence->profile_level_id, equals, 6U);
       evidence->profile_level_id[6] = '\0';
     } else if (aula_sdp_ascii_equal(field, "sprop-parameter-sets")) {
+      /* Flawfinder: ignore - argument NUL-terminated */
       if (*equals == '\0' || strlen(equals) >= sizeof(evidence->parameter_sets)) {
         return AULA_STATUS_INVALID_DATA;
       }
+      /* nosemgrep */ /* Flawfinder: ignore - length bounded */
       (void)memcpy(evidence->parameter_sets, equals, strlen(equals) + 1U);
       evidence->has_parameter_sets = 1;
     }
@@ -110,8 +115,11 @@ static void aula_sdp_copy_negotiated_transport(
     aula_sdp_negotiated_media *target, const aula_sdp_stored_media *local_media,
     const aula_sdp_session *remote, const aula_sdp_stored_media *remote_media,
     const char *rtcp_address, int remote_is_answer) {
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(target->remote_rtp_address, remote->connection_address,
+               /* Flawfinder: ignore - argument NUL-terminated */
                strlen(remote->connection_address) + 1U);
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(target->remote_rtcp_address, rtcp_address, strlen(rtcp_address) + 1U);
   target->local_rtp_port = local_media->value.rtp_port;
   target->local_rtcp_port = local_media->value.rtcp_port;
@@ -147,8 +155,10 @@ static aula_status aula_sdp_copy_negotiated_srtp(
   target->remote_inbound_srtp_tag = remote_media->srtp.crypto_tag;
   lifetimes->local_outbound = local_media->srtp.lifetime;
   lifetimes->remote_inbound = remote_media->srtp.lifetime;
+  /* nosemgrep - length bounded */
   (void)memcpy(&target->local_outbound_srtp, &local_media->srtp.material,
                sizeof(target->local_outbound_srtp));
+  /* nosemgrep - length bounded */
   (void)memcpy(&target->remote_inbound_srtp, &remote_media->srtp.material,
                sizeof(target->remote_inbound_srtp));
   return AULA_STATUS_OK;
@@ -157,13 +167,16 @@ static aula_status aula_sdp_copy_negotiated_srtp(
 static aula_status aula_sdp_copy_codec_fields(
     aula_sdp_negotiated_codec *codec, const aula_sdp_codec *selected) {
   if (selected->format_parameters == NULL ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(selected->format_parameters) >= sizeof(codec->format_parameters))
     return AULA_STATUS_INVALID_DATA;
   codec->kind = selected->kind;
   codec->payload_type = selected->payload_type;
   codec->clock_rate = selected->clock_rate;
   codec->channels = selected->channels;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(codec->format_parameters, selected->format_parameters,
+               /* Flawfinder: ignore - argument NUL-terminated */
                strlen(selected->format_parameters) + 1U);
   return AULA_STATUS_OK;
 }

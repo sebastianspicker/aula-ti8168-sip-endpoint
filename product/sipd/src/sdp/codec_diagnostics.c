@@ -21,6 +21,7 @@ static int aula_sdp_diagnostic_profile(const char *value,
                                         unsigned long *out_profile) {
   char *end;
   unsigned long profile;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (value == NULL || strlen(value) != 6U) return 0;
   profile = strtoul(value, &end, 16);
   if (end != value + 6 || *end != '\0' || profile > 0xffffffUL) return 0;
@@ -60,8 +61,11 @@ static aula_sdp_fmtp_diagnostic aula_sdp_diagnostic_fmtp(
   (void)memset(&summary, 0, sizeof(summary));
   if (codec->kind != AULA_SDP_CODEC_H264) return summary;
   if (codec->format_parameters == NULL || *codec->format_parameters == '\0' ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(codec->format_parameters) >= sizeof(copy)) return summary;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(copy, codec->format_parameters,
+               /* Flawfinder: ignore - argument NUL-terminated */
                strlen(codec->format_parameters) + 1U);
   field = strtok(copy, ";");
   while (field != NULL) {

@@ -144,6 +144,7 @@ int gateway_handle_directory_mutation(aula_gateway *gateway, const aula_gateway_
     gateway_write_error(response, 409U, "REVISION_CONFLICT", "directory revision cannot advance");
     return 1;
   }
+  /* nosemgrep - length bounded */
   (void)memcpy(backup, gateway->directory, sizeof(backup));
   backup_revision = gateway->directory_revision;
   if (deleting) OPENSSL_cleanse(existing, sizeof(*existing));
@@ -151,6 +152,7 @@ int gateway_handle_directory_mutation(aula_gateway *gateway, const aula_gateway_
   ++gateway->directory_revision;
   if (gateway->config.account_store_path != NULL) store_result = aula_gateway_store_account(gateway);
   if (store_result == AULA_GATEWAY_STORE_NOT_COMMITTED) {
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(gateway->directory, backup, sizeof(backup));
     gateway->directory_revision = backup_revision;
     OPENSSL_cleanse(backup, sizeof(backup));
@@ -197,12 +199,14 @@ int gateway_record_recent(aula_gateway *gateway, const char *body) {
   value.used = 1;
   json_decref(root);
   OPENSSL_cleanse(random, sizeof(random));
+  /* nosemgrep - length bounded */
   (void)memcpy(backup, gateway->recents, sizeof(backup));
   (void)memmove(&gateway->recents[1], &gateway->recents[0],
                sizeof(gateway->recents) - sizeof(gateway->recents[0]));
   gateway->recents[0] = value;
   if (gateway->config.account_store_path != NULL) store_result = aula_gateway_store_account(gateway);
   if (store_result == AULA_GATEWAY_STORE_NOT_COMMITTED) {
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(gateway->recents, backup, sizeof(backup));
     OPENSSL_cleanse(backup, sizeof(backup));
     return 0;

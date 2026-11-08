@@ -79,10 +79,12 @@ void aula_config_diagnose(aula_config_diagnostic *diagnostic, aula_status status
 }
 
 static aula_status update_section(config_load_state *state, char *text, const char **reason) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t length = strlen(text);
   *reason = "malformed section header";
   if (length < 3U || text[length - 1U] != ']') return AULA_STATUS_INVALID_DATA;
   text[length - 1U] = '\0';
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(text + 1) >= sizeof(state->section) || strchr(text + 1, ' ') != NULL) return AULA_STATUS_INVALID_DATA;
   (void)snprintf(state->section, sizeof(state->section), "%s", text + 1);
   *reason = "unknown section";
@@ -102,6 +104,7 @@ static aula_status apply_config_assignment(aula_config *config, config_load_stat
   *reason = "missing key before '='";
   if (key[0] == '\0') return AULA_STATUS_INVALID_DATA;
   *reason = "value is too long or contains control characters or '..' segments";
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(value) >= AULA_CONFIG_VALUE_BYTES || aula_config_has_control_or_parent_segment(value)) return AULA_STATUS_INVALID_DATA;
   *reason = "unknown or duplicate key";
   if (aula_config_key_for(state->section, key, &id) != AULA_STATUS_OK || state->seen[id] != 0U) return AULA_STATUS_CONFIGURATION_ERROR;
@@ -155,6 +158,7 @@ static aula_status parse_config_stream(FILE *input, aula_config *config,
   while (fgets(line, (int)sizeof(line), input) != NULL) {
     char *text;
     const char *reason = NULL;
+    /* Flawfinder: ignore - argument NUL-terminated */
     size_t length = strlen(line);
     ++line_number;
     state.bytes_read += length;

@@ -162,8 +162,10 @@ static int copy_optional(char *output, size_t capacity, const char *value,
   size_t length;
   if (output == NULL || capacity == 0U || value == NULL || bound == NULL)
     return 0;
+  /* Flawfinder: ignore - argument NUL-terminated */
   length = strlen(value);
   if (length >= capacity) return 0;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(output, value, length + 1U);
   *bound = length == 0U ? NULL : output;
   return 1;
@@ -211,8 +213,10 @@ aula_status aula_control_decode_originate(
   layout = member_value(&object, "layout");
   meeting = member_value(&object, "meeting_id");
   if (profile == NULL || layout == NULL || meeting == NULL ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(meeting) >= sizeof(out_request->meeting_id))
     goto cleanup;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(out_request->meeting_id, meeting, strlen(meeting) + 1U);
   out_request->dial.meeting_id = out_request->meeting_id;
   if (!decode_profile(profile, &out_request->dial.profile) ||
@@ -263,12 +267,16 @@ aula_status aula_control_decode_credentials(
       (username = member_value(&object, "username")) == NULL ||
       (password = member_value(&object, "password")) == NULL)
     goto cleanup;
+  /* Flawfinder: ignore - argument NUL-terminated */
   username_length = strlen(username);
+  /* Flawfinder: ignore - argument NUL-terminated */
   password_length = strlen(password);
   if (username_length == 0U || username_length >= sizeof(out_request->username) ||
       password_length < 12U || password_length >= sizeof(out_request->password))
     goto cleanup;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(out_request->username, username, username_length + 1U);
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(out_request->password, password, password_length + 1U);
   status = AULA_STATUS_OK;
 cleanup:

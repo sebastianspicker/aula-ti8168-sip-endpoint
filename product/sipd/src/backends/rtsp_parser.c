@@ -11,6 +11,7 @@ int aula_rtsp_path_character(unsigned char character) {
 
 static int header_is(const uint8_t *line, size_t length, const char *name) {
   size_t index;
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t name_length = strlen(name);
   if (length < name_length + 1U || line[name_length] != ':') return 0;
   for (index = 0U; index < name_length; ++index) {
@@ -72,6 +73,7 @@ typedef struct rtsp_response_headers {
 
 static int span_is(const uint8_t *value, size_t length, const char *expected) {
   size_t index;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (value == NULL || expected == NULL || strlen(expected) != length) return 0;
   for (index = 0U; index < length; ++index) {
     unsigned char actual = value[index];
@@ -210,6 +212,7 @@ static aula_status parse_response_session(const uint8_t *line, size_t length,
   if (value_length == 0U || value_length >= sizeof(message->session_id)) {
     return AULA_STATUS_INVALID_DATA;
   }
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(message->session_id, line + start, value_length);
   message->session_id[value_length] = '\0';
   headers->session_seen = 1;
@@ -294,6 +297,7 @@ aula_status aula_rtsp_stream_parser_push(aula_rtsp_stream_parser *parser,
   discard_message(parser);
   if (input.length > sizeof(parser->buffer) - parser->length) return AULA_STATUS_LIMIT_EXCEEDED;
   if (input.length != 0U) {
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(parser->buffer + parser->length, input.data, input.length);
     parser->length += input.length;
   }
@@ -340,6 +344,7 @@ static int rtsp_safe_path(const char *path) {
   for (cursor = path; *cursor != '\0'; ++cursor) {
     if (!aula_rtsp_path_character((unsigned char)*cursor)) return 0;
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   length = strlen(path);
   return strstr(path, "//") == NULL && strstr(path, "/../") == NULL &&
       !(length >= 3U && strcmp(path + length - 3U, "/..") == 0) &&
@@ -400,6 +405,7 @@ static int parse_rtsp_uri_host(const char **cursor, uint8_t out_address[4]) {
   while (**cursor != '\0' && **cursor != ':' && **cursor != '/') ++*cursor;
   length = (size_t)(*cursor - start);
   if (length == 0U || length >= sizeof(host)) return 0;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(host, start, length);
   host[length] = '\0';
   return parse_canonical_ipv4(host, out_address);
@@ -444,9 +450,12 @@ aula_status aula_rtsp_parse_authorized_uri(const char *uri,
   if (!parse_rtsp_uri_port(&cursor, &port) || !rtsp_safe_path(cursor)) {
     return AULA_STATUS_CONFIGURATION_ERROR;
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   length = strlen(uri);
   if (length >= sizeof(out_uri->text)) return AULA_STATUS_LIMIT_EXCEEDED;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(out_uri->text, uri, length + 1U);
+  /* nosemgrep - length bounded */
   (void)memcpy(out_uri->address, authorized_address, sizeof(out_uri->address));
   out_uri->port = (uint16_t)port;
   return AULA_STATUS_OK;

@@ -20,6 +20,7 @@ static int event_message_valid(const char *message) {
 static int event_id_valid(const char *id) {
   size_t length, index;
   if (id == NULL || strncmp(id, "call-state-", 11U) != 0) return 0;
+  /* Flawfinder: ignore - argument NUL-terminated */
   length = strlen(id);
   if (length < 12U || length > 32U) return 0;
   for (index = 11U; index < length; ++index)

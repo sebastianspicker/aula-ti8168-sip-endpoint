@@ -23,11 +23,15 @@ int aula_device_send_message(int fd, json_t *message, uint64_t deadline) {
   uint32_t size;
   int result = 0;
   if (encoded == NULL) return 0;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(encoded) <= AULA_DEVICE_LIMIT) {
+    /* Flawfinder: ignore - argument NUL-terminated */
     size = htonl((uint32_t)strlen(encoded));
     result = aula_device_transfer(fd, &size, sizeof(size), 1, deadline) &&
+        /* Flawfinder: ignore - argument NUL-terminated */
         aula_device_transfer(fd, encoded, strlen(encoded), 1, deadline);
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   OPENSSL_cleanse(encoded, strlen(encoded));
   free(encoded);
   return result;

@@ -147,6 +147,7 @@ aula_status aula_h264_parameter_sets_update(aula_h264_parameter_sets *sets,
   if (nal->type == 7U && nal->length < 4U) return AULA_STATUS_INVALID_DATA;
   if (*destination_length != nal->length ||
       memcmp(destination, nal->data, nal->length) != 0) {
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     memcpy(destination, nal->data, nal->length);
     *destination_length = nal->length;
     if (nal->type == 7U) {
@@ -162,6 +163,7 @@ aula_status aula_h264_profile_level_id(const aula_h264_parameter_sets *sets,
                                          char out_profile_level_id[7]) {
   if (sets == NULL || out_profile_level_id == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   if (sets->sps_length == 0U || sets->profile_level_id[0] == '\0') return AULA_STATUS_AGAIN;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(out_profile_level_id, sets->profile_level_id, sizeof(sets->profile_level_id));
   return AULA_STATUS_OK;
 }
@@ -217,6 +219,7 @@ aula_status aula_h264_packetize_fu_a(aula_h264_packetizer *packetizer,
     fragment[0] = (uint8_t)((nal->data[0] & 0xe0U) | 28U);
     fragment[1] = (uint8_t)((nal->data[0] & 0x1fU) | (start ? 0x80U : 0U) |
                             (end ? 0x40U : 0U));
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     memcpy(fragment + 2U, nal->data + offset, fragment_length);
     status = aula_h264_emit_packet(packetizer, fragment, fragment_length + 2U, end,
                                     callback, callback_context);

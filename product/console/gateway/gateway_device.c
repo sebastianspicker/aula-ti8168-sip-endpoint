@@ -76,6 +76,7 @@ int gateway_device_backend_reply(const aula_gateway_config *config, const gatewa
   if (code == 1) {
     json_t *data = json_object_get(reply, "data");
     if (oem_status_projection(data)) encoded = json_dumps(data, JSON_COMPACT);
+    /* Flawfinder: ignore - argument NUL-terminated */
     if (encoded == NULL || strlen(encoded) >= capacity) code = 0;
     else snprintf(backend, capacity, "%s", encoded);
   } else if (!json_is_null(json_object_get(reply, "data"))) {

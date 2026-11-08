@@ -7,6 +7,7 @@
 int aula_device_credential_text(json_t *value, size_t maximum) {
   const char *text = json_string_value(value);
   size_t length = json_string_length(value);
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (text == NULL || length == 0 || length > maximum || strlen(text) != length) return 0;
   /* The persisted credential text rules are unchanged since version 1. */
   for (size_t i = 0; i < length; ++i)

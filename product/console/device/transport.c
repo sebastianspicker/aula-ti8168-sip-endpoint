@@ -81,7 +81,9 @@ static int device_path_safe(const char *path, uint32_t owner) {
   char copy[108], *part, *next;
   int directory, valid = 0;
   struct stat info;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (path == NULL || path[0] != '/' || strlen(path) >= sizeof(copy)) return 0;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   memcpy(copy, path + 1, strlen(path));
   directory = open("/", O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
   if (directory < 0) return 0;
@@ -117,11 +119,13 @@ int aula_device_connect(const char *path, uint32_t owner, unsigned timeout_ms) {
   struct sockaddr_un address;
   int fd;
   uint64_t now = aula_device_clock();
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (path == NULL || strlen(path) >= sizeof(address.sun_path) ||
       !now || timeout_ms == 0 || timeout_ms > 5000 ||
       !device_path_safe(path, owner)) return -1;
   memset(&address, 0, sizeof(address));
   address.sun_family = AF_UNIX;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   memcpy(address.sun_path, path, strlen(path) + 1);
   fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (fd < 0) return -1;

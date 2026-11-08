@@ -273,6 +273,7 @@ static aula_status endpoint_control_replace_credential(aula_endpoint *endpoint,
     status = AULA_STATUS_CONFIGURATION_ERROR;
   }
   if (status == AULA_STATUS_OK) {
+    /* Flawfinder: ignore - argument NUL-terminated */
     aula_bytes secret = {(const uint8_t *)decoded.password, strlen(decoded.password)};
     status = aula_config_replace_secret_file(endpoint->view->auth_secret_file, secret);
   }

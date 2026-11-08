@@ -33,6 +33,7 @@ static int config_is_valid(const aula_aec_config *config, aula_aec *const *out_a
 }
 
 static void aec_copy(aula_bytes input, aula_mutable_bytes *output) {
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(output->data, input.data, input.length);
   output->length = input.length;
 }

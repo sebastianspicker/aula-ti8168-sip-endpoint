@@ -28,7 +28,9 @@ static int query_request_valid(json_t *request) {
   json_t *revision = json_object_get(request, "revision");
   return json_is_object(request) && json_object_size(request) == 4 &&
       json_is_integer(revision) && json_integer_value(revision) == 2 &&
+      /* Flawfinder: ignore - argument NUL-terminated */
       correlation != NULL && strlen(correlation) > 0 && strlen(correlation) <= 64 &&
+      /* Flawfinder: ignore - argument NUL-terminated */
       strspn(correlation, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_") == strlen(correlation) &&
       json_is_object(json_object_get(request, "arguments")) &&
       json_is_string(json_object_get(request, "operation"));

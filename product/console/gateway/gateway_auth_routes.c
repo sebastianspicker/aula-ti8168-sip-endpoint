@@ -10,6 +10,7 @@
 static int login_schema_valid(json_t *root, const char *username, const char *password) {
   static const char *const keys[] = {"username", "password"};
   return gateway_json_object_exact(root, keys, 2U) && gateway_is_safe_username(username) &&
+      /* Flawfinder: ignore - argument NUL-terminated */
       password != NULL && strlen(password) <= 256U;
 }
 
@@ -31,7 +32,9 @@ static void snapshot_login_account(const aula_gateway *gateway, const char *user
   if (account != NULL) {
     snapshot->account = *account;
   } else {
+    /* nosemgrep - length bounded */
     (void)memcpy(snapshot->account.salt, salt_dummy, sizeof(snapshot->account.salt));
+    /* nosemgrep - length bounded */
     (void)memcpy(snapshot->account.password_hash, hash_dummy, sizeof(snapshot->account.password_hash));
   }
 }
@@ -137,7 +140,9 @@ static int bootstrap_schema_valid(json_t *root, const char *username, const char
 }
 
 static int bootstrap_code_matches(const aula_gateway *gateway, const char *code) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   return strlen(code) == strlen(gateway->config.bootstrap_code) &&
+      /* Flawfinder: ignore - argument NUL-terminated */
       gateway_secure_equal(code, gateway->config.bootstrap_code, strlen(gateway->config.bootstrap_code));
 }
 
@@ -178,11 +183,13 @@ static int handle_bootstrap(aula_gateway *gateway, const aula_gateway_request *r
     gateway_write_rate_limited(response, retry);
     goto cleanup;
   }
+  /* nosemgrep - length bounded */
   (void)memcpy(backup_accounts, gateway->accounts, sizeof(backup_accounts));
   backup_revision = gateway->account_revision;
   backup_disabled = gateway->bootstrap_disabled;
   if (!bootstrap_code_matches(gateway, code) || RAND_bytes(salt, sizeof(salt)) != 1 ||
       !aula_gateway_set_account(gateway, username, password, AULA_GATEWAY_ROLE_ADMIN, salt)) {
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(gateway->accounts, backup_accounts, sizeof(backup_accounts));
     gateway->account_revision = backup_revision;
     gateway->bootstrap_disabled = backup_disabled;

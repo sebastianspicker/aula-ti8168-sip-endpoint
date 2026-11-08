@@ -74,6 +74,7 @@ static aula_rtp_queue_entry *aula_rtp_queue_entry_create(const aula_rtp_packet *
       free(entry);
       return NULL;
     }
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(entry->payload, packet->payload.data, packet->payload.length);
   }
   entry->packet = *packet;

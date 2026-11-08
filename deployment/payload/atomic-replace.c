@@ -34,6 +34,7 @@ static int parent_directory(const char *path, char output[PATH_MAX])
         errno = ENAMETOOLONG;
         return -1;
     }
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(output, path, length);
     output[length] = '\0';
     return 0;

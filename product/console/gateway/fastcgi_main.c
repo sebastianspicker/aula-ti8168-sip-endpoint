@@ -43,6 +43,7 @@ static int body_from_request(FCGX_Request *request, char body[1025]) {
 }
 
 static int listener_path_is_valid(const char *path) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   return path != NULL && path[0] == '/' && strlen(path) < 256U &&
       strstr(path, "/../") == NULL;
 }

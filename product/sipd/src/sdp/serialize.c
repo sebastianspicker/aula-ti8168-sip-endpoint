@@ -37,10 +37,12 @@ static int aula_sdp_codec_order(aula_sdp_codec_kind kind) {
 }
 
 static aula_status aula_sdp_append(aula_mutable_bytes *output, const char *text) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t length = strlen(text);
   if (output->length > output->capacity || length > output->capacity - output->length) {
     return AULA_STATUS_LIMIT_EXCEEDED;
   }
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(output->data + output->length, text, length);
   output->length += length;
   return AULA_STATUS_OK;

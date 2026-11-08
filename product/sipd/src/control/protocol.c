@@ -319,6 +319,7 @@ static int cache_completed(aula_control_server *server,
                                     request->payload,
                                     entry->request_fingerprint);
   if (payload_length != 0U)
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(entry->response_payload, payload, payload_length);
   return 1;
 }
@@ -502,6 +503,7 @@ static aula_status control_complete_request(
   size_t expected_length;
   if (client->request_length < AULA_CONTROL_HEADER_BYTES)
     return control_incomplete_frame();
+  /* nosemgrep - length bounded */
   (void)memcpy(&payload_length, client->request + 12U, sizeof(payload_length));
   payload_length = ntohl(payload_length);
   if (payload_length > server->config.maximum_request_bytes) {

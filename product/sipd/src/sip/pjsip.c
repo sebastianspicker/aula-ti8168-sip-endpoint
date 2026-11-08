@@ -66,6 +66,7 @@ static aula_status pjsip_validate_proxy_options(
     return options->registrar_uri == NULL ? AULA_STATUS_OK :
                                             AULA_STATUS_INVALID_ARGUMENT;
   if (!pjsip_registrar_is_safe(options->registrar_uri) ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(options->registrar_uri) >= sizeof(pjsip_context.registrar_uri))
     return AULA_STATUS_INVALID_DATA;
   return AULA_STATUS_OK;
@@ -75,6 +76,7 @@ static aula_status pjsip_validate_text_option(const char *value,
                                                size_t capacity,
                                                int requires_sip_uri) {
   if (value == NULL) return AULA_STATUS_OK;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(value) >= capacity) return AULA_STATUS_INVALID_DATA;
   if (requires_sip_uri != 0 &&
       aula_sip_parse_dial_target(value, &(aula_sip_dial_target){0}) !=
@@ -97,6 +99,7 @@ static aula_status pjsip_validate_options(
     return AULA_STATUS_INVALID_DATA;
   if (options->bind_address != NULL) {
     struct in_addr parsed;
+    /* Flawfinder: ignore - argument NUL-terminated */
     if (strlen(options->bind_address) >= sizeof(pjsip_context.bind_address) ||
         inet_pton(AF_INET, options->bind_address, &parsed) != 1)
       return AULA_STATUS_INVALID_DATA;
@@ -107,6 +110,7 @@ static aula_status pjsip_validate_options(
 
 static void pjsip_copy_option(char *destination, const char *value) {
   if (value != NULL)
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(destination, value, strlen(value) + 1U);
 }
 

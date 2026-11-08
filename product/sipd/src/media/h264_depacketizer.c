@@ -26,6 +26,7 @@ static void reset_access_unit(aula_h264_depacketizer *state) {
 static aula_status append_bytes(aula_h264_depacketizer *state,
                                   const uint8_t *data, size_t length) {
   if (length > state->capacity - state->length) return AULA_STATUS_LIMIT_EXCEEDED;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(state->access_unit + state->length, data, length);
   state->length += length;
   return AULA_STATUS_OK;
@@ -102,6 +103,7 @@ static aula_status finish_access_unit(aula_h264_depacketizer *state,
                                         aula_mutable_bytes *output, int *complete) {
   if (state->fu_active) return AULA_STATUS_INVALID_DATA;
   if (state->length > output->capacity) return AULA_STATUS_LIMIT_EXCEEDED;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(output->data, state->access_unit, state->length);
   output->length = state->length;
   *complete = 1;

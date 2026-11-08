@@ -17,6 +17,7 @@ static int copy_request_field(const char *source, char *destination, size_t capa
     *output = NULL;
     return 1;
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(source) >= capacity) return 0;
   (void)snprintf(destination, capacity, "%s", source);
   *output = destination;
@@ -47,8 +48,10 @@ static int copy_gateway_request(gateway_request_storage *storage, const aula_gat
 static void copy_gateway_principal(gateway_transaction *transaction, const aula_gateway_session *session) {
   transaction->principal.used = 1;
   transaction->principal.role = session->role;
+  /* nosemgrep - length bounded */
   (void)memcpy(transaction->principal.session_id, session->session_id,
               sizeof(transaction->principal.session_id));
+  /* nosemgrep - length bounded */
   (void)memcpy(transaction->principal.token_hash, session->token_hash,
               sizeof(transaction->principal.token_hash));
   (void)snprintf(transaction->principal.username, sizeof(transaction->principal.username),

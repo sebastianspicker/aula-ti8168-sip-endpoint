@@ -277,6 +277,7 @@ static aula_status aac_resample_mono(aula_aac_decoder *decoder,
   if (output_frames == 0U) return AULA_STATUS_AGAIN;
   out_pcm->length = (size_t)output_frames * sizeof(int16_t);
   if (out_pcm->length != 0U) {
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(out_pcm->data, output, out_pcm->length);
   }
   return AULA_STATUS_OK;

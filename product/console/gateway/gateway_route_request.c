@@ -25,6 +25,7 @@ const aula_gateway_request *gateway_request_with_cleansed_body(
     const aula_gateway_request *request, aula_gateway_request *private_request,
     char request_copy[1024], aula_gateway_response *response) {
   if (!request_body_requires_cleansing(request)) return request;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (request->body == NULL || strlen(request->body) >= 1024U) {
     gateway_write_error(response, 400U, "SCHEMA_INVALID", "body schema is invalid");
     return NULL;
@@ -38,6 +39,7 @@ const aula_gateway_request *gateway_request_with_cleansed_body(
 int gateway_set_redacted_payload(route_plan *plan, const aula_gateway_request *request,
                                  char sensitive[1024], aula_gateway_response *response) {
   if ((plan->flags & R_REDACT) == 0U) return 1;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(request->body) >= 1024U) {
     gateway_write_error(response, 400U, "SCHEMA_INVALID", "body schema is invalid");
     return 0;

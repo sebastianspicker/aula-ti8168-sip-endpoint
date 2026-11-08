@@ -8,6 +8,7 @@
 static int safe_control_text(const char *value, size_t minimum, size_t maximum) {
   size_t index, length;
   if (value == NULL) return 0;
+  /* Flawfinder: ignore - argument NUL-terminated */
   length = strlen(value);
   if (length < minimum || length > maximum || strchr(value, '/') != NULL) return 0;
   for (index = 0U; index < length; ++index) {

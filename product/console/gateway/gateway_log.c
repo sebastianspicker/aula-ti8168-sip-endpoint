@@ -123,6 +123,7 @@ void gateway_log_request(aula_gateway *gateway, const aula_gateway_request *requ
   }
   copy_field(method, sizeof(method), request->method, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", '\0');
   if (request->path != NULL &&
+      /* Flawfinder: ignore - argument NUL-terminated */
       strncmp(request->path, GATEWAY_LOG_EXPORT_PREFIX, strlen(GATEWAY_LOG_EXPORT_PREFIX)) == 0)
     (void)snprintf(route, sizeof(route), "%s<id>", GATEWAY_LOG_EXPORT_PREFIX);
   else

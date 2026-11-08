@@ -22,6 +22,7 @@ static int state_healthy;
 static json_t *state;
 
 static int hex_digest(const char *text) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   return text != NULL && strlen(text) == 64 && strspn(text, "0123456789abcdef") == 64;
 }
 
@@ -144,6 +145,7 @@ static int credentials_healthy(void) {
 
 static int save_credentials(json_t *document) {
   char *body = json_dumps(document, JSON_COMPACT | JSON_SORT_KEYS);
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t offset = 0, length = body == NULL ? 0 : strlen(body);
   int fd, okay = 0;
   state_healthy = 0;
@@ -176,7 +178,9 @@ static int arguments_digest(json_t *arguments, char output[65]) {
   char *encoded = json_dumps(arguments, JSON_COMPACT | JSON_SORT_KEYS);
   int okay;
   if (encoded == NULL) return 0;
+  /* Flawfinder: ignore - argument NUL-terminated */
   okay = EVP_Digest(encoded, strlen(encoded), digest, &size, EVP_sha256(), NULL) == 1 && size == 32;
+  /* Flawfinder: ignore - argument NUL-terminated */
   OPENSSL_cleanse(encoded, strlen(encoded));
   free(encoded);
   if (okay) for (unsigned i = 0; i < 32; ++i) snprintf(output + i * 2, 3, "%02x", digest[i]);

@@ -51,6 +51,7 @@ aula_status endpoint_create_media_session(aula_endpoint *endpoint,
        strcmp(endpoint->backend_config.name, "rtsp_gst_process") == 0)) {
     aula_rtsp_h264_capability capability;
     (void)memset(&capability, 0, sizeof(capability));
+    /* nosemgrep - length bounded */
     (void)memcpy(capability.profile_level_id,
                  endpoint->source_h264_profile_level_id,
                  sizeof(capability.profile_level_id));

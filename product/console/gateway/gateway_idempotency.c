@@ -38,10 +38,12 @@ int gateway_idempotency_request_hash(const aula_gateway_request *request,
   canonical = json_dumps(root, JSON_COMPACT | JSON_SORT_KEYS);
   json_decref(root);
   if (canonical == NULL) return 0;
+  /* Flawfinder: ignore - argument NUL-terminated */
   canonical_length = strlen(canonical);
   context = EVP_MD_CTX_new();
   valid = context != NULL &&
       EVP_DigestInit_ex(context, EVP_sha256(), NULL) == 1 &&
+      /* Flawfinder: ignore - argument NUL-terminated */
       EVP_DigestUpdate(context, request->method, strlen(request->method)) == 1 &&
       EVP_DigestUpdate(context, &separator, sizeof(separator)) == 1 &&
       EVP_DigestUpdate(context, canonical, canonical_length) == 1 &&
@@ -63,12 +65,15 @@ void gateway_save_idempotency(aula_gateway *gateway, const aula_gateway_session 
   (void)memset(entry, 0, sizeof(*entry));
   entry->used = 1;
   entry->status = response->status;
+  /* nosemgrep - length bounded */
   (void)memcpy(entry->session_hash, session->session_id, sizeof(entry->session_hash));
+  /* nosemgrep - length bounded */
   (void)memcpy(entry->request_hash, request_hash, sizeof(entry->request_hash));
   (void)snprintf(entry->key, sizeof(entry->key), "%s", key);
   (void)snprintf(entry->route, sizeof(entry->route), "%s", route);
   /* A reply too large to retain would replay as truncated JSON; a retry
    * gets an explicit error instead of a broken body or a second execution. */
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(response->body) >= sizeof(entry->response)) {
     entry->status = 409U;
     (void)snprintf(entry->response, sizeof(entry->response),

@@ -22,6 +22,7 @@ aula_status aula_sdp_assign_srtp_policy(aula_sdp_stored_media *media,
   media->srtp.present = 1;
   media->srtp.crypto_tag = policy->crypto_tag;
   media->srtp.lifetime = AULA_SDP_SRTP_DEFAULT_LIFETIME;
+  /* nosemgrep - length bounded */
   (void)memcpy(&media->srtp.material, &policy->outbound_material,
                sizeof(media->srtp.material));
   return AULA_STATUS_OK;
@@ -76,6 +77,7 @@ static aula_status aula_sdp_decode_srtp_key_salt(
   size_t index;
   size_t output = 0U;
   if (encoded == NULL || material == NULL ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(encoded) != AULA_SDP_SRTP_MASTER_KEY_SALT_BYTES / 3U * 4U)
     return AULA_STATUS_INVALID_DATA;
   for (index = 0U; index < AULA_SDP_SRTP_MASTER_KEY_SALT_BYTES / 3U * 4U;

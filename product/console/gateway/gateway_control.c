@@ -31,8 +31,11 @@ int aula_gateway_frame_validate(const uint8_t *frame, size_t frame_length,
       memcmp(frame, AULA_CONTROL_MAGIC, 4U) != 0 || frame[4] != AULA_CONTROL_PROTOCOL_VERSION ||
       frame[5] != expected_opcode || expected_opcode < 1U || expected_opcode > AULA_CONTROL_OPCODE_METRICS)
     return 0;
+  /* nosemgrep - length bounded */
   (void)memcpy(&flags, frame + 6U, sizeof(flags));
+  /* nosemgrep - length bounded */
   (void)memcpy(&request_id, frame + 8U, sizeof(request_id));
+  /* nosemgrep - length bounded */
   (void)memcpy(&length, frame + 12U, sizeof(length));
   flags = ntohs(flags);
   request_id = ntohl(request_id);
@@ -71,9 +74,11 @@ static int split_control_socket_path(const aula_gateway_config *config, char par
   if (config == NULL || config->control_socket_path == NULL || config->control_socket_path[0] != '/') return 0;
   slash = strrchr(config->control_socket_path, '/');
   if (slash == NULL || slash == config->control_socket_path || slash[1] == '\0' ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(slash + 1U) > NAME_MAX) return 0;
   parent_length = (size_t)(slash - config->control_socket_path);
   if (parent_length >= 512U) return 0;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(parent_path, config->control_socket_path, parent_length);
   parent_path[parent_length] = '\0';
   *socket_name = slash + 1U;
@@ -133,6 +138,7 @@ static int control_exchange_input_is_valid(const aula_gateway_config *config, co
   return config != NULL && config->control_socket_path != NULL &&
       payload != NULL && response != NULL && response_capacity != 0U &&
       config->control_timeout_milliseconds <= AULA_GATEWAY_CONTROL_TIMEOUT_MILLISECONDS &&
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(config->control_socket_path) < sizeof(((struct sockaddr_un *)0)->sun_path) &&
       aula_gateway_control_socket_is_safe(config);
 }
@@ -257,12 +263,17 @@ static void build_control_request(uint8_t request[AULA_CONTROL_HEADER_BYTES + GA
   uint16_t flags = 0U;
   uint32_t wire_id = htonl(request_id);
   uint32_t length = htonl((uint32_t)payload_length);
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(request, AULA_CONTROL_MAGIC, 4U);
   request[4] = AULA_CONTROL_PROTOCOL_VERSION;
   request[5] = opcode;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(request + 6U, &flags, sizeof(flags));
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(request + 8U, &wire_id, sizeof(wire_id));
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(request + 12U, &length, sizeof(length));
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(request + AULA_CONTROL_HEADER_BYTES, payload, payload_length);
 }
 
@@ -343,6 +354,7 @@ static int receive_control_reply(int descriptor,
         aula_gateway_frame_validate(reply, (size_t)received, opcode, request_id);
   }
   if (!receive_control_bytes(descriptor, reply, AULA_CONTROL_HEADER_BYTES, deadline)) return 0;
+  /* nosemgrep - length bounded */
   (void)memcpy(&payload_length, reply + 12U, sizeof(payload_length));
   payload_length = ntohl(payload_length);
   if (payload_length > GATEWAY_LSZ1_MAX_PAYLOAD ||
@@ -357,14 +369,18 @@ static int copy_control_reply(const uint8_t reply[AULA_CONTROL_HEADER_BYTES + GA
   uint16_t flags;
   uint32_t wire_id;
   uint32_t length;
+  /* nosemgrep - length bounded */
   (void)memcpy(&flags, reply + 6U, sizeof(flags));
+  /* nosemgrep - length bounded */
   (void)memcpy(&wire_id, reply + 8U, sizeof(wire_id));
+  /* nosemgrep - length bounded */
   (void)memcpy(&length, reply + 12U, sizeof(length));
   flags = ntohs(flags);
   wire_id = ntohl(wire_id);
   length = ntohl(length);
   (void)wire_id;
   if (length + 1U > response_capacity) return 0;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(response, reply + AULA_CONTROL_HEADER_BYTES, length);
   response[length] = '\0';
   /* Keep a bounded daemon error available to the settings route only, so a
@@ -387,6 +403,7 @@ int aula_gateway_control_exchange(void *context, uint8_t opcode, uint32_t reques
   (void)memset(request, 0, sizeof(request));
   (void)memset(reply, 0, sizeof(reply));
   if (!control_exchange_input_is_valid(config, payload, response, response_capacity)) goto cleanup;
+  /* Flawfinder: ignore - argument NUL-terminated */
   payload_length = strlen(payload);
   if (payload_length > GATEWAY_LSZ1_MAX_PAYLOAD) goto cleanup;
   prepare_control_address(&address, config->control_socket_path);

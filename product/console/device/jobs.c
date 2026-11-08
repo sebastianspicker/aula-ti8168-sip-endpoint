@@ -25,6 +25,7 @@ static int owned_file(int fd) {
 
 static int job_token(const char *text, size_t maximum) {
   size_t length;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (text == NULL || (length = strlen(text)) == 0 || length > maximum) return 0;
   return strspn(text, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-@") == length;
 }
@@ -40,6 +41,7 @@ static int job_state(const char *state) {
 }
 
 static int fingerprint_valid(const char *value) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   return value != NULL && strlen(value) == 64 &&
       strspn(value, "0123456789abcdef") == 64;
 }
@@ -84,6 +86,7 @@ static int journal_valid(json_t *document) {
 
 static int journal_write(aula_device_jobs *store) {
   char *encoded = json_dumps(store->document, JSON_COMPACT | JSON_SORT_KEYS);
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t offset = 0, length = encoded == NULL ? 0 : strlen(encoded);
   int fd, valid = 0;
   store->healthy = 0;

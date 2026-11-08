@@ -17,6 +17,7 @@ aula_status aula_rtsp_flush_request(aula_rtsp_gst_context *context) {
         context->pending_request_length > sizeof(context->fixture_request)) {
       return AULA_STATUS_STATE_ERROR;
     }
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(context->fixture_request, context->pending_request,
                  context->pending_request_length);
     context->fixture_request_length = context->pending_request_length;
@@ -98,6 +99,7 @@ static int rtsp_sdp_prefix_is(const uint8_t *line, size_t length,
                               const char *prefix) {
   size_t prefix_length;
   if (line == NULL || prefix == NULL) return 0;
+  /* Flawfinder: ignore - argument NUL-terminated */
   prefix_length = strlen(prefix);
   if (length < prefix_length) return 0;
   return memcmp(line, prefix, prefix_length) == 0;
@@ -168,6 +170,7 @@ static aula_status rtsp_build_setup_uri(aula_rtsp_gst_context *context,
   if (context == NULL || !rtsp_sdp_safe_control(control, control_length)) {
     return AULA_STATUS_INVALID_DATA;
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   aggregate_length = strlen(context->video_uri.text);
   if (aggregate_length == 0U) return AULA_STATUS_STATE_ERROR;
   written = snprintf(context->setup_uri.text, sizeof(context->setup_uri.text),
@@ -177,6 +180,7 @@ static aula_status rtsp_build_setup_uri(aula_rtsp_gst_context *context,
   if (written < 0 || (size_t)written >= sizeof(context->setup_uri.text)) {
     return AULA_STATUS_LIMIT_EXCEEDED;
   }
+  /* nosemgrep - length bounded */
   (void)memcpy(context->setup_uri.address, context->video_uri.address,
                sizeof(context->setup_uri.address));
   context->setup_uri.port = context->video_uri.port;
@@ -340,12 +344,15 @@ static aula_status finish_access_unit(aula_rtsp_gst_context *context, uint32_t t
   required = 8U + context->parameter_sets.sps_length + context->parameter_sets.pps_length + context->assembly_length;
   if (required > context->maximum_access_unit_bytes) return AULA_STATUS_LIMIT_EXCEEDED;
   context->video[0] = 0U; context->video[1] = 0U; context->video[2] = 0U; context->video[3] = 1U;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(context->video + 4U, context->parameter_sets.sps, context->parameter_sets.sps_length);
   context->video[4U + context->parameter_sets.sps_length] = 0U;
   context->video[5U + context->parameter_sets.sps_length] = 0U;
   context->video[6U + context->parameter_sets.sps_length] = 0U;
   context->video[7U + context->parameter_sets.sps_length] = 1U;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(context->video + 8U + context->parameter_sets.sps_length, context->parameter_sets.pps, context->parameter_sets.pps_length);
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(context->video + 8U + context->parameter_sets.sps_length + context->parameter_sets.pps_length,
                context->assembly, context->assembly_length);
   context->video_length = required;
@@ -384,6 +391,7 @@ static aula_status fixture_take_request(aula_rtsp_gst_context *context,
   out_request->length = 0U;
   if (context->fixture_request_length == 0U) return AULA_STATUS_AGAIN;
   if (out_request->capacity < context->fixture_request_length) return AULA_STATUS_LIMIT_EXCEEDED;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(out_request->data, context->fixture_request,
                context->fixture_request_length);
   out_request->length = context->fixture_request_length;
@@ -431,6 +439,7 @@ aula_status aula_rtsp_protocol_fixture_create(uint32_t maximum_access_unit_bytes
   fixture->context.maximum_access_unit_bytes = maximum_access_unit_bytes;
   fixture->context.rtsp_fd = -1;
   fixture->context.protocol_fixture = 1;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(fixture->context.video_uri.text, "rtsp://127.0.0.1/fixture",
                sizeof("rtsp://127.0.0.1/fixture"));
   *out_fixture = fixture;

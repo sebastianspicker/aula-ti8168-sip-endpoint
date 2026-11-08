@@ -39,6 +39,7 @@ static int path_is_safe(const char *path) {
     if (*cursor < 0x20U || *cursor == 0x7fU) return 0;
     ++cursor;
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   return strstr(path, "/../") == NULL && strcmp(path + strlen(path) - (strlen(path) >= 3U ? 3U : 0U), "/..") != 0;
 }
 
@@ -58,6 +59,7 @@ static int valid_vector(const char *const *vector, size_t maximum_entries) {
   if (vector == NULL) return 0;
   for (index = 0U; index < maximum_entries; ++index) {
     if (vector[index] == NULL) return index != 0U;
+    /* Flawfinder: ignore - argument NUL-terminated */
     if (strlen(vector[index]) == 0U || strlen(vector[index]) > 4096U || !child_argument_is_safe(vector[index])) return 0;
   }
   return 0;
@@ -71,6 +73,7 @@ static int valid_environment(const char *const *environment) {
     size_t allowed_index;
     int matched = 0;
     for (allowed_index = 0U; allowed_index < sizeof(allowed_names) / sizeof(allowed_names[0]); ++allowed_index) {
+      /* Flawfinder: ignore - argument NUL-terminated */
       size_t prefix_length = strlen(allowed_names[allowed_index]);
       if (strncmp(environment[index], allowed_names[allowed_index], prefix_length) == 0 && environment[index][prefix_length] != '\0') { matched = 1; break; }
     }

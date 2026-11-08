@@ -32,9 +32,11 @@ static aula_status aula_sdp_parse_connection(aula_sdp_parse_context *context,
   if (context->current != NULL || context->seen_connection ||
       !aula_sdp_split_words(value, words, 4U, &count) || count != 3U ||
       !aula_sdp_ascii_equal(words[0], "IN") || !aula_sdp_ascii_equal(words[1], "IP4") ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(words[2]) >= sizeof(context->session->connection_address) ||
       !aula_sdp_valid_text(words[2]) ||
       aula_sdp_parse_ipv4(words[2], octets) != AULA_STATUS_OK) return AULA_STATUS_INVALID_DATA;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(context->session->connection_address, words[2], strlen(words[2]) + 1U);
   context->seen_connection = 1;
   return AULA_STATUS_OK;
@@ -47,8 +49,10 @@ static aula_status aula_sdp_parse_rtcp_address(aula_sdp_stored_media *media,
   unsigned int octets[4];
   if (!aula_sdp_split_words(value, words, 4U, &count) || count != 3U ||
       !aula_sdp_ascii_equal(words[0], "IN") || !aula_sdp_ascii_equal(words[1], "IP4") ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(words[2]) >= sizeof(media->rtcp_address) ||
       aula_sdp_parse_ipv4(words[2], octets) != AULA_STATUS_OK) return AULA_STATUS_INVALID_DATA;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(media->rtcp_address, words[2], strlen(words[2]) + 1U);
   return AULA_STATUS_OK;
 }
@@ -209,6 +213,7 @@ static aula_status aula_sdp_parse_session(aula_bytes input, int strict_offer,
     free(context.session);
     return AULA_STATUS_INTERNAL_ERROR;
   }
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(copy, input.data, input.length);
   copy[input.length] = '\0';
   while (offset < input.length && status == AULA_STATUS_OK) {

@@ -64,6 +64,7 @@ static aula_status append_feedback_line(aula_mutable_bytes *output,
   if (length < 0 || (size_t)length >= sizeof(line)) return AULA_STATUS_INTERNAL_ERROR;
   if (output->length > output->capacity ||
       (size_t)length > output->capacity - output->length) return AULA_STATUS_LIMIT_EXCEEDED;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(output->data + output->length, line, (size_t)length);
   output->length += (size_t)length;
   return AULA_STATUS_OK;

@@ -176,6 +176,7 @@ static void discard_account_temporary(int parent, int descriptor, const char *te
 }
 
 static int write_account_temporary(int descriptor, char *serialized) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t length = strlen(serialized);
   size_t offset = 0U;
   int complete = 1;

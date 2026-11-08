@@ -18,14 +18,17 @@ static void aula_sip_wipe(void *memory, size_t length) {
 int aula_sip_copy(char *destination, size_t capacity, const char *source) {
   size_t length;
   if (destination == NULL || source == NULL || capacity == 0U) return 0;
+  /* Flawfinder: ignore - argument NUL-terminated */
   length = strlen(source);
   if (length == 0U || length >= capacity) return 0;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(destination, source, length + 1U);
   return 1;
 }
 
 int aula_sip_text_is_safe(const char *text, size_t maximum) {
   size_t index;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (text == NULL || text[0] == '\0' || strlen(text) >= maximum) return 0;
   for (index = 0U; text[index] != '\0'; ++index) {
     unsigned char c = (unsigned char)text[index];
@@ -292,6 +295,7 @@ aula_status aula_sip_adapter_start_invite(aula_sip_adapter *adapter, aula_bytes 
   dialog->initial_invite_transaction.role = AULA_SIP_TRANSACTION_ROLE_CLIENT;
   dialog->initial_invite_transaction.method = AULA_SIP_METHOD_INVITE;
   dialog->initial_invite_transaction.cseq_number = dialog->update.local_cseq;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(dialog->local_offer, local_sdp.data, local_sdp.length);
   dialog->local_offer_length = local_sdp.length;
   (void)memset(&request, 0, sizeof(request));

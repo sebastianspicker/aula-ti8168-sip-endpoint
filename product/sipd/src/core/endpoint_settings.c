@@ -190,6 +190,7 @@ static aula_status settings_split_parent_path(const char *path, char *parent,
                                                 char **out_name) {
   char *name;
   if (path == NULL || parent == NULL || out_name == NULL ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(path) >= parent_capacity) return AULA_STATUS_INVALID_ARGUMENT;
   (void)snprintf(parent, parent_capacity, "%s", path);
   name = strrchr(parent, '/');

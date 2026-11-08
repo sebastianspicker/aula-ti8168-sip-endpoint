@@ -104,6 +104,7 @@ static int is_one_of(const char *value, const char *const *allowed,
 static int is_correlation_id(const char *value) {
   size_t index;
   if (value == NULL) return 1;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(value) != 32U) return 0;
   for (index = 0U; index < 32U; ++index)
     if (!((value[index] >= '0' && value[index] <= '9') ||

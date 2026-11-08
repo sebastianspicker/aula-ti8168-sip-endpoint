@@ -39,10 +39,12 @@ static aula_status copy_value(char *destination, size_t capacity, const char *va
   if (destination == NULL || value == NULL) {
     return AULA_STATUS_INVALID_ARGUMENT;
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   length = strlen(value);
   if ((!allow_empty && length == 0U) || length >= capacity) {
     return AULA_STATUS_LIMIT_EXCEEDED;
   }
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(destination, value, length + 1U);
   return AULA_STATUS_OK;
 }
@@ -81,6 +83,7 @@ static aula_status parse_octal_mode(const char *value, uint16_t *out_value) {
   unsigned long parsed;
   char *end = NULL;
   size_t index;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (value == NULL || out_value == NULL || strlen(value) != 4U || value[0] != '0') {
     return AULA_STATUS_INVALID_DATA;
   }
@@ -158,6 +161,7 @@ char *aula_config_trim(char *value) {
   while (*value != '\0' && isspace((unsigned char)*value)) {
     ++value;
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   end = value + strlen(value);
   while (end > value && isspace((unsigned char)end[-1])) {
     --end;

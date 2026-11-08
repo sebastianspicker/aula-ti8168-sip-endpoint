@@ -20,6 +20,7 @@ static int env_value(char *const envp[], const char *name, int required,
   size_t name_length;
   const char *found = NULL;
   if (envp == NULL || name == NULL || out_value == NULL) return 0;
+  /* Flawfinder: ignore - argument NUL-terminated */
   name_length = strlen(name);
   for (index = 0U; envp[index] != NULL; ++index) {
     if (strncmp(envp[index], name, name_length) == 0 &&

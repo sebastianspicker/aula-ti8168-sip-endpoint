@@ -62,6 +62,7 @@ static aula_status aula_rtp_srtp_create(void **out_context, uint32_t ssrc,
   status = aula_rtp_srtp_initialize();
   if (status != AULA_STATUS_OK) return status;
   (void)memset(&policy, 0, sizeof(policy));
+  /* nosemgrep - length bounded */
   (void)memcpy(key, key_salt, sizeof(key));
   srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtp);
   srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtcp);

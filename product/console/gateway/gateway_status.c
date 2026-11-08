@@ -28,6 +28,7 @@ static int status_profile_level_valid(json_t *video) {
   size_t index;
   if (value == NULL) return 0;
   if (strcmp(value, "none") == 0) return 1;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(value) != 6U) return 0;
   for (index = 0U; index < 6U; ++index) {
     if (!isxdigit((unsigned char)value[index])) return 0;

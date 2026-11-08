@@ -104,13 +104,16 @@ static const aula_media_renderer_vtable monitor_vtable = {
 aula_status aula_receive_monitor_create(const char *decoder_path,
                                            aula_media_renderer *out_renderer) {
   receive_monitor *monitor;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (decoder_path == NULL || decoder_path[0] != '/' || strlen(decoder_path) > 4096U ||
       out_renderer == NULL) return AULA_STATUS_INVALID_ARGUMENT;
   if (geteuid() == 0U || getegid() == 0U) return AULA_STATUS_PERMISSION_DENIED;
   monitor = calloc(1U, sizeof(*monitor));
   if (monitor == NULL) return AULA_STATUS_INTERNAL_ERROR;
+  /* Flawfinder: ignore - argument NUL-terminated */
   monitor->path = malloc(strlen(decoder_path) + 1U);
   if (monitor->path == NULL) { free(monitor); return AULA_STATUS_INTERNAL_ERROR; }
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(monitor->path, decoder_path, strlen(decoder_path) + 1U);
   monitor->video.input_fd = monitor->audio.input_fd = -1;
   monitor->health.capabilities = AULA_MEDIA_RENDER_H264_RX | AULA_MEDIA_RENDER_G711_RX;

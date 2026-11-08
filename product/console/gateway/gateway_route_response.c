@@ -199,7 +199,9 @@ static int write_diagnostics_export(aula_gateway_session *session, const aula_ga
   int result = 0;
   if ((plan->flags & R_EXPORT) == 0U) goto cleanup;
   id = request->path + strlen("/zoom/api/v1/diagnostics/export/");
+  /* Flawfinder: ignore - argument NUL-terminated */
   id_length = strlen(id);
+  /* Flawfinder: ignore - argument NUL-terminated */
   expected_length = strlen(session->diagnostics_export_id);
   if (session->diagnostics_export_expires_at < request->now || id_length != expected_length ||
       !gateway_secure_equal(id, session->diagnostics_export_id, expected_length)) {

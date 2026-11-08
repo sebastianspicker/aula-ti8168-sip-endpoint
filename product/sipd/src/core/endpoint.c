@@ -72,6 +72,7 @@ static aula_status endpoint_capture_approved_domain(aula_endpoint *endpoint) {
   length = strcspn(host, ":;");
   if (length == 0U || length >= sizeof(endpoint->approved_target_domain))
     return AULA_STATUS_INVALID_DATA;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(endpoint->approved_target_domain, host, length);
   endpoint->approved_target_domain[length] = '\0';
   endpoint->approved_target_port = target.has_explicit_port

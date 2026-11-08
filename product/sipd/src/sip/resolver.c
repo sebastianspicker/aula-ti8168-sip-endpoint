@@ -41,6 +41,7 @@ aula_status aula_sip_dns_servers_parse(
   cursor = value;
   while (*cursor != '\0') {
     const char *separator = strchr(cursor, ',');
+    /* Flawfinder: ignore - argument NUL-terminated */
     size_t token_length = separator == NULL ? strlen(cursor) :
                                                (size_t)(separator - cursor);
     char token[AULA_SIPD_IPV4_TEXT_BYTES];
@@ -48,6 +49,7 @@ aula_status aula_sip_dns_servers_parse(
       return AULA_STATUS_LIMIT_EXCEEDED;
     if (token_length == 0U || token_length >= sizeof(token))
       return AULA_STATUS_INVALID_DATA;
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(token, cursor, token_length);
     token[token_length] = '\0';
     if (inet_pton(AF_INET, token, out_servers->addresses[out_servers->count]) != 1)
@@ -80,6 +82,7 @@ aula_status aula_sip_resolver_configure(const char *dns_servers) {
     _res.nsaddr_list[index].sin_family = AF_INET;
     _res.nsaddr_list[index].sin_port =
         (in_port_t)htons((uint16_t)53U);
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(&_res.nsaddr_list[index].sin_addr, parsed.addresses[index],
                  sizeof(parsed.addresses[index]));
   }

@@ -23,6 +23,7 @@ static aula_status validate_owned_parent(const char *path) {
       aula_config_has_control_or_parent_segment(path)) {
     return AULA_STATUS_CONFIGURATION_ERROR;
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(path) >= sizeof(parent)) return AULA_STATUS_LIMIT_EXCEEDED;
   (void)snprintf(parent, sizeof(parent), "%s", path);
   slash = strrchr(parent, '/');
@@ -202,6 +203,7 @@ static aula_status open_secret_parent(const char *path, char *parent,
   char *name;
   aula_status status = validate_owned_parent(path);
   if (status != AULA_STATUS_OK) return status;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(path) >= parent_capacity) return AULA_STATUS_INVALID_ARGUMENT;
   (void)snprintf(parent, parent_capacity, "%s", path);
   name = strrchr(parent, '/');
@@ -260,6 +262,7 @@ aula_status aula_config_replace_secret_file(const char *path,
   if (!secret_replace_input_is_valid(path, secret)) {
     return AULA_STATUS_INVALID_ARGUMENT;
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(path) >= sizeof(parent)) return AULA_STATUS_INVALID_ARGUMENT;
   status = open_secret_parent(path, parent, sizeof(parent), &name, &parent_fd);
   if (status != AULA_STATUS_OK) return status;

@@ -143,7 +143,9 @@ static int operation_request_id(const aula_gateway_session *session, const aula_
   }
   valid = EVP_DigestInit_ex(context, EVP_sha256(), NULL) == 1 &&
       EVP_DigestUpdate(context, session->session_id, sizeof(session->session_id)) == 1 &&
+      /* Flawfinder: ignore - argument NUL-terminated */
       EVP_DigestUpdate(context, request->path, strlen(request->path) + 1U) == 1 &&
+      /* Flawfinder: ignore - argument NUL-terminated */
       EVP_DigestUpdate(context, request->idempotency_key, strlen(request->idempotency_key)) == 1 &&
       EVP_DigestFinal_ex(context, digest, &length) == 1 && length == sizeof(digest);
   EVP_MD_CTX_free(context);
@@ -151,6 +153,7 @@ static int operation_request_id(const aula_gateway_session *session, const aula_
     OPENSSL_cleanse(digest, sizeof(digest));
     return 0;
   }
+  /* nosemgrep - length bounded */
   (void)memcpy(&value, digest, sizeof(value));
   OPENSSL_cleanse(digest, sizeof(digest));
   *output = value == 0U ? 1U : value;

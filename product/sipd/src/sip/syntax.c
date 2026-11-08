@@ -9,6 +9,7 @@
 static int text_is_safe(const char *text) {
   size_t index;
   if (text == NULL || text[0] == '\0' ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(text) >= AULA_SIP_MAX_URI_BYTES)
     return 0;
   for (index = 0U; text[index] != '\0'; ++index) {

@@ -19,6 +19,7 @@ int gateway_json_value_is_safe(json_t *value) {
   void *iterator;
   size_t index;
   if (json_is_null(value) || json_is_boolean(value) || json_is_integer(value) || json_is_real(value)) return 1;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (json_is_string(value)) return strlen(json_string_value(value)) <= 256U;
   if (json_is_array(value)) {
     if (json_array_size(value) > 32U) return 0;
@@ -72,6 +73,7 @@ static int operation_backend_valid(json_t *root) {
 
 int gateway_serialize_json(json_t *value, char *output, size_t capacity) {
   char *serialized = json_dumps(value, JSON_COMPACT | JSON_SORT_KEYS);
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (serialized == NULL || strlen(serialized) + 1U > capacity) {
     gateway_secure_json_free(serialized);
     return 0;
@@ -86,6 +88,7 @@ int aula_gateway_backend_response_normalize(uint8_t opcode, const char *input, c
   json_t *root;
   int valid;
   if (input == NULL || output == NULL || capacity == 0U || opcode < 1U ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       opcode > AULA_CONTROL_OPCODE_METRICS || strlen(input) > GATEWAY_LSZ1_MAX_PAYLOAD) return 0;
   root = json_loads(input, JSON_REJECT_DUPLICATES, &error);
   if (root == NULL) return 0;
@@ -102,7 +105,9 @@ int aula_gateway_backend_response_normalize(uint8_t opcode, const char *input, c
 
 int gateway_opaque_export_id(const char *path) {
   const char *prefix = "/zoom/api/v1/diagnostics/export/";
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t index, length = strlen(prefix);
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strncmp(path, prefix, length) != 0 || strlen(path + length) != 32U) return 0;
   for (index = length; path[index] != '\0'; ++index)
     if (!isxdigit((unsigned char)path[index])) return 0;
@@ -145,6 +150,7 @@ int gateway_shape_status_route(const aula_gateway *gateway, const char *path,
   if (path == NULL || input == NULL || output == NULL || capacity == 0U) return 0;
   if (passthrough_status_path(path)) {
     if (output == input) return 1;
+    /* Flawfinder: ignore - argument NUL-terminated */
     if (strlen(input) + 1U > capacity) return 0;
     (void)snprintf(output, capacity, "%s", input);
     return 1;

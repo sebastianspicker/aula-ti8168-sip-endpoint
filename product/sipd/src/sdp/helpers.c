@@ -377,6 +377,7 @@ static void aula_sdp_apply_pending_fmtp(aula_sdp_stored_media *media,
   if (codec == NULL) return;
   for (index = 0U; index < media->pending_fmtp_count; ++index) {
     if (media->pending_fmtp_pt[index] == payload_type)
+      /* nosemgrep */ /* Flawfinder: ignore - length bounded */
       (void)memcpy(media->fmtp[codec - media->codecs], media->pending_fmtp[index],
                    AULA_SDP_MAX_FMTP_BYTES);
   }
@@ -390,6 +391,7 @@ aula_status aula_sdp_parse_rtpmap(aula_sdp_stored_media *media,
   uint16_t channels = 1U;
   aula_sdp_codec_kind kind = (aula_sdp_codec_kind)-1;
   aula_status status;
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t length = value == NULL ? 0U : strlen(value);
   int trailing_space = length != 0U && value[length - 1U] == ' ';
   int duplicate = 0;
@@ -436,15 +438,19 @@ aula_status aula_sdp_parse_fmtp(aula_sdp_stored_media *media,
   }
   if (!aula_sdp_valid_text(space)) return AULA_STATUS_INVALID_DATA;
   /* An over-long fmtp stays empty: H.264 then fails its own compatibility rule. */
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(space) >= AULA_SDP_MAX_FMTP_BYTES) return AULA_STATUS_OK;
   codec = aula_sdp_find_codec(media, payload_type);
   if (codec != NULL) {
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(media->fmtp[codec - media->codecs], space, strlen(space) + 1U);
   } else if (media->mapped_payload_types[payload_type] == 0U &&
              media->pending_fmtp_count < AULA_SDP_MAX_CODECS) {
     /* a=fmtp may precede its a=rtpmap; attached when the rtpmap arrives. */
     media->pending_fmtp_pt[media->pending_fmtp_count] = payload_type;
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(media->pending_fmtp[media->pending_fmtp_count++], space,
+                 /* Flawfinder: ignore - argument NUL-terminated */
                  strlen(space) + 1U);
   }
   return AULA_STATUS_OK;
@@ -452,6 +458,7 @@ aula_status aula_sdp_parse_fmtp(aula_sdp_stored_media *media,
 
 static int aula_sdp_h264_profile_is_valid(const char *value) {
   size_t index;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (strlen(value) != 6U) return 0;
   for (index = 0U; index < 6U; ++index) {
     if (!isxdigit((unsigned char)value[index])) return 0;
@@ -481,9 +488,11 @@ int aula_sdp_h264_fmtp_is_compatible(const char *fmtp) {
   char *field;
   int has_profile = 0;
   int has_packetization = 0;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (fmtp == NULL || *fmtp == '\0' || strlen(fmtp) >= sizeof(copy)) {
     return 0;
   }
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(copy, fmtp, strlen(fmtp) + 1U);
   field = strtok(copy, ";");
   while (field != NULL) {

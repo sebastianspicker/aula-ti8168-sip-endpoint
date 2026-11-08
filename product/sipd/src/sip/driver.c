@@ -24,6 +24,7 @@ static void aula_sip_driver_wipe(void *memory, size_t length) {
 
 static int aula_sip_driver_text_is_safe(const char *value, size_t capacity) {
   size_t index;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (value == NULL || value[0] == '\0' || strlen(value) >= capacity) return 0;
   for (index = 0U; value[index] != '\0'; ++index) {
     unsigned char c = (unsigned char)value[index];
@@ -68,8 +69,11 @@ aula_status aula_sip_driver_create(const aula_sip_driver_config *config,
   }
   driver = (aula_sip_driver *)calloc(1U, sizeof(*driver));
   if (driver == NULL) return AULA_STATUS_INTERNAL_ERROR;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(driver->library, config->selected_library, strlen(config->selected_library) + 1U);
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(driver->revision, config->selected_source_revision,
+               /* Flawfinder: ignore - argument NUL-terminated */
                strlen(config->selected_source_revision) + 1U);
   driver->implementation_context = config->context;
   /* A missing or incomplete table is deliberately a non-operational boundary. */

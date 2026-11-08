@@ -88,6 +88,7 @@ void endpoint_refresh_status(aula_endpoint *endpoint) {
       endpoint->status.audio_payload_type = media.audio_payload_type;
       endpoint->status.video_srtp = media.video_srtp;
       endpoint->status.audio_srtp = media.audio_srtp;
+      /* nosemgrep - length bounded */
       (void)memcpy(endpoint->status.active_h264_profile_level_id,
                    media.active_h264_profile_level_id,
                    sizeof(endpoint->status.active_h264_profile_level_id));

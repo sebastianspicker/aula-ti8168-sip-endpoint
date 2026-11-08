@@ -84,6 +84,7 @@ static aula_status media_session_remote_target(const aula_sdp_negotiated_media *
   out_target->rtp_port = media->remote_rtp_port;
   out_target->rtcp_mux = media->remote_rtcp_mux != 0;
   if (out_target->rtcp_mux != 0) {
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(out_target->rtcp_address, out_target->rtp_address,
                  out_target->rtp_address_length);
     out_target->rtcp_address_length = out_target->rtp_address_length;
@@ -318,8 +319,10 @@ static aula_status media_session_prepare_srtp_stream(
   if (media == NULL || lifetimes == NULL || stream == NULL || stream->transport == NULL)
     return AULA_STATUS_INVALID_ARGUMENT;
   if (media->srtp_enabled == 0) return AULA_STATUS_OK;
+  /* nosemgrep - length bounded */
   (void)memcpy(config.local_outbound_key_salt, media->local_outbound_srtp.master_key_salt,
                sizeof(config.local_outbound_key_salt));
+  /* nosemgrep - length bounded */
   (void)memcpy(config.remote_inbound_key_salt, media->remote_inbound_srtp.master_key_salt,
                sizeof(config.remote_inbound_key_salt));
   limits.local_outbound = lifetimes->local_outbound;

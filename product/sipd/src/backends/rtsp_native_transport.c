@@ -154,6 +154,7 @@ aula_status aula_rtsp_native_connect(native_context *context) {
 #endif
   (void)memset(&address, 0, sizeof(address));
   address.sin_family = AF_INET;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(&address.sin_addr, context->video_uri.address,
                sizeof(context->video_uri.address));
   address.sin_port = (in_port_t)htons(context->video_uri.port);

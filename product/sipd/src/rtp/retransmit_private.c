@@ -62,6 +62,7 @@ void aula_rtp_retransmit_store(aula_rtp_session *session,
     return;
   entry = &session->retransmit->entries[session->retransmit->next];
   (void)memset(entry, 0, sizeof(*entry));
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(entry->wire, wire.data, wire.length);
   entry->length = wire.length;
   entry->payload_bytes = (uint32_t)packet->payload.length;

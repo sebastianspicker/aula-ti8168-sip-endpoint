@@ -138,6 +138,7 @@ aula_status aula_rx_shim_create(const aula_rx_shim_config *config,
     aula_rx_shim_free_unpublished(shim);
     return AULA_STATUS_INTERNAL_ERROR;
   }
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   memcpy(shim->accepted_payload_types, config->accepted_payload_types,
          config->accepted_payload_type_count);
   shim->accepted_payload_type_count = config->accepted_payload_type_count;

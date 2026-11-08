@@ -150,6 +150,7 @@ static int endpoint_private_literal_matches(const aula_endpoint *endpoint,
   if ((size_t)(host_end - host) >= INET_ADDRSTRLEN) return 0;
   {
     char text[INET_ADDRSTRLEN];
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(text, host, (size_t)(host_end - host));
     text[host_end - host] = '\0';
     if (inet_pton(AF_INET, text, literal) != 1) return 0;

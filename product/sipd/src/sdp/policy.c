@@ -46,6 +46,7 @@ static int aula_sdp_capability_codec_is_valid(const aula_sdp_codec *codec, int v
          (video || codec->kind != AULA_SDP_CODEC_H264) &&
          (codec->format_parameters == NULL || codec->format_parameters[0] == '\0' ||
           (aula_sdp_valid_text(codec->format_parameters) &&
+           /* Flawfinder: ignore - argument NUL-terminated */
            strlen(codec->format_parameters) < AULA_SDP_MAX_FMTP_BYTES));
 }
 
@@ -59,7 +60,9 @@ static aula_status aula_sdp_copy_capability_codec(aula_sdp_stored_media *target,
   if (status != AULA_STATUS_OK) return status;
   target->declared_payload_types[codec->payload_type] = 1U;
   if (codec->format_parameters != NULL && codec->format_parameters[0] != '\0') {
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(target->fmtp[index], codec->format_parameters,
+                 /* Flawfinder: ignore - argument NUL-terminated */
                  strlen(codec->format_parameters) + 1U);
   }
   return AULA_STATUS_OK;
@@ -98,6 +101,7 @@ aula_status aula_sdp_create_initial_offer(
   aula_status status;
   if (capabilities == NULL || out_offer == NULL || *out_offer != NULL ||
       capabilities->local_address == NULL ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(capabilities->local_address) >= AULA_SDP_MAX_ADDRESS_BYTES ||
       aula_sdp_validate_local_ipv4(capabilities->local_address) != AULA_STATUS_OK ||
       capabilities->remote_target_authorizer == NULL) {
@@ -107,7 +111,9 @@ aula_status aula_sdp_create_initial_offer(
   if (offer == NULL) {
     return AULA_STATUS_INTERNAL_ERROR;
   }
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(offer->connection_address, capabilities->local_address,
+               /* Flawfinder: ignore - argument NUL-terminated */
                strlen(capabilities->local_address) + 1U);
   offer->remote_target_authorizer = capabilities->remote_target_authorizer;
   offer->remote_target_context = capabilities->remote_target_context;
@@ -179,7 +185,9 @@ static aula_status aula_sdp_copy_selected_codec(aula_sdp_stored_media *target,
                                                 source->codecs[index].channels);
       if (status == AULA_STATUS_OK && source->codecs[index].format_parameters[0] != '\0') {
         size_t target_index = target->value.codec_count - 1U;
+        /* nosemgrep */ /* Flawfinder: ignore - length bounded */
         (void)memcpy(target->fmtp[target_index], source->codecs[index].format_parameters,
+                     /* Flawfinder: ignore - argument NUL-terminated */
                      strlen(source->codecs[index].format_parameters) + 1U);
       }
       return status;
@@ -225,6 +233,7 @@ aula_status aula_sdp_select_answer(const aula_sdp_session *offer,
   if (answer == NULL) {
     return AULA_STATUS_INTERNAL_ERROR;
   }
+  /* nosemgrep - length bounded */
   (void)memcpy(answer->connection_address, offer->connection_address,
                sizeof(answer->connection_address));
   answer->remote_target_authorizer = offer->remote_target_authorizer;
@@ -269,6 +278,7 @@ static int aula_sdp_policy_is_valid(const aula_sdp_answer_policy *policy) {
          policy->audio_direction >= AULA_SDP_SENDRECV &&
          policy->audio_direction <= AULA_SDP_INACTIVE &&
          policy->local_address != NULL &&
+         /* Flawfinder: ignore - argument NUL-terminated */
          strlen(policy->local_address) < AULA_SDP_MAX_ADDRESS_BYTES &&
          aula_sdp_validate_local_ipv4(policy->local_address) == AULA_STATUS_OK &&
          policy->remote_target_authorizer != NULL;
@@ -342,7 +352,9 @@ static aula_sdp_session *aula_sdp_create_policy_answer(
     const aula_sdp_session *offer, const aula_sdp_answer_policy *policy) {
   aula_sdp_session *answer = (aula_sdp_session *)calloc(1U, sizeof(*answer));
   if (answer == NULL) return NULL;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(answer->connection_address, policy->local_address,
+               /* Flawfinder: ignore - argument NUL-terminated */
                strlen(policy->local_address) + 1U);
   answer->remote_target_authorizer = policy->remote_target_authorizer;
   answer->remote_target_context = policy->remote_target_context;

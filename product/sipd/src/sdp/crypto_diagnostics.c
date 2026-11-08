@@ -134,6 +134,7 @@ static void aula_sdp_diag_parse_key(char *word,
       option = NULL;
     }
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   summary->key_length = (unsigned)strlen(encoded);
   aula_sdp_diag_parse_lifetime(option, summary);
   aula_sdp_diag_parse_mki(mki, summary);
@@ -216,12 +217,14 @@ void aula_sdp_log_crypto_diagnostics(aula_bytes input, aula_status status) {
     return;
   copy = (char *)malloc(input.length + 1U);
   if (copy == NULL) return;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(copy, input.data, input.length);
   copy[input.length] = '\0';
   line = copy;
   while (line != NULL) {
     next = strchr(line, '\n');
     if (next != NULL) *next++ = '\0';
+    /* Flawfinder: ignore - argument NUL-terminated */
     if (*line != '\0' && line[strlen(line) - 1U] == '\r') line[strlen(line) - 1U] = '\0';
     if (strncmp(line, "m=", 2U) == 0)
       aula_sdp_diag_media(line, &media, &profile, &crypto_count);

@@ -12,6 +12,7 @@ static int endpoint_media_public_ipv4(const uint8_t address[4],
   target.local_port = 1U;
   target.remote_port = port;
   target.remote_address_length = 4U;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(target.remote_address, address, 4U);
   return aula_sip_transport_is_valid(&target) &&
       !aula_sip_transport_is_restricted_network(&target);

@@ -8,6 +8,7 @@ typedef struct media_control_reader {
 } media_control_reader;
 
 static int control_take(media_control_reader *reader, const char *text) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t length = strlen(text);
   if (length > reader->input.length - reader->offset ||
       memcmp(reader->input.data + reader->offset, text, length) != 0) return 0;

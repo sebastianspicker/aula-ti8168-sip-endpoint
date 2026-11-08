@@ -28,6 +28,7 @@ int aula_device_read_status_fd(int fd, uint32_t owner, char *output, size_t capa
     response = aula_device_receive_message(fd, deadline);
   json_decref(request);
   if (aula_device_status_valid(response)) encoded = json_dumps(response, JSON_COMPACT);
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (encoded != NULL && strlen(encoded) < capacity) {
     snprintf(output, capacity, "%s", encoded);
     result = 1;

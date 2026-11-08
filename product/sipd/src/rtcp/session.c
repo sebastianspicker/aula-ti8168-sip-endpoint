@@ -152,6 +152,7 @@ aula_status aula_rtcp_append_sdes_cname(uint32_t ssrc, const char *cname,
   if (cname == NULL || !aula_rtcp_output_is_valid(compound)) {
     return AULA_STATUS_INVALID_ARGUMENT;
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   cname_length = strlen(cname);
   if (cname_length == 0U || cname_length > 255U) {
     return AULA_STATUS_INVALID_ARGUMENT;
@@ -173,6 +174,7 @@ aula_status aula_rtcp_append_sdes_cname(uint32_t ssrc, const char *cname,
   aula_rtcp_write_u32(compound->data + start + 4U, ssrc);
   compound->data[start + 8U] = 1U;
   compound->data[start + 9U] = (uint8_t)cname_length;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(compound->data + start + 10U, cname, cname_length);
   compound->data[start + 10U + cname_length] = 0U;
   if (packet_length > raw_length) {

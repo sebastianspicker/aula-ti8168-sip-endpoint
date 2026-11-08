@@ -8,6 +8,7 @@
 static int crc_address_parse(const char *address, uint8_t out_address[4]) {
   aula_sip_transport_info peer;
   if (address == NULL || address[0] == '\0' || out_address == NULL ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(address) >= 16U)
     return 0;
   (void)memset(&peer, 0, sizeof(peer));
@@ -18,6 +19,7 @@ static int crc_address_parse(const char *address, uint8_t out_address[4]) {
   if (inet_pton(AF_INET, address, peer.remote_address) != 1 ||
       aula_sip_transport_is_restricted_network(&peer))
     return 0;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(out_address, peer.remote_address, 4U);
   return 1;
 }
@@ -54,6 +56,7 @@ aula_status aula_sip_crc_route_resolve_initial(
   out_result->peer.local_port = 5060U;
   out_result->peer.remote_port = 5061U;
   out_result->peer.remote_address_length = 4U;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(out_result->peer.remote_address, route->address, 4U);
   return AULA_STATUS_OK;
 }

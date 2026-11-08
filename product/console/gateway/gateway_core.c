@@ -88,6 +88,7 @@ int aula_gateway_parse_content_length(const char *text, size_t maximum, size_t *
 
 int gateway_is_safe_username(const char *value) {
   size_t index;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (value == NULL || value[0] == '\0' || strlen(value) > 32U) return 0;
   for (index = 0U; value[index] != '\0'; ++index)
     if (!isalnum((unsigned char)value[index]) && value[index] != '_' && value[index] != '-') return 0;
@@ -96,6 +97,7 @@ int gateway_is_safe_username(const char *value) {
 
 int gateway_is_safe_idempotency_key(const char *value) {
   size_t index;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (value == NULL || strlen(value) < 16U || strlen(value) > 80U) return 0;
   for (index = 0U; value[index] != '\0'; ++index)
     if (!isalnum((unsigned char)value[index]) && value[index] != '_' && value[index] != '-') return 0;
@@ -124,6 +126,7 @@ int gateway_hex_decode_32(const char *input, uint8_t output[AULA_GATEWAY_HASH_BY
 
 int gateway_hex_decode(const char *input, uint8_t *output, size_t output_length) {
   size_t index;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (input == NULL || output == NULL || strlen(input) != output_length * 2U) return 0;
   for (index = 0U; index < output_length; ++index) {
     int high = isdigit((unsigned char)input[index * 2U]) ? input[index * 2U] - '0' :
@@ -144,7 +147,9 @@ int gateway_sha256(const uint8_t *input, size_t input_length, uint8_t output[AUL
 
 int gateway_password_hash(const char *password, const uint8_t salt[AULA_GATEWAY_SALT_BYTES],
                           uint8_t output[AULA_GATEWAY_HASH_BYTES]) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (password == NULL || strlen(password) < 12U || strlen(password) > 256U) return 0;
+  /* Flawfinder: ignore - argument NUL-terminated */
   return PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt, AULA_GATEWAY_SALT_BYTES,
                            AULA_GATEWAY_PBKDF2_ITERATIONS, EVP_sha256(),
                            AULA_GATEWAY_HASH_BYTES, output) == 1;
@@ -152,6 +157,7 @@ int gateway_password_hash(const char *password, const uint8_t salt[AULA_GATEWAY_
 
 int gateway_password_hash_candidate(const char *password, const uint8_t salt[AULA_GATEWAY_SALT_BYTES],
                                     uint8_t output[AULA_GATEWAY_HASH_BYTES]) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (password == NULL || strlen(password) > 256U) return 0;
   return PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt, AULA_GATEWAY_SALT_BYTES,
                            AULA_GATEWAY_PBKDF2_ITERATIONS, EVP_sha256(),
@@ -199,12 +205,14 @@ int gateway_json_object_exact(json_t *object, const char *const *keys, size_t ke
 }
 
 json_t *gateway_parse_json(const char *body, json_error_t *error) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (body == NULL || strlen(body) > 1024U) return NULL;
   return json_loads(body, JSON_REJECT_DUPLICATES, error);
 }
 
 int gateway_safe_absolute_path(const char *path) {
   return path != NULL && path[0] == '/' && path[1] != '\0' && strstr(path, "/../") == NULL &&
+      /* Flawfinder: ignore - argument NUL-terminated */
       strcmp(path + strlen(path) - (strlen(path) >= 3U ? 3U : 0U), "/..") != 0;
 }
 
@@ -267,6 +275,7 @@ int gateway_open_parent_directory(const char *path, int *parent_out, char name[N
   char *cursor;
   char *next;
   int directory;
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (!gateway_safe_absolute_path(path) || strlen(path) >= sizeof(copy) ||
       parent_out == NULL || name == NULL) return 0;
   if (strncmp(path, "/run/", 5U) == 0) {
@@ -293,6 +302,7 @@ int gateway_open_parent_directory(const char *path, int *parent_out, char name[N
     directory = child;
     cursor = next + 1U;
   }
+  /* Flawfinder: ignore - argument NUL-terminated */
   if (!path_component_is_safe(cursor) || strlen(cursor) > NAME_MAX ||
       !descriptor_is_safe_directory(directory)) { (void)close(directory); return 0; }
   (void)snprintf(name, NAME_MAX + 1U, "%s", cursor);

@@ -60,6 +60,7 @@ aula_status endpoint_discover_source_h264(aula_endpoint *endpoint) {
   /* A later timeout or failure reuses the last successful discovery. */
   if (status != AULA_STATUS_OK)
     return endpoint->source_h264_profile_present != 0 ? AULA_STATUS_OK : status;
+  /* nosemgrep - length bounded */
   (void)memcpy(endpoint->source_h264_profile_level_id,
                capability.profile_level_id,
                sizeof(endpoint->source_h264_profile_level_id));

@@ -38,6 +38,7 @@ aula_status aula_preview_render_request(
 
 static int line_prefix_is(const uint8_t *line, size_t length,
                           const char *prefix) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t prefix_length = strlen(prefix);
   return length >= prefix_length && memcmp(line, prefix, prefix_length) == 0;
 }

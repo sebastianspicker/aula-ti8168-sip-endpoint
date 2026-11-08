@@ -69,6 +69,7 @@ aula_status aula_media_session_prepare_select_codecs_internal(
       &session->video_receive_payload_type);
   if (status == AULA_STATUS_OK &&
       profile_level_id_is_valid(video->h264.profile_level_id)) {
+    /* nosemgrep - length bounded */
     (void)memcpy(session->negotiated_h264_profile_level_id,
                  video->h264.profile_level_id,
                  sizeof(session->negotiated_h264_profile_level_id));

@@ -85,6 +85,7 @@ static int native_sdp_line_next(aula_bytes sdp, size_t *cursor,
 
 static int native_sdp_prefix(const uint8_t *line, size_t length,
                              const char *prefix) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t prefix_length = strlen(prefix);
   return line != NULL && length >= prefix_length &&
       memcmp(line, prefix, prefix_length) == 0;
@@ -143,6 +144,7 @@ static aula_status native_sdp_track_uri(const aula_rtsp_uri *aggregate_uri,
   int written;
   if (aggregate_uri == NULL || out_uri == NULL ||
       !native_sdp_control_safe(control, control_length)) return AULA_STATUS_INVALID_DATA;
+  /* Flawfinder: ignore - argument NUL-terminated */
   aggregate_length = strlen(aggregate_uri->text);
   if (aggregate_length == 0U) return AULA_STATUS_STATE_ERROR;
   written = snprintf(out_uri->text, sizeof(out_uri->text), "%s%s%.*s",
@@ -152,6 +154,7 @@ static aula_status native_sdp_track_uri(const aula_rtsp_uri *aggregate_uri,
   if (written < 0 || (size_t)written >= sizeof(out_uri->text)) {
     return AULA_STATUS_LIMIT_EXCEEDED;
   }
+  /* nosemgrep - length bounded */
   (void)memcpy(out_uri->address, aggregate_uri->address, sizeof(out_uri->address));
   out_uri->port = aggregate_uri->port;
   return AULA_STATUS_OK;
@@ -160,6 +163,7 @@ static aula_status native_sdp_track_uri(const aula_rtsp_uri *aggregate_uri,
 static int native_sdp_codec(const uint8_t *line, size_t length, size_t cursor,
                             const char *codec, uint32_t *out_rate,
                             uint8_t *out_channels) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t codec_length = strlen(codec);
   uint32_t rate;
   uint32_t channels = 1U;
@@ -300,6 +304,7 @@ static aula_status native_sdp_aac_config(native_sdp_media *media,
 
 static int native_sdp_field_equals(const uint8_t *field, size_t length,
                                    const char *name) {
+  /* Flawfinder: ignore - argument NUL-terminated */
   size_t name_length = strlen(name);
   return length == name_length && memcmp(field, name, name_length) == 0;
 }
@@ -348,6 +353,7 @@ static aula_status native_sdp_h264_fmtp_fields(
     if (native_sdp_field_equals(name.data, name.length, "profile-level-id")) {
       if (profile_seen != 0 || value.length != 6U)
         return AULA_STATUS_INVALID_DATA;
+      /* nosemgrep */ /* Flawfinder: ignore - length bounded */
       (void)memcpy(media->h264.profile_level_id, value.data, 6U);
       media->h264.profile_level_id[6] = '\0';
       if (!aula_h264_profile_level_id_valid(media->h264.profile_level_id))

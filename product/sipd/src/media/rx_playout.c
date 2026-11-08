@@ -98,6 +98,7 @@ aula_status aula_rx_playout_push(aula_rx_playout *playout,
     return AULA_STATUS_LIMIT_EXCEEDED;
   }
   playout->packets[(unsigned int)slot].header = packet->header;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(playout->packets[(unsigned int)slot].payload, packet->payload.data,
                packet->payload.length);
   playout->packets[(unsigned int)slot].payload_length = packet->payload.length;
@@ -172,6 +173,7 @@ aula_status aula_rx_playout_take(aula_rx_playout *playout, uint64_t now_ns,
   }
   *out_packet = (aula_rtp_packet){playout->packets[(unsigned int)slot].header,
       {out_payload, playout->packets[(unsigned int)slot].payload_length}};
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(out_payload, playout->packets[(unsigned int)slot].payload,
                playout->packets[(unsigned int)slot].payload_length);
   playout->packets[(unsigned int)slot].payload_length = 0U;

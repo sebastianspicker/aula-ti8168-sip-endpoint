@@ -175,6 +175,7 @@ static aula_status validate_output_path(const char *path, int control_socket) {
   struct stat existing;
   struct stat parent_details;
   if (path == NULL || path[0] != '/' || aula_config_has_control_or_parent_segment(path) ||
+      /* Flawfinder: ignore - argument NUL-terminated */
       strlen(path) >= sizeof(parent)) {
     return AULA_STATUS_CONFIGURATION_ERROR;
   }

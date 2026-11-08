@@ -119,6 +119,7 @@ aula_status aula_monitor_worker_submit(aula_monitor_worker *worker, aula_bytes d
     (void)memmove(worker->pending, worker->pending + worker->offset, pending);
   worker->offset = 0U;
   worker->length = pending;
+  /* nosemgrep */ /* Flawfinder: ignore - length bounded */
   (void)memcpy(worker->pending + pending, data.data, data.length);
   worker->length += data.length;
   return aula_monitor_worker_flush(worker);

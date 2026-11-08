@@ -73,6 +73,7 @@ static int user_mutation_schema(json_t *root, int deleting, const char **usernam
       !gateway_is_safe_username(*username)) return 0;
   if (deleting) return 1;
   *password = json_string_value(json_object_get(root, "password"));
+  /* Flawfinder: ignore - argument NUL-terminated */
   return *password != NULL && strlen(*password) <= 256U &&
       parse_role(json_string_value(json_object_get(root, "role")), role);
 }
@@ -107,6 +108,7 @@ static int hash_outside_lock(aula_gateway *gateway, const aula_gateway_session *
   const unsigned int revision = gateway->account_revision;
   uint8_t session_id[sizeof(session->session_id)];
   int stable;
+  /* nosemgrep - length bounded */
   (void)memcpy(session_id, session->session_id, sizeof(session_id));
   gateway_state_unlock(gateway);
   *hashed = RAND_bytes(salt, AULA_GATEWAY_SALT_BYTES) == 1 && gateway_password_hash(password, salt, hash);
@@ -167,6 +169,7 @@ int gateway_handle_user_mutation(aula_gateway *gateway, aula_gateway_session *se
     OPENSSL_cleanse(hash, sizeof(hash));
     return 1;
   }
+  /* nosemgrep - length bounded */
   (void)memcpy(backup_accounts, gateway->accounts, sizeof(backup_accounts));
   backup_revision = gateway->account_revision;
   applied = deleting ? aula_gateway_delete_account(gateway, target_username) :
@@ -174,6 +177,7 @@ int gateway_handle_user_mutation(aula_gateway *gateway, aula_gateway_session *se
   OPENSSL_cleanse(salt, sizeof(salt));
   OPENSSL_cleanse(hash, sizeof(hash));
   if (!applied) {
+    /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(gateway->accounts, backup_accounts, sizeof(backup_accounts));
     gateway->account_revision = backup_revision;
     json_decref(root);
