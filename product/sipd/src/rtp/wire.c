@@ -28,7 +28,6 @@ static void aula_rtp_wire_write_u32(uint8_t *data, uint32_t value) {
 aula_status aula_rtp_wire_parse(aula_bytes input, aula_rtp_packet *out_packet) {
   const uint8_t *data;
   size_t header_bytes;
-  size_t extension_bytes;
   size_t payload_bytes;
   uint8_t csrc_count;
   uint8_t padding_bytes = 0U;
@@ -45,7 +44,7 @@ aula_status aula_rtp_wire_parse(aula_bytes input, aula_rtp_packet *out_packet) {
   if (header_bytes > input.length) return AULA_STATUS_INVALID_DATA;
   if ((data[0] & 0x10U) != 0U) {
     if (header_bytes > input.length - 4U) return AULA_STATUS_INVALID_DATA;
-    extension_bytes = 4U + ((size_t)aula_rtp_wire_read_u16(data + header_bytes + 2U) * 4U);
+    size_t extension_bytes = 4U + ((size_t)aula_rtp_wire_read_u16(data + header_bytes + 2U) * 4U);
     if (extension_bytes > input.length - header_bytes) return AULA_STATUS_INVALID_DATA;
     header_bytes += extension_bytes;
   }

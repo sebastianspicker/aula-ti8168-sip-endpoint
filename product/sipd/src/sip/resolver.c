@@ -65,7 +65,6 @@ aula_status aula_sip_dns_servers_parse(
 aula_status aula_sip_resolver_configure(const char *dns_servers) {
   aula_sip_dns_servers parsed;
   aula_status status;
-  size_t index;
   if (dns_servers == NULL) return AULA_STATUS_OK;
   status = aula_sip_dns_servers_parse(dns_servers, &parsed);
   if (status != AULA_STATUS_OK) return status;
@@ -78,7 +77,7 @@ aula_status aula_sip_resolver_configure(const char *dns_servers) {
   res_close();
   (void)memset(_res.nsaddr_list, 0, sizeof(_res.nsaddr_list));
   _res.nscount = (int)parsed.count;
-  for (index = 0U; index < parsed.count; ++index) {
+  for (size_t index = 0U; index < parsed.count; ++index) {
     _res.nsaddr_list[index].sin_family = AF_INET;
     _res.nsaddr_list[index].sin_port =
         (in_port_t)htons((uint16_t)53U);
@@ -89,7 +88,6 @@ aula_status aula_sip_resolver_configure(const char *dns_servers) {
   _res.options |= RES_INIT;
   return AULA_STATUS_OK;
 #else
-  (void)index;
   return AULA_STATUS_UNSUPPORTED;
 #endif
 }

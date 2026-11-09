@@ -83,10 +83,8 @@ static aula_status native_keepalive_response(
 
 static aula_status native_handshake_response(
     native_context *c, const aula_rtsp_message *m) {
-  char headers[256];
   uint32_t session_timeout = 0U;
   uint64_t now_ns = 0U;
-  int written;
   if (m->cseq != (uint32_t)(c->cseq - 1U) || m->status_code < 200U ||
       m->status_code > 299U) return AULA_STATUS_INVALID_DATA;
   if (m->session_id[0] != '\0' &&
@@ -99,7 +97,8 @@ static aula_status native_handshake_response(
   if (c->state == NATIVE_DESCRIBE) return native_describe(c, m->body);
   if (c->state == NATIVE_SETUP_VIDEO) return native_setup_video(c, m);
   if (c->state == NATIVE_SETUP_AUDIO) {
-    written = snprintf(headers, sizeof(headers), "Session: %s\r\n", c->session);
+    char headers[256];
+    int written = snprintf(headers, sizeof(headers), "Session: %s\r\n", c->session);
     return written < 0 || (size_t)written >= sizeof(headers) ?
         AULA_STATUS_LIMIT_EXCEEDED : aula_rtsp_native_send(c, "PLAY",
             c->aggregate_uri.text, headers, NATIVE_PLAY);
@@ -328,11 +327,11 @@ static aula_status native_start(aula_media_backend *backend) {
 
 static aula_status native_read_video(aula_media_backend *backend, aula_deadline deadline,
                                       aula_media_frame *out) {
-  native_context *c = backend == NULL ? NULL : backend->context; aula_status status;
+  native_context *c = backend == NULL ? NULL : backend->context;
   (void)deadline;
   if (c == NULL || out == NULL || c->started == 0) return AULA_STATUS_STATE_ERROR;
   if (c->video_ready == 0) {
-    status = native_pump(c);
+    aula_status status = native_pump(c);
     if (status != AULA_STATUS_OK) return status;
     if (c->video_ready == 0) return AULA_STATUS_AGAIN;
   }

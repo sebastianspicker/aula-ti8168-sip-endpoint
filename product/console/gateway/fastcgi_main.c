@@ -111,11 +111,10 @@ cleanup:
 static void *worker_main(void *context) {
   aula_fastcgi_server *server = (aula_fastcgi_server *)context;
   FCGX_Request request;
-  int accept_result;
   if (FCGX_InitRequest(&request, server->listener, 0) != 0) return context;
   for (;;) {
     errno = 0;
-    accept_result = FCGX_Accept_r(&request);
+    int accept_result = FCGX_Accept_r(&request);
     if (accept_result == 0) {
       handle_fastcgi_request(&request, server);
       FCGX_Finish_r(&request);

@@ -5,22 +5,22 @@ rendering, registration, credentials, or hardware media. See LSZ1_INVENTORY.md.
 """
 from __future__ import annotations
 
-from collections import OrderedDict
-from dataclasses import dataclass, field
-from enum import IntEnum
-import hashlib
 import errno
+import hashlib
 import json
 import math
 import os
-from pathlib import Path
 import re
 import secrets
 import selectors
 import socket
 import struct
 import time
-from typing import Callable
+from collections import OrderedDict
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from enum import IntEnum
+from pathlib import Path
 
 from .persistence import JsonStateStore, PersistenceError, PersistenceLoadError
 

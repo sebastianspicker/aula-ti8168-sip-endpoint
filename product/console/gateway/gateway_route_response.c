@@ -99,7 +99,8 @@ int gateway_backend_control_reply(aula_gateway_control_fn control, void *context
                                        plan->payload, backend, 1024U);
 }
 
-static int settings_revision_conflict(const char *backend) {
+/* True when the backend answered exactly {"ok":false,"error":{"code":<expected>}}. */
+static int backend_error_code_is(const char *backend, const char *expected) {
   static const char *const keys[] = {"error", "ok"};
   static const char *const error_keys[] = {"code"};
   json_error_t error;
@@ -112,26 +113,7 @@ static int settings_revision_conflict(const char *backend) {
   code = detail == NULL ? NULL : json_string_value(json_object_get(detail, "code"));
   valid = gateway_json_object_exact(root, keys, 2U) && json_is_false(json_object_get(root, "ok")) &&
       gateway_json_object_exact(detail, error_keys, 1U) && code != NULL &&
-      strcmp(code, "REVISION_CONFLICT") == 0;
-  json_decref(root);
-  return valid;
-}
-
-static int backend_persistence_uncertain(const char *backend) {
-  static const char *const keys[] = {"error", "ok"};
-  static const char *const error_keys[] = {"code"};
-  json_error_t error;
-  json_t *root;
-  json_t *detail;
-  const char *code;
-  int valid;
-  root = json_loads(backend, JSON_REJECT_DUPLICATES, &error);
-  if (root == NULL) return 0;
-  detail = json_object_get(root, "error");
-  code = detail == NULL ? NULL : json_string_value(json_object_get(detail, "code"));
-  valid = gateway_json_object_exact(root, keys, 2U) && json_is_false(json_object_get(root, "ok")) &&
-      gateway_json_object_exact(detail, error_keys, 1U) && code != NULL &&
-      strcmp(code, "PERSISTENCE_UNCERTAIN") == 0;
+      strcmp(code, expected) == 0;
   json_decref(root);
   return valid;
 }
@@ -145,14 +127,13 @@ static int backend_event_response(aula_gateway *gateway, const route_plan *plan,
 }
 
 /* The daemon already accepted the call, so a failed recents write never replaces that result. */
-static int backend_recent_call(aula_gateway *gateway, const aula_gateway_request *request) {
+static void backend_recent_call(aula_gateway *gateway, const aula_gateway_request *request) {
   int store_result;
-  if (strcmp(request->path, "/zoom/api/v1/calls") != 0 || strcmp(request->method, "POST") != 0) return 1;
+  if (strcmp(request->path, "/zoom/api/v1/calls") != 0 || strcmp(request->method, "POST") != 0) return;
   store_result = gateway_record_recent(gateway, request->body);
   if (store_result != 1)
     gateway_log_notice_locked(gateway, request->now, store_result == 2 ?
         "recent call saved but restart durability was not confirmed" : "recent call state was not saved");
-  return 1;
 }
 
 static int backend_status_shape(const aula_gateway *gateway, const route_plan *plan,
@@ -226,15 +207,15 @@ cleanup:
 static void finish_backend_error(aula_gateway *gateway, const aula_gateway_session *identity,
                                  const aula_gateway_request *request, const route_plan *plan,
                                  const char *backend, aula_gateway_response *response) {
-  if (plan->opcode == AULA_CONTROL_OPCODE_REPLACE_CREDENTIAL && backend_persistence_uncertain(backend)) {
+  if (plan->opcode == AULA_CONTROL_OPCODE_REPLACE_CREDENTIAL && backend_error_code_is(backend, "PERSISTENCE_UNCERTAIN")) {
     gateway_write_error(response, 503U, "PERSISTENCE_UNCERTAIN",
                         "credential changed but restart durability was not confirmed");
     gateway_save_mutation(gateway, identity, request, plan, response);
-  } else if (plan->opcode == AULA_CONTROL_OPCODE_SETTINGS && backend_persistence_uncertain(backend)) {
+  } else if (plan->opcode == AULA_CONTROL_OPCODE_SETTINGS && backend_error_code_is(backend, "PERSISTENCE_UNCERTAIN")) {
     gateway_write_error(response, 503U, "PERSISTENCE_UNCERTAIN",
                         "settings changed but restart durability was not confirmed");
     gateway_save_mutation(gateway, identity, request, plan, response);
-  } else if (plan->opcode == AULA_CONTROL_OPCODE_SETTINGS && settings_revision_conflict(backend)) {
+  } else if (plan->opcode == AULA_CONTROL_OPCODE_SETTINGS && backend_error_code_is(backend, "REVISION_CONFLICT")) {
     gateway_write_error(response, 409U, "REVISION_CONFLICT", "settings revision is stale");
   } else {
     gateway_write_error(response, 502U, "BACKEND_PROTOCOL", "control daemon rejected the request");
@@ -257,17 +238,16 @@ int gateway_finish_backend_response(aula_gateway *gateway, const aula_gateway_se
     gateway_write_error(response, 502U, "BACKEND_PROTOCOL", "control daemon returned invalid JSON");
   } else if (backend_event_response(gateway, plan, normalized, response)) {
     /* handled */
-  } else if (!backend_recent_call(gateway, request)) {
-    /* handled */
-  } else if (!backend_status_shape(gateway, plan, request, normalized)) {
-    gateway_write_error(response, 502U, "BACKEND_PROTOCOL", "control daemon status could not be shaped");
-  } else if (!bind_diagnostics_export(live_session, request, normalized)) {
-    gateway_write_error(response, 500U, "INTERNAL", "diagnostics export could not be encoded");
-  } else if (write_diagnostics_export(live_session, request, plan, normalized, response)) {
-    /* handled */
   } else {
-    gateway_write_success(response, 200U, normalized);
-    gateway_save_mutation(gateway, identity, request, plan, response);
+    backend_recent_call(gateway, request);
+    if (!backend_status_shape(gateway, plan, request, normalized)) {
+      gateway_write_error(response, 502U, "BACKEND_PROTOCOL", "control daemon status could not be shaped");
+    } else if (!bind_diagnostics_export(live_session, request, normalized)) {
+      gateway_write_error(response, 500U, "INTERNAL", "diagnostics export could not be encoded");
+    } else if (!write_diagnostics_export(live_session, request, plan, normalized, response)) {
+      gateway_write_success(response, 200U, normalized);
+      gateway_save_mutation(gateway, identity, request, plan, response);
+    }
   }
   OPENSSL_cleanse(normalized, sizeof(normalized));
   return 1;

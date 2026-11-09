@@ -157,9 +157,12 @@ int gateway_password_hash(const char *password, const uint8_t salt[AULA_GATEWAY_
 
 int gateway_password_hash_candidate(const char *password, const uint8_t salt[AULA_GATEWAY_SALT_BYTES],
                                     uint8_t output[AULA_GATEWAY_HASH_BYTES]) {
+  size_t length;
+  if (password == NULL) return 0;
   /* Flawfinder: ignore - argument NUL-terminated */
-  if (password == NULL || strlen(password) > 256U) return 0;
-  return PKCS5_PBKDF2_HMAC(password, (int)strlen(password), salt, AULA_GATEWAY_SALT_BYTES,
+  length = strlen(password);
+  if (length > 256U) return 0;
+  return PKCS5_PBKDF2_HMAC(password, (int)length, salt, AULA_GATEWAY_SALT_BYTES,
                            AULA_GATEWAY_PBKDF2_ITERATIONS, EVP_sha256(),
                            AULA_GATEWAY_HASH_BYTES, output) == 1;
 }
@@ -187,15 +190,13 @@ void gateway_write_success(aula_gateway_response *response, unsigned int status,
 }
 
 int gateway_json_object_exact(json_t *object, const char *const *keys, size_t key_count) {
-  const char *key;
-  json_t *value;
   void *iterator;
   size_t index;
   if (!json_is_object(object) || json_object_size(object) != key_count) return 0;
   iterator = json_object_iter(object);
   while (iterator != NULL) {
-    key = json_object_iter_key(iterator);
-    value = json_object_iter_value(iterator);
+    const char *key = json_object_iter_key(iterator);
+    json_t *value = json_object_iter_value(iterator);
     (void)value;
     for (index = 0U; index < key_count && strcmp(key, keys[index]) != 0; ++index) {}
     if (index == key_count) return 0;

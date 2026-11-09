@@ -218,14 +218,13 @@ static int device_origin(const aula_gateway_request *request, char origin[80], i
 
 int gateway_request_origin_is_allowed(const aula_gateway *gateway, const aula_gateway_request *request) {
   char expected[80];
-  char localhost[32];
   int loopback = 0;
-  int localhost_length;
   if (gateway->config.allowed_origin != NULL && strcmp(gateway->config.allowed_origin, "device") == 0) {
     if (!device_origin(request, expected, &loopback)) return 0;
     if (request->origin != NULL) {
       if (strcmp(request->origin, expected) == 0) return 1;
-      localhost_length = snprintf(localhost, sizeof(localhost), "https://localhost:%s", request->server_port);
+      char localhost[32];
+      int localhost_length = snprintf(localhost, sizeof(localhost), "https://localhost:%s", request->server_port);
       return loopback && localhost_length > 0 && (size_t)localhost_length < sizeof(localhost) &&
           strcmp(request->origin, localhost) == 0;
     }

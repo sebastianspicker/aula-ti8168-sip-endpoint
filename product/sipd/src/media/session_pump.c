@@ -173,11 +173,12 @@ static aula_status media_session_packetize_video_frame(aula_media_session *sessi
     media_session_record_access_unit_drop(session);
     return status;
   }
-  status = aula_h264_annexb_iterator_init(&iterator, frame->data,
-      session->config.backend_config->maximum_access_unit_bytes);
   saved_sequence = session->h264_packetizer.sequence_number;
   session->h264_packetizer.timestamp = media_session_video_timestamp(frame->pts_ns);
-  while ((status = aula_h264_annexb_iterator_next(&iterator, &nal)) == AULA_STATUS_OK) {
+  status = aula_h264_annexb_iterator_init(&iterator, frame->data,
+      session->config.backend_config->maximum_access_unit_bytes);
+  while (status == AULA_STATUS_OK &&
+         (status = aula_h264_annexb_iterator_next(&iterator, &nal)) == AULA_STATUS_OK) {
     status = media_session_packetize_h264_nal(session, &nal, &iterator, batch);
     if (status != AULA_STATUS_OK) break;
   }

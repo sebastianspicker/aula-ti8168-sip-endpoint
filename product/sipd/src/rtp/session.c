@@ -488,7 +488,6 @@ aula_status aula_rtp_session_send_rtcp(aula_rtp_session *session, aula_bytes pac
   int socket_fd;
   uint8_t wire[AULA_SIPD_MAX_RTCP_PACKET_BYTES + AULA_RTP_SRTP_RTCP_OVERHEAD_BYTES];
   aula_mutable_bytes protected_output = {wire, sizeof(wire), 0U};
-  aula_status status;
   if (session == NULL || !session->remote_target_set || packet.data == NULL || packet.length == 0U ||
       packet.length > AULA_SIPD_MAX_RTCP_PACKET_BYTES) return AULA_STATUS_INVALID_ARGUMENT;
   socket_fd = session->ports.rtcp_mux ? session->rtp_socket : session->rtcp_socket;
@@ -497,7 +496,7 @@ aula_status aula_rtp_session_send_rtcp(aula_rtp_session *session, aula_bytes pac
     /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     (void)memcpy(protected_output.data, packet.data, packet.length);
     protected_output.length = packet.length;
-    status = aula_rtp_srtp_protect_rtcp(session, &protected_output);
+    aula_status status = aula_rtp_srtp_protect_rtcp(session, &protected_output);
     if (status != AULA_STATUS_OK) return status;
     return aula_rtp_send_to_address(socket_fd, session->remote_target.rtcp_address,
                                      session->remote_target.rtcp_address_length,

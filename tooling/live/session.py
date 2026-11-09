@@ -14,7 +14,6 @@ from typing import Any
 
 import receipts
 
-
 SCHEMA = "aula-ti8168-sip-endpoint-live-session-v1"
 TARGET_INTERFACE = "en5"
 TARGET_ROLE = "owned-physical-aula-private-lab"

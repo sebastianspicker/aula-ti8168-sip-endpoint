@@ -16,8 +16,9 @@ import socket
 import struct
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Self
 
 SIP_PORT = 15060
 MEDIA_PORT_MIN, MEDIA_PORT_MAX = 15200, 15298
@@ -131,7 +132,7 @@ class SipRtpPeer:
                 descriptor.close()
         raise OSError("no configured RTP fixture port is available")
 
-    def __enter__(self) -> SipRtpPeer:
+    def __enter__(self) -> Self:
         self._thread.start(); return self
 
     def __exit__(self, *_: object) -> None:
@@ -363,7 +364,7 @@ class SipRtpPeer:
             if message.startswith(b"SIP/2.0 "):
                 self._handle_peer_bye_response(message, address)
                 return
-            request = self._request(message); method, _, from_value, to_value, call_id, cseq, body = request
+            request = self._request(message); method, _, _from_value, _to_value, _call_id, _cseq, _body = request
             if method == "INVITE":
                 self._accept_invite(request, address)
                 return

@@ -346,7 +346,7 @@ aula_status endpoint_settings_persist(const aula_endpoint *endpoint,
 aula_status endpoint_settings_load(aula_endpoint *endpoint) {
   uint8_t state[AULA_SETTINGS_STATE_BYTES];
   aula_mutable_bytes input = {state, sizeof(state), 0U};
-  aula_control_settings_request decoded;
+  aula_control_settings_request decoded = {0};
   const char *path;
   aula_status status;
   if (endpoint == NULL || endpoint->view == NULL) return AULA_STATUS_INVALID_ARGUMENT;

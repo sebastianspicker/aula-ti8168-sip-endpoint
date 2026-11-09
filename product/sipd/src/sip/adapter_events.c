@@ -330,7 +330,6 @@ static aula_status apply_transport_fallback(aula_sip_dialog *dialog,
 
 static aula_status apply_dialog_updates(aula_sip_dialog *dialog,
                                          const aula_sip_event *event) {
-  aula_status status;
   if (dialog == NULL) return AULA_STATUS_OK;
   if (event->kind == AULA_SIP_EVENT_TRANSPORT_FALLBACK)
     return apply_transport_fallback(dialog, event);
@@ -339,7 +338,7 @@ static aula_status apply_dialog_updates(aula_sip_dialog *dialog,
         !aula_sip_transport_matches(&dialog->update.peer,
                                      &event->dialog_update->peer))
       return AULA_STATUS_SECURITY_ERROR;
-    status = copy_update(dialog, event->dialog_update);
+    aula_status status = copy_update(dialog, event->dialog_update);
     if (status != AULA_STATUS_OK) return status;
   }
   if (aula_sip_transport_is_valid(&event->transport)) {

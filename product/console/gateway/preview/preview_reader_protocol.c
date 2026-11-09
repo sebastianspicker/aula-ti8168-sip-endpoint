@@ -198,7 +198,6 @@ static aula_status select_video_track(aula_preview_reader *reader,
 aula_status aula_preview_consume_response(
     aula_preview_reader *reader, const aula_rtsp_message *message,
     aula_mutable_bytes *out_request) {
-  aula_status status;
   if (message->cseq + 1U != reader->next_cseq || message->status_code < 200U ||
       message->status_code > 299U) {
     return AULA_STATUS_INVALID_DATA;
@@ -210,7 +209,7 @@ aula_status aula_preview_consume_response(
         out_request);
   }
   if (reader->state == AULA_PREVIEW_READER_DESCRIBE) {
-    status = select_video_track(reader, message->body);
+    aula_status status = select_video_track(reader, message->body);
     if (status != AULA_STATUS_OK) return status;
     return aula_preview_render_request(
         reader, "SETUP", reader->setup_uri,

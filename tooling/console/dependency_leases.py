@@ -1,11 +1,11 @@
 """Kernel-owned dependency leases survive wrappers and supervised children."""
-from contextlib import contextmanager
 import fcntl
 import json
 import os
-from pathlib import Path
 import stat
 import uuid
+from contextlib import contextmanager
+from pathlib import Path
 
 
 class BusyError(RuntimeError):

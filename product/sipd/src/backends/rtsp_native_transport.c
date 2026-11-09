@@ -99,7 +99,6 @@ static aula_status native_open_udp_pair(int *out_rtp_fd, int *out_rtcp_fd,
   unsigned int attempt;
   int rtp_fd = -1;
   int rtcp_fd = -1;
-  uint16_t port;
   if (out_rtp_fd == NULL || out_rtcp_fd == NULL || out_rtp_port == NULL) {
     return AULA_STATUS_INVALID_ARGUMENT;
   }
@@ -115,7 +114,7 @@ static aula_status native_open_udp_pair(int *out_rtp_fd, int *out_rtcp_fd,
       (void)close(rtp_fd);
       return AULA_STATUS_IO_ERROR;
     }
-    port = (uint16_t)ntohs(address.sin_port);
+    uint16_t port = (uint16_t)ntohs(address.sin_port);
     if (native_open_udp_socket((uint16_t)(port + 1U), 0, &rtcp_fd) ==
         AULA_STATUS_OK) {
       *out_rtp_fd = rtp_fd;

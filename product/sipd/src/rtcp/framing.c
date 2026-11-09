@@ -127,7 +127,6 @@ aula_status aula_rtcp_frame_next(aula_bytes input, size_t *offset,
                                    aula_rtcp_frame *out_frame) {
   const uint8_t *data;
   size_t remaining;
-  uint8_t padding_length;
   if (offset == NULL || out_frame == NULL || *offset > input.length) {
     return AULA_STATUS_INVALID_ARGUMENT;
   }
@@ -140,7 +139,7 @@ aula_status aula_rtcp_frame_next(aula_bytes input, size_t *offset,
       out_frame->packet_length > remaining) return AULA_STATUS_INVALID_DATA;
   out_frame->has_padding = ((data[0] >> 5) & 1U) != 0U;
   if (out_frame->has_padding) {
-    padding_length = data[out_frame->packet_length - 1U];
+    uint8_t padding_length = data[out_frame->packet_length - 1U];
     if (padding_length == 0U ||
         (size_t)padding_length > out_frame->packet_length - AULA_RTCP_HEADER_BYTES) {
       return AULA_STATUS_INVALID_DATA;

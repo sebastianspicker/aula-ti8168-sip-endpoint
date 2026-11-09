@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import socket
 import subprocess
+from pathlib import Path
 
 from probe_support import qtest_command
-
 
 EXPECTED_BASE_REGISTERS = (
     ("readl 0x48200000", "OK 0x0000000000000000", "INTC revision"),

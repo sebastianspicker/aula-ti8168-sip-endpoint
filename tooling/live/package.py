@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import stat
 import subprocess
@@ -14,7 +13,6 @@ import receipts
 from payload_receipt import read_manifest_digest
 from source_provenance import SourceProvenanceError
 from source_provenance import source_digest as maintained_source_digest
-
 
 ROOT = Path(__file__).resolve().parents[2]
 RECEIPT = ROOT / ".work/build/live/receipt.json"
@@ -99,30 +97,6 @@ def _read_receipt() -> dict[str, Any]:
     if not isinstance(value, dict):
         raise SystemExit("live-package: build receipt schema is inexact")
     return value
-
-
-def _write_package_receipt(path: Path, value: dict[str, str]) -> None:
-    descriptor = os.open(
-        path,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
-        0o600,
-    )
-    try:
-        rendered = (json.dumps(value, sort_keys=True) + "\n").encode("utf-8")
-        view = memoryview(rendered)
-        while view:
-            written = os.write(descriptor, view)
-            if written <= 0:
-                raise SystemExit("live-package: package receipt write did not complete")
-            view = view[written:]
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0))
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
 
 
 def _verified_ui_artifact(spec: Any) -> Path:
@@ -240,7 +214,13 @@ def main() -> int:
     _verify_packaged_artifacts(receipt)
     expected = _verify_payload()
     metadata = OUTPUT.parent / "package.json"
-    _write_package_receipt(metadata, {"schema": "aula-ti8168-sip-endpoint-live-package-v1", "manifest_sha256": expected})
+    receipts.write_new_receipt(
+        metadata,
+        {"schema": "aula-ti8168-sip-endpoint-live-package-v1", "manifest_sha256": expected},
+        indent=None,
+        error=SystemExit,
+        context="live-package: package receipt",
+    )
     print(OUTPUT)
     return 0
 

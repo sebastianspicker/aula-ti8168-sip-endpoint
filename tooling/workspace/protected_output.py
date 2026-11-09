@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Canonicalize reviewed inputs and keep generated output below ``.work``."""
-from pathlib import Path
 import sys
+from pathlib import Path
 
 
 def _inside(path: Path, parent: Path) -> bool:

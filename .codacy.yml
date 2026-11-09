@@ -4,3 +4,5 @@ exclude_paths:
   - "**/tests/**"
   # Loopback SIP test fixture for the QEMU rescue guest, not shipped.
   - "lab/qemu/guest/legacy_sip_smoke.c"
+  # Generated pnpm lockfile; Lizard counts it as one over-long file.
+  - "product/console/web/pnpm-lock.yaml"

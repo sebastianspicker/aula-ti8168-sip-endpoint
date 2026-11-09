@@ -14,8 +14,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from campaign_types import CampaignError, ROOT, SECRET_PATTERN
+import receipts
+from campaign_types import ROOT, SECRET_PATTERN, CampaignError
 from session import LiveSession
+
 
 def _secure_directory(path: Path, *, create: bool = False, label: str) -> Path:
     """Create or validate a single private directory without following a link."""
@@ -92,14 +94,6 @@ def _new_path(directory: Path, stem: str, suffix: str) -> tuple[Path, int]:
     raise CampaignError("cannot allocate a create-new result path")
 
 
-def _fsync_directory(directory: Path) -> None:
-    descriptor = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0))
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
 def _write_json_new(directory: Path, stem: str, value: dict[str, Any]) -> Path:
     path, descriptor = _new_path(directory, stem, ".json")
     try:
@@ -113,16 +107,11 @@ def _write_json_new(directory: Path, stem: str, value: dict[str, Any]) -> Path:
         ):
             raise CampaignError("result publication path is not create-new")
         rendered = (json.dumps(value, sort_keys=True, indent=2) + "\n").encode("utf-8")
-        view = memoryview(rendered)
-        while view:
-            written = os.write(descriptor, view)
-            if written <= 0:
-                raise CampaignError("create-new result write did not complete")
-            view = view[written:]
+        receipts.write_all(descriptor, rendered, error=CampaignError, context="create-new result")
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-    _fsync_directory(directory)
+    receipts.fsync_directory(directory)
     return path
 
 

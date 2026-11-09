@@ -3,11 +3,11 @@
 import hashlib
 import json
 import os
-from pathlib import Path
 import signal
 import stat
 import subprocess
 import sys
+from pathlib import Path
 
 from dependency_leases import BusyError, Leases
 
@@ -111,9 +111,10 @@ class Dependencies:
             return False
 
     def check_link(self):
-        if self.link.exists() or self.link.is_symlink():
-            if not self.link.is_symlink() or os.readlink(self.link) != self.target:
-                raise RuntimeError(f"refusing unexpected dependency path: {self.link}")
+        if (self.link.exists() or self.link.is_symlink()) and (
+            not self.link.is_symlink() or os.readlink(self.link) != self.target
+        ):
+            raise RuntimeError(f"refusing unexpected dependency path: {self.link}")
 
     def remove_link(self):
         self.check_link()

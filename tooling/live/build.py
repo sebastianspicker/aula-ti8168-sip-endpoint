@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import os
 import shutil
 import stat
@@ -18,11 +17,10 @@ import receipts
 from source_provenance import SourceProvenanceError
 from source_provenance import source_digest as maintained_source_digest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 WORK = ROOT / ".work"
 sys.path.insert(0, str(ROOT / "tooling/workspace"))
-from protected_output import input_path, output_path  # noqa: E402
+from protected_output import input_path, output_path
 
 ENV_PATH_KEYS = {
     "pjsip_include": "AULA_SIPD_PJSIP_INCLUDE_DIR",
@@ -105,30 +103,6 @@ def _validate_private_manifest_parent(path: Path) -> None:
             raise BuildError("build-input manifest private parent must be operator-owned 0700")
 
 
-def _write_receipt(path: Path, value: dict[str, Any]) -> None:
-    descriptor = os.open(
-        path,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
-        0o600,
-    )
-    try:
-        rendered = (json.dumps(value, sort_keys=True, indent=2) + "\n").encode("utf-8")
-        view = memoryview(rendered)
-        while view:
-            written = os.write(descriptor, view)
-            if written <= 0:
-                raise BuildError("build receipt write did not complete")
-            view = view[written:]
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0))
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
-
-
 def _validate_work_output_parent(path: Path, *, private: bool = False) -> None:
     try:
         info = path.lstat()
@@ -145,17 +119,7 @@ def _validate_work_output_parent(path: Path, *, private: bool = False) -> None:
 
 
 def tree_receipt(path: Path) -> dict[str, Any]:
-    files: dict[str, str] = {}
-    for entry in sorted(path.rglob("*")):
-        mode = entry.lstat().st_mode
-        if stat.S_ISDIR(mode):
-            continue
-        if not stat.S_ISREG(mode) or entry.is_symlink():
-            raise BuildError("UI output contains a symlink or special file")
-        files[entry.relative_to(path).as_posix()] = digest(entry)
-    if not files:
-        raise BuildError("UI build produced no files")
-    return {"path": str(path.resolve()), "files": files}
+    return {"path": str(path.resolve()), "files": _tree_digests(path, "UI build output")}
 
 
 def exact_file(value: Any, label: str) -> Path:
@@ -187,16 +151,7 @@ def verify_tree(path: Path, manifest_spec: Any, label: str) -> None:
         if not _is_sha256(expected):
             raise BuildError(f"{label} manifest contains an invalid digest")
         rows[relative] = expected
-    actual: dict[str, str] = {}
-    for entry in sorted(path.rglob("*")):
-        mode = entry.lstat().st_mode
-        if stat.S_ISDIR(mode):
-            continue
-        if not stat.S_ISREG(mode) or entry.is_symlink():
-            raise BuildError(f"{label} contains a symlink or special file")
-        relative = entry.relative_to(path).as_posix()
-        actual[relative] = digest(entry)
-    if actual != rows:
+    if _tree_digests(path, label) != rows:
         raise BuildError(f"{label} tree does not exactly match its reviewed manifest")
 
 
@@ -440,7 +395,7 @@ def main() -> int:
         "source_sha256": initial_source,
     }
     receipt_path = build / "receipt.json"
-    _write_receipt(receipt_path, receipt)
+    receipts.write_new_receipt(receipt_path, receipt, indent=2, error=BuildError, context="build receipt")
     print(receipt_path)
     return 0
 

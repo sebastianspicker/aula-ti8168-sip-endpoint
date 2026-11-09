@@ -179,14 +179,13 @@ static int deadline_remaining_milliseconds(uint64_t deadline, int *remaining) {
 static int wait_for_control_socket(int descriptor, short events, uint64_t deadline, short *revents) {
   struct pollfd waiting;
   int remaining;
-  int result;
   if (revents == NULL) return 0;
   waiting.fd = descriptor;
   waiting.events = events;
   waiting.revents = 0;
   for (;;) {
     if (!deadline_remaining_milliseconds(deadline, &remaining)) return 0;
-    result = poll(&waiting, 1U, remaining);
+    int result = poll(&waiting, 1U, remaining);
     if (result > 0) {
       *revents = waiting.revents;
       return (waiting.revents & POLLNVAL) == 0;
@@ -336,11 +335,11 @@ static int receive_control_reply(int descriptor,
                                  uint8_t reply[AULA_CONTROL_HEADER_BYTES + GATEWAY_LSZ1_MAX_PAYLOAD],
                                  uint8_t opcode, uint32_t request_id, int packet_socket, uint64_t deadline) {
   uint32_t payload_length;
-  ssize_t received;
   struct iovec iov;
   struct msghdr message;
   short revents;
   if (packet_socket) {
+    ssize_t received;
     if (!wait_for_control_socket(descriptor, POLLIN, deadline, &revents)) return 0;
     (void)memset(&message, 0, sizeof(message));
     iov.iov_base = reply;

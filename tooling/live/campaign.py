@@ -11,26 +11,37 @@ import resource
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
-from session import ALLOWED_ACTIONS, LiveSession, SessionError, load_session
-
-
-
-from campaign_types import (
-    LIVE_TARGET, MUTATING_ACTIONS, PAYLOAD, CampaignError, PeerCompletionError, require_private_identity_provider as _require_private_identity_provider,
-)
-from campaign_evidence import (
-    PhaseEvidence, _private_root,
-    _publish, _reconcile_journal, _record_journal, _session_lock,
-)
-import campaign_transport as _transport
-import campaign_calls as _calls
 import campaign_actions as _actions
-from campaign_transfer import (
-    _payload_kib, _tar_transfer, _verified_payload_digest,
+import campaign_calls as _calls
+import campaign_transport as _transport
+from campaign_evidence import (
+    PhaseEvidence,
+    _private_root,
+    _publish,
+    _reconcile_journal,
+    _record_journal,
+    _session_lock,
 )
+from campaign_transfer import (
+    _payload_kib,
+    _tar_transfer,
+    _verified_payload_digest,
+)
+from campaign_types import (
+    LIVE_TARGET,
+    MUTATING_ACTIONS,
+    PAYLOAD,
+    CampaignError,
+    PeerCompletionError,
+)
+from campaign_types import (
+    require_private_identity_provider as _require_private_identity_provider,
+)
+from session import ALLOWED_ACTIONS, LiveSession, SessionError, load_session
 
 _run = _transport._run
 _ssh_options = _transport._ssh_options

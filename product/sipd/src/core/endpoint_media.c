@@ -437,14 +437,14 @@ static aula_status endpoint_answer_reinvite_offer(
   aula_sdp_answer_policy policy;
   aula_sdp_srtp_policy video_srtp;
   aula_sdp_srtp_policy audio_srtp;
-  const aula_sdp_media *video_offer;
-  const aula_sdp_media *audio_offer;
-  int use_srtp;
   aula_status status;
   (void)memset(&video_srtp, 0, sizeof(video_srtp));
   (void)memset(&audio_srtp, 0, sizeof(audio_srtp));
   status = aula_sdp_parse_offer(reinvite->offer_sdp, out_offer);
   if (status == AULA_STATUS_OK) {
+    const aula_sdp_media *video_offer;
+    const aula_sdp_media *audio_offer;
+    int use_srtp;
     endpoint_build_reinvite_policy(endpoint, *out_offer, &policy);
     video_offer = aula_sdp_get_video(*out_offer);
     audio_offer = aula_sdp_get_audio(*out_offer);

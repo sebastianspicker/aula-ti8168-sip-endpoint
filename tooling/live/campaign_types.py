@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[2]
 LIVE_TARGET = ROOT / "deployment/targets/ti8168"
 PAYLOAD = ROOT / ".work/dist/aula-ti8168-sip-endpoint-live/runtime"

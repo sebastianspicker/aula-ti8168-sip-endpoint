@@ -9,7 +9,6 @@ import pathlib
 import re
 import subprocess
 
-
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SNAPSHOT = ROOT / "dependencies/advisories/pjproject-advisory-snapshot.json"
 ADAPTER = ROOT / "product/sipd/src/sip/pjsip.c"

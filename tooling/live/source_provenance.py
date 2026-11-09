@@ -7,7 +7,6 @@ import hashlib
 import stat
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SKIP_PARTS = frozenset({
     ".work", "BUILD", "__pycache__", "node_modules", ".pytest_cache",

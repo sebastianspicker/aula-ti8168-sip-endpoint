@@ -16,13 +16,12 @@ static const aula_sdp_codec BASELINE_VIDEO_CODECS[] = {
 const aula_sdp_codec *endpoint_video_codecs(
     const aula_endpoint *endpoint, aula_sdp_codec *dynamic_codec,
     char *dynamic_fmtp, size_t dynamic_fmtp_capacity, size_t *out_count) {
-  int written;
   if (out_count == NULL || dynamic_codec == NULL || dynamic_fmtp == NULL)
     return NULL;
   if (endpoint != NULL && endpoint->backend_config.name != NULL &&
       strcmp(endpoint->backend_config.name, "rtsp_native") == 0) {
     if (endpoint->source_h264_profile_present == 0) return NULL;
-    written = snprintf(dynamic_fmtp, dynamic_fmtp_capacity,
+    int written = snprintf(dynamic_fmtp, dynamic_fmtp_capacity,
                        "packetization-mode=1;profile-level-id=%s",
                        endpoint->source_h264_profile_level_id);
     if (written < 0 || (size_t)written >= dynamic_fmtp_capacity) return NULL;

@@ -52,7 +52,7 @@ def reconstruct_verified_sysroot(cache: Path, output: Path, keyring: Path, gpgv:
         (metadata / name).write_bytes(raw)
     result = subprocess.run([str(gpgv), "--status-fd", "1", "--keyring", str(keyring),
                              str(metadata / "Release.gpg"), str(metadata / "Release")],
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
+                            capture_output=True, timeout=30, check=False)
     (metadata / "signature-status.log").write_bytes(result.stdout + result.stderr)
     fingerprints = re.findall(rb"^\[GNUPG:\] VALIDSIG ([0-9A-F]+) ", result.stdout, re.MULTILINE)
     if result.returncode or not ({item.decode("ascii") for item in fingerprints} & SIGNERS):
@@ -126,7 +126,7 @@ def build(args: argparse.Namespace, output: Path) -> dict:
     gpgv = executable(args.gpgv)
     verified = subprocess.run([str(gpgv), "--status-fd", "1", "--keyring", str(keyring),
                                str(metadata / "Release.gpg"), str(metadata / "Release")],
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
+                              capture_output=True, timeout=30, check=False)
     (metadata / "signature-status.log").write_bytes(verified.stdout + verified.stderr)
     fingerprints = re.findall(rb"^\[GNUPG:\] VALIDSIG ([0-9A-F]+) ", verified.stdout, re.MULTILINE)
     accepted = sorted({item.decode("ascii") for item in fingerprints} & SIGNERS)

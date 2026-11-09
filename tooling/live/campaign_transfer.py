@@ -11,11 +11,13 @@ import subprocess
 import tarfile
 from pathlib import Path
 
-from campaign_evidence import _fsync_directory, _new_path, _private_root
+import receipts
+from campaign_evidence import _new_path, _private_root
 from campaign_transport import _run, _ssh_options
-from campaign_types import CampaignError, LIVE_TARGET, PAYLOAD, ROOT, SAFE_ENV
-from session import LiveSession
+from campaign_types import LIVE_TARGET, PAYLOAD, ROOT, SAFE_ENV, CampaignError
 from gates import GateError, package_digest
+from session import LiveSession
+
 
 def _transfer_member_name(path: Path) -> str:
     try:
@@ -142,7 +144,7 @@ def _write_transfer_archive(descriptor: int, collector: _TransferCollector) -> b
                 digest = hashlib.sha256()
 
                 class _DigestReader:
-                    def read(self, count: int = -1, *, _descriptor: int = source_descriptor, _digest: "hashlib._Hash" = digest) -> bytes:
+                    def read(self, count: int = -1, *, _descriptor: int = source_descriptor, _digest: hashlib._Hash = digest) -> bytes:
                         block = os.read(_descriptor, count if count >= 0 else 1024 * 1024)
                         _digest.update(block)
                         return block
@@ -168,7 +170,7 @@ def _snapshot_transfer_archive(session: LiveSession, paths: list[Path]) -> tuple
         collector.collect(paths)
         manifest = _write_transfer_archive(descriptor, collector)
         os.fsync(descriptor)
-        _fsync_directory(archive.parent)
+        receipts.fsync_directory(archive.parent)
         return archive, manifest
     except BaseException:
         with contextlib.suppress(OSError):

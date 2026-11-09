@@ -5,17 +5,18 @@ from __future__ import annotations
 import contextlib
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, ContextManager
+from typing import Any
 
 from campaign_evidence import PhaseEvidence
-from campaign_types import CampaignError, LIVE_TARGET, PAYLOAD, ROOT
+from campaign_types import LIVE_TARGET, PAYLOAD, ROOT, CampaignError
 from session import LiveSession
 
 
 def preflight(
     session: LiveSession, evidence: PhaseEvidence, *, run: Callable[..., Any],
-    local_topology: Callable[..., None], ssh_master: Callable[..., ContextManager[Any]],
+    local_topology: Callable[..., None], ssh_master: Callable[..., contextlib.AbstractContextManager[Any]],
     verify_identity: Callable[..., None], remote_baseline: Callable[..., dict[str, str]],
     payload_kib: Callable[[], int], ssh: Callable[..., bytes],
 ) -> None:
@@ -41,7 +42,7 @@ def preflight(
 def install(
     session: LiveSession, evidence: PhaseEvidence, *, verified_payload_digest: Callable[[], str],
     certificate: Callable[[LiveSession], tuple[Path, Path]], local_topology: Callable[..., None],
-    ssh_master: Callable[..., ContextManager[Any]], verify_identity: Callable[..., None],
+    ssh_master: Callable[..., contextlib.AbstractContextManager[Any]], verify_identity: Callable[..., None],
     tar_transfer: Callable[..., None], ssh: Callable[..., bytes],
 ) -> None:
     digest = verified_payload_digest()
@@ -73,7 +74,7 @@ def install(
 
 def remove(
     session: LiveSession, evidence: PhaseEvidence, *, local_topology: Callable[..., None],
-    ssh_master: Callable[..., ContextManager[Any]], verify_identity: Callable[..., None],
+    ssh_master: Callable[..., contextlib.AbstractContextManager[Any]], verify_identity: Callable[..., None],
     remote_baseline: Callable[..., dict[str, str]], ssh: Callable[..., bytes],
     private_root: Callable[[LiveSession], Path],
 ) -> None:

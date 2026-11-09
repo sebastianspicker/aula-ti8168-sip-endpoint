@@ -6,11 +6,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import struct
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 from probe_support import qtest_command, qtest_pair, recv_line, send_json
 

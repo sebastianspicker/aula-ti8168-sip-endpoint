@@ -129,9 +129,9 @@ aula_status aula_sdp_parse_ipv4(const char *text,
 }
 
 static int aula_sdp_ipv4_is_unusable_local(const unsigned int octets[4]) {
+  /* >= 224 covers multicast, reserved and the 255.255.255.255 broadcast. */
   return octets[0] == 0U || octets[0] >= 224U ||
-         (octets[0] == 169U && octets[1] == 254U) ||
-         (octets[0] == 255U && octets[1] == 255U && octets[2] == 255U && octets[3] == 255U);
+         (octets[0] == 169U && octets[1] == 254U);
 }
 
 static int aula_sdp_ipv4_is_local_scope(const unsigned int octets[4]) {
@@ -159,13 +159,12 @@ aula_status aula_sdp_authorize_remote_ipv4(
     return AULA_STATUS_SECURITY_ERROR;
   status = aula_sdp_parse_ipv4(text, octets);
   if (status != AULA_STATUS_OK) return status;
-  /* Unspecified, multicast, link-local, and broadcast destinations are never
+  /* Unspecified, multicast/broadcast (>= 224), and link-local destinations are never
    * valid media targets. Loopback is delegated to the mandatory target
    * authorizer so the explicit fixture/private-lab profile can operate while
    * production profiles continue to reject it through peer pinning. */
   if (octets[0] == 0U || octets[0] >= 224U ||
-      (octets[0] == 169U && octets[1] == 254U) ||
-      (octets[0] == 255U && octets[1] == 255U && octets[2] == 255U && octets[3] == 255U))
+      (octets[0] == 169U && octets[1] == 254U))
     return AULA_STATUS_SECURITY_ERROR;
   return local->remote_target_authorizer(local->remote_target_context, text,
                                           port, is_rtcp != 0);

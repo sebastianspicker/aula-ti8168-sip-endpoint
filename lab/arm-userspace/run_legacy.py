@@ -14,8 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from run import ROOT, create_output, executable, inventory, sha256
 from acquire_legacy_sysroot import reconstruct_verified_sysroot
+from run import ROOT, create_output, executable, inventory, sha256
 
 
 def validate(args: argparse.Namespace, output: Path) -> dict:
@@ -59,7 +59,7 @@ def validate(args: argparse.Namespace, output: Path) -> dict:
     compiler = executable(args.cross_prefix + "gcc")
     qemu = executable(args.qemu_arm)
     builtin_result = subprocess.run([str(compiler), "-print-file-name=include"], text=True,
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15, check=True)
+                                    capture_output=True, timeout=15, check=True)
     builtin = Path(builtin_result.stdout.strip()).resolve(strict=True)
     if not builtin.is_dir():
         raise ValueError("compiler builtin include root is unavailable")
@@ -82,7 +82,7 @@ def validate(args: argparse.Namespace, output: Path) -> dict:
     gcc = wrappers / "arm-linux-gnueabi-gcc"
     for name in ("crt1.o", "Scrt1.o", "crti.o", "crtn.o", "libc.so", "libm.so", "libpthread.so", "libresolv.so"):
         result = subprocess.run([str(gcc), "-print-file-name=" + name], text=True,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15, check=True)
+                                capture_output=True, timeout=15, check=True)
         selected = Path(result.stdout.strip()).resolve(strict=True)
         if not selected.is_relative_to(public):
             raise ValueError(f"compiler/linker selects a non-public-legacy input: {name}: {selected}")

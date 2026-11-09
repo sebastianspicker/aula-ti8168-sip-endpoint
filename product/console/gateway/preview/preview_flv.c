@@ -143,12 +143,11 @@ static aula_status plan_nal(const aula_h264_nal *nal,
                              access_unit_plan *plan,
                              uint64_t *payload_bytes,
                              aula_preview_flv_mux *mux) {
-  aula_status status;
   if (nal->type == 7U || nal->type == 8U) return AULA_STATUS_OK;
   if (nal->type >= 1U && nal->type <= 5U) {
     plan->has_vcl = 1;
     if (nal->type == 5U) plan->has_idr = 1;
-    status = slice_timing_supported(nal);
+    aula_status status = slice_timing_supported(nal);
     if (status != AULA_STATUS_OK) {
       mux->last_error = AULA_PREVIEW_FLV_ERROR_UNSUPPORTED_TIMING;
       return AULA_STATUS_UNSUPPORTED;

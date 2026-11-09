@@ -4,10 +4,10 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 from probe_runtime import (
     machine_help_line,
@@ -17,7 +17,6 @@ from probe_runtime import (
     verify_base_registers,
 )
 from probe_support import qtest_command, qtest_only
-
 
 GPMC = 0x50000000
 GPMC_NAND_COMMAND = GPMC + 0x7C

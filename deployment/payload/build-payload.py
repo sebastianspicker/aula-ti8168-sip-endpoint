@@ -15,7 +15,6 @@ import shutil
 import stat
 from pathlib import Path
 
-
 DEPLOYMENT = Path(__file__).resolve().parent
 RUNTIME = DEPLOYMENT / "runtime"
 REPOSITORY = DEPLOYMENT.parent.parent

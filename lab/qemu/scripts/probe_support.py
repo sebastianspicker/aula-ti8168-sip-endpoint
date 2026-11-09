@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 import json
-from pathlib import Path
 import socket
 import subprocess
 import tempfile
-from typing import Iterator, TextIO
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
+from typing import TextIO
 
 
 def recv_line(stream: socket.socket) -> str:
@@ -125,28 +126,31 @@ def qtest_pair(
     with tempfile.TemporaryDirectory(prefix=prefix) as temp_name:
         qtest_path = Path(temp_name) / "qtest.sock"
         qmp_path = Path(temp_name) / "qmp.sock"
-        with listener(qtest_path) as qtest_server, listener(qmp_path) as qmp_server:
-            with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_log:
-                process = subprocess.Popen(
-                    qtest_arguments(qemu, machine, qtest_path, qmp_path),
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=stderr_log,
-                    text=True,
-                )
-                try:
-                    with qtest_server.accept()[0] as qtest, qmp_server.accept()[0] as qmp:
-                        qtest.settimeout(5)
-                        qmp.settimeout(5)
-                        json.loads(recv_line(qmp))
-                        send_json(qmp, {"execute": "qmp_capabilities"})
-                        qmp_response(qmp)
-                        yield qtest, qmp
-                        send_json(qmp, {"execute": "quit"})
-                        qmp_response(qmp)
-                    check_exit(process, exit_label, stderr_log)
-                finally:
-                    terminate_process(process)
+        with (
+            listener(qtest_path) as qtest_server,
+            listener(qmp_path) as qmp_server,
+            tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_log,
+        ):
+            process = subprocess.Popen(
+                qtest_arguments(qemu, machine, qtest_path, qmp_path),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=stderr_log,
+                text=True,
+            )
+            try:
+                with qtest_server.accept()[0] as qtest, qmp_server.accept()[0] as qmp:
+                    qtest.settimeout(5)
+                    qmp.settimeout(5)
+                    json.loads(recv_line(qmp))
+                    send_json(qmp, {"execute": "qmp_capabilities"})
+                    qmp_response(qmp)
+                    yield qtest, qmp
+                    send_json(qmp, {"execute": "quit"})
+                    qmp_response(qmp)
+                check_exit(process, exit_label, stderr_log)
+            finally:
+                terminate_process(process)
 
 
 @contextmanager
@@ -155,18 +159,20 @@ def qtest_only(
 ) -> Iterator[socket.socket]:
     with tempfile.TemporaryDirectory(prefix=prefix) as temp_name:
         qtest_path = Path(temp_name) / "qtest.sock"
-        with listener(qtest_path) as qtest_server:
-            with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_log:
-                process = subprocess.Popen(
-                    qtest_arguments(qemu, machine, qtest_path, None),
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=stderr_log,
-                    text=True,
-                )
-                try:
-                    with qtest_server.accept()[0] as qtest:
-                        qtest.settimeout(5)
-                        yield qtest
-                finally:
-                    terminate_process(process)
+        with (
+            listener(qtest_path) as qtest_server,
+            tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_log,
+        ):
+            process = subprocess.Popen(
+                qtest_arguments(qemu, machine, qtest_path, None),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=stderr_log,
+                text=True,
+            )
+            try:
+                with qtest_server.accept()[0] as qtest:
+                    qtest.settimeout(5)
+                    yield qtest
+            finally:
+                terminate_process(process)

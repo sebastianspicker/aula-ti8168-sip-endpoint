@@ -15,22 +15,20 @@ static int key_is_sensitive(const char *key) {
 }
 
 int gateway_json_value_is_safe(json_t *value) {
-  const char *key;
   void *iterator;
-  size_t index;
   if (json_is_null(value) || json_is_boolean(value) || json_is_integer(value) || json_is_real(value)) return 1;
   /* Flawfinder: ignore - argument NUL-terminated */
   if (json_is_string(value)) return strlen(json_string_value(value)) <= 256U;
   if (json_is_array(value)) {
     if (json_array_size(value) > 32U) return 0;
-    for (index = 0U; index < json_array_size(value); ++index)
+    for (size_t index = 0U; index < json_array_size(value); ++index)
       if (!gateway_json_value_is_safe(json_array_get(value, index))) return 0;
     return 1;
   }
   if (!json_is_object(value) || json_object_size(value) > 16U) return 0;
   iterator = json_object_iter(value);
   while (iterator != NULL) {
-    key = json_object_iter_key(iterator);
+    const char *key = json_object_iter_key(iterator);
     if (key_is_sensitive(key) || !gateway_json_value_is_safe(json_object_iter_value(iterator))) return 0;
     iterator = json_object_iter_next(value, iterator);
   }

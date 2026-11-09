@@ -234,7 +234,6 @@ aula_status aula_media_session_set_video_transmit_enabled_internal(
 
 aula_status aula_media_session_set_audio_muted_internal(
     aula_media_session *session, int muted) {
-  aula_status status;
   if (session == NULL || (muted != 0 && muted != 1)) {
     return AULA_STATUS_INVALID_ARGUMENT;
   }
@@ -242,7 +241,7 @@ aula_status aula_media_session_set_audio_muted_internal(
   if (muted != 0 && session->audio_muted == 0) {
     /* Audio media is queued separately from RFC 4733 events, so clearing it
      * makes the mute transition immediate without losing in-flight DTMF. */
-    status = aula_rtp_send_queue_discard_all(session->audio.queue);
+    aula_status status = aula_rtp_send_queue_discard_all(session->audio.queue);
     if (status != AULA_STATUS_OK) return status;
     session->audio_remainder_length = 0U;
     session->aec_near_remainder_length = 0U;
@@ -405,7 +404,7 @@ void aula_media_session_report_rtcp_internal(
          aula_rtcp_frame_next(packet, &offset, &frame) == AULA_STATUS_OK) {
     const uint8_t *block;
     size_t header;
-    uint32_t target = 0U, highest = 0U, jitter = 0U, loss = 0U;
+    uint32_t target = 0U, highest = 0U, jitter = 0U;
     int32_t signed_loss = 0;
     unsigned int fraction = 0U;
     if (frame.packet_type != AULA_RTCP_RR &&
@@ -415,7 +414,7 @@ void aula_media_session_report_rtcp_internal(
       block = frame.data + header;
       target = aula_rtcp_frame_read_u32(block);
       fraction = block[4];
-      loss = aula_rtcp_frame_read_u32(block + 4U) & UINT32_C(0x00ffffff);
+      uint32_t loss = aula_rtcp_frame_read_u32(block + 4U) & UINT32_C(0x00ffffff);
       signed_loss = (int32_t)loss;
       if ((loss & UINT32_C(0x00800000)) != 0U) signed_loss -= INT32_C(0x01000000);
       highest = aula_rtcp_frame_read_u32(block + 8U);

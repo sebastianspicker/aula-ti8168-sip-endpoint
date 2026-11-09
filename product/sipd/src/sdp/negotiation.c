@@ -372,7 +372,6 @@ static aula_status aula_sdp_negotiate_remote_answer_internal(
     int allow_direct_crc_sendonly,
     aula_sdp_negotiated_session **out_negotiated) {
   aula_sdp_session *parsed_answer = NULL;
-  int direct_crc_interop = 0;
   aula_status status;
   if (local_offer == NULL || out_negotiated == NULL) {
     return AULA_STATUS_INVALID_ARGUMENT;
@@ -380,7 +379,7 @@ static aula_status aula_sdp_negotiate_remote_answer_internal(
   *out_negotiated = NULL;
   status = aula_sdp_parse_answer(remote_answer, &parsed_answer);
   if (status == AULA_STATUS_OK) {
-    direct_crc_interop = allow_direct_crc_sendonly != 0 &&
+    int direct_crc_interop = allow_direct_crc_sendonly != 0 &&
         aula_sdp_direct_crc_sendonly_answer(local_offer, parsed_answer);
     status = aula_sdp_validate_remote_answer_internal(
         local_offer, parsed_answer, allow_direct_crc_sendonly, out_negotiated);

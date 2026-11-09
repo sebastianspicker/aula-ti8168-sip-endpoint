@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import argparse
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'tooling/workspace'))

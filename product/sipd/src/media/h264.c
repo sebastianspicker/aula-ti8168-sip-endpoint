@@ -198,7 +198,6 @@ aula_status aula_h264_packetize_fu_a(aula_h264_packetizer *packetizer,
   uint8_t fragment[AULA_SIPD_MAX_RTP_PACKET_BYTES];
   size_t maximum_fragment;
   size_t offset;
-  aula_status status;
   if (packetizer == NULL || nal == NULL || nal->data == NULL || nal->length < 2U ||
       callback == NULL || packetizer->mtu <= 14U ||
       packetizer->mtu > AULA_SIPD_MAX_RTP_PACKET_BYTES) {
@@ -221,7 +220,7 @@ aula_status aula_h264_packetize_fu_a(aula_h264_packetizer *packetizer,
                             (end ? 0x40U : 0U));
     /* nosemgrep */ /* Flawfinder: ignore - length bounded */
     memcpy(fragment + 2U, nal->data + offset, fragment_length);
-    status = aula_h264_emit_packet(packetizer, fragment, fragment_length + 2U, end,
+    aula_status status = aula_h264_emit_packet(packetizer, fragment, fragment_length + 2U, end,
                                     callback, callback_context);
     if (status != AULA_STATUS_OK) {
       return status;

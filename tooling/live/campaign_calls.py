@@ -9,18 +9,31 @@ import select
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from campaign_transport import _api
 from campaign_types import (
-    ACTIVE_CALL_STATUS_KEYS, DTMF_SETTLE_SECONDS, INITIAL_CALL_STATES,
-    MAX_PEER_TIMEOUT_SECONDS, MEDIA_SETTLE_SECONDS, PEER_READY_SIGNAL as _PEER_READY_SIGNAL,
-    PEER_STARTUP_TIMEOUT_SECONDS, RETRY_EVIDENCE_CALL_STATES, ROOT,
-    WITHHELD_FINAL_RECONNECT_POLL_SECONDS, WITHHELD_FINAL_RECONNECT_TIMEOUT_SECONDS,
-    CampaignError, PeerCompletionError, SAFE_ENV,
+    ACTIVE_CALL_STATUS_KEYS,
+    DTMF_SETTLE_SECONDS,
+    INITIAL_CALL_STATES,
+    MAX_PEER_TIMEOUT_SECONDS,
+    MEDIA_SETTLE_SECONDS,
+    PEER_STARTUP_TIMEOUT_SECONDS,
+    RETRY_EVIDENCE_CALL_STATES,
+    ROOT,
+    SAFE_ENV,
+    WITHHELD_FINAL_RECONNECT_POLL_SECONDS,
+    WITHHELD_FINAL_RECONNECT_TIMEOUT_SECONDS,
+    CampaignError,
+    PeerCompletionError,
+)
+from campaign_types import (
+    PEER_READY_SIGNAL as _PEER_READY_SIGNAL,
 )
 from session import LiveSession
+
 
 def _stop_peer(peer: subprocess.Popen[bytes]) -> None:
     """Terminate a peer and reap it, escalating when graceful shutdown times out."""

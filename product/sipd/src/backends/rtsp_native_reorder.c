@@ -257,10 +257,9 @@ static void native_reorder_update_gap(native_reorder_state *state,
 static aula_status native_reorder_drain(native_context *context,
                                          native_reorder_state *state,
                                          native_rtp_handler handler) {
-  native_reorder_packet *packet;
   aula_status status = AULA_STATUS_AGAIN;
   for (;;) {
-    packet = native_reorder_find(state, state->expected_sequence);
+    native_reorder_packet *packet = native_reorder_find(state, state->expected_sequence);
     if (packet == NULL) return status;
     status = handler(context, (aula_bytes){packet->data, packet->length});
     packet->occupied = 0;

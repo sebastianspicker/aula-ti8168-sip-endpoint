@@ -26,7 +26,6 @@ static uint32_t read_u32(const uint8_t *data) {
 static aula_status parse_rtp(aula_bytes input, preview_rtp_packet *out_packet) {
   const uint8_t *data;
   size_t header_length;
-  size_t extension_length;
   size_t padding_length = 0U;
   uint8_t csrc_count;
   if (out_packet == NULL || input.data == NULL ||
@@ -43,7 +42,7 @@ static aula_status parse_rtp(aula_bytes input, preview_rtp_packet *out_packet) {
   if (header_length > input.length) return AULA_STATUS_INVALID_DATA;
   if ((data[0] & 0x10U) != 0U) {
     if (input.length - header_length < 4U) return AULA_STATUS_INVALID_DATA;
-    extension_length = 4U + ((size_t)read_u16(data + header_length + 2U) * 4U);
+    size_t extension_length = 4U + ((size_t)read_u16(data + header_length + 2U) * 4U);
     if (extension_length > input.length - header_length) {
       return AULA_STATUS_INVALID_DATA;
     }
@@ -123,7 +122,6 @@ static aula_status begin_timestamp(aula_preview_reader *reader,
                                     const preview_rtp_packet *packet,
                                     int *out_gap) {
   aula_status status;
-  int32_t delta;
   if (reader->au_active != 0 && packet->timestamp == reader->current_timestamp) {
     return AULA_STATUS_OK;
   }
@@ -136,7 +134,7 @@ static aula_status begin_timestamp(aula_preview_reader *reader,
     reader->current_timestamp_90khz = reader->ever_emitted != 0
         ? reader->last_timestamp_90khz + 1U : 0U;
   } else {
-    delta = (int32_t)(packet->timestamp - reader->last_timestamp);
+    int32_t delta = (int32_t)(packet->timestamp - reader->last_timestamp);
     if (delta < 0 || (uint32_t)delta > PREVIEW_MAX_TIMESTAMP_STEP_90KHZ) {
       status = note_discontinuity(reader, 0);
       if (status != AULA_STATUS_OK) return status;
@@ -168,7 +166,6 @@ static aula_status inspect_access_unit(aula_preview_reader *reader,
   aula_h264_annexb_iterator iterator;
   aula_h264_nal nal;
   aula_status status;
-  uint32_t old_generation;
   *out_has_idr = 0;
   *out_has_vcl = 0;
   *out_parameter_changed = 0;
@@ -180,7 +177,7 @@ static aula_status inspect_access_unit(aula_preview_reader *reader,
     status = aula_h264_annexb_iterator_next(&iterator, &nal);
     if (status == AULA_STATUS_END) return AULA_STATUS_OK;
     if (status != AULA_STATUS_OK) return status;
-    old_generation = reader->parameter_sets.generation;
+    uint32_t old_generation = reader->parameter_sets.generation;
     status = aula_h264_parameter_sets_update(&reader->parameter_sets, &nal);
     if (status != AULA_STATUS_OK) return status;
     if (reader->parameter_sets.generation != old_generation) {
@@ -278,9 +275,8 @@ static aula_status depacketize(aula_preview_reader *reader,
 
 static aula_status discard_broken_access_unit(
     aula_preview_reader *reader, const preview_rtp_packet *packet) {
-  aula_status status;
   if (reader->ssrc_locked != 0 && packet->ssrc != reader->locked_ssrc) {
-    status = note_discontinuity(reader, 1);
+    aula_status status = note_discontinuity(reader, 1);
     if (status != AULA_STATUS_OK) return status;
     reader->locked_ssrc = packet->ssrc;
   }

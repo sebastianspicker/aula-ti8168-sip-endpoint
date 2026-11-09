@@ -68,7 +68,7 @@ def smoke(args: argparse.Namespace) -> dict:
             result = subprocess.run(
                 [sys.executable, str(Path(__file__).resolve()), "--client", str(control),
                  str(opcode), str(request_id), json.dumps(payload or {}, separators=(",", ":"))],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False, **identity)
+                capture_output=True, timeout=5, check=False, **identity)
             if result.returncode:
                 raise ValueError(f"LSZ1 client failed: {result.stderr.decode(errors='replace')}")
             return json.loads(result.stdout)

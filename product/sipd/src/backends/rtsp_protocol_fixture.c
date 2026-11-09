@@ -294,7 +294,6 @@ static aula_status rtsp_find_h264_control(aula_rtsp_gst_context *context,
 }
 
 static aula_status handle_response(aula_rtsp_gst_context *context, const aula_rtsp_message *message) {
-  aula_status status;
   if (context->rtsp_cseq == 0U || message->cseq != context->rtsp_cseq - 1U) return AULA_STATUS_INVALID_DATA;
   if (message->status_code < 200U || message->status_code > 299U) { context->rtsp_state = AULA_RTSP_FAILED; return AULA_STATUS_IO_ERROR; }
   if (context->rtsp_state == AULA_RTSP_OPTIONS) {
@@ -302,7 +301,7 @@ static aula_status handle_response(aula_rtsp_gst_context *context, const aula_rt
                         "Accept: application/sdp\r\n", AULA_RTSP_DESCRIBE);
   }
   if (context->rtsp_state == AULA_RTSP_DESCRIBE) {
-    status = rtsp_find_h264_control(context, message->body);
+    aula_status status = rtsp_find_h264_control(context, message->body);
     if (status != AULA_STATUS_OK) return status;
     return send_request(context, "SETUP", context->setup_uri.text,
                         "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n",

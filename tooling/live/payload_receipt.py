@@ -1,8 +1,8 @@
 """Read the independent digest emitted by the trusted payload builder."""
 
 import os
-from pathlib import Path
 import stat
+from pathlib import Path
 
 
 def read_manifest_digest(payload: Path) -> str:

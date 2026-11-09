@@ -15,10 +15,8 @@ from pathlib import Path
 from typing import Any
 
 import receipts
-from source_provenance import SOURCE_ROOTS
-from source_provenance import SourceProvenanceError
+from source_provenance import SOURCE_ROOTS, SourceProvenanceError
 from source_provenance import source_digest as maintained_source_digest
-
 
 ROOT = Path(__file__).resolve().parents[2]
 BUILD_RECEIPT = ROOT / ".work/build/live/receipt.json"

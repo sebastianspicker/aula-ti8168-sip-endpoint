@@ -11,12 +11,10 @@ import sys
 import time
 from pathlib import Path
 
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from qemu_profile import PrivateSipPeer, QEMU_AULA_ADDRESS  # noqa: E402
-
+from qemu_profile import QEMU_AULA_ADDRESS, PrivateSipPeer
 
 MAX_TIMEOUT_SECONDS = 65 * 60
 

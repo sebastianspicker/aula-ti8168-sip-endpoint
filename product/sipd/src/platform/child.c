@@ -178,7 +178,6 @@ static int close_uninherited_fds(const aula_child_process_config *config,
                                  int retained_error_fd, int retained_executable_fd) {
 #if defined(__linux__)
   DIR *directory;
-  struct dirent *entry;
   int directory_fd;
   int result = 1;
   directory = opendir("/proc/self/fd");
@@ -187,7 +186,7 @@ static int close_uninherited_fds(const aula_child_process_config *config,
   for (;;) {
     int descriptor;
     errno = 0;
-    entry = readdir(directory);
+    struct dirent *entry = readdir(directory);
     if (entry == NULL) {
       result = errno == 0;
       break;
@@ -281,18 +280,16 @@ static int child_input_fds_are_valid(const aula_child_process_config *config) {
 static int reset_child_signal_state(void) {
   struct sigaction action;
   sigset_t empty_mask;
-  int signal_number;
   (void)memset(&action, 0, sizeof(action));
   action.sa_handler = SIG_DFL;
   if (sigemptyset(&action.sa_mask) != 0 || sigemptyset(&empty_mask) != 0 ||
       sigprocmask(SIG_SETMASK, &empty_mask, NULL) != 0) return 0;
 #if defined(NSIG)
-  for (signal_number = 1; signal_number < NSIG; ++signal_number) {
+  for (int signal_number = 1; signal_number < NSIG; ++signal_number) {
     if (signal_number != SIGKILL && signal_number != SIGSTOP &&
         sigaction(signal_number, &action, NULL) != 0 && errno != EINVAL) return 0;
   }
 #else
-  (void)signal_number;
   if (sigaction(SIGTERM, &action, NULL) != 0 || sigaction(SIGINT, &action, NULL) != 0 ||
       sigaction(SIGHUP, &action, NULL) != 0 || sigaction(SIGPIPE, &action, NULL) != 0) return 0;
 #endif

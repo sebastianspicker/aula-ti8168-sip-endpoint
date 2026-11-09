@@ -444,12 +444,11 @@ int gateway_install_account(aula_gateway *gateway, const char *username, aula_ga
                             const uint8_t hash[AULA_GATEWAY_HASH_BYTES]) {
   aula_gateway_account *account;
   aula_gateway_account replacement = {0};
-  size_t index;
   if (gateway == NULL || !gateway_is_safe_username(username) ||
       role < AULA_GATEWAY_ROLE_VIEWER || role > AULA_GATEWAY_ROLE_ADMIN) return 0;
   account = find_account_mutable(gateway, username);
   if (account == NULL) {
-    for (index = 0U; index < AULA_GATEWAY_MAX_ACCOUNTS; ++index)
+    for (size_t index = 0U; index < AULA_GATEWAY_MAX_ACCOUNTS; ++index)
       if (!gateway->accounts[index].configured) { account = &gateway->accounts[index]; break; }
   }
   if (account == NULL) return 0;

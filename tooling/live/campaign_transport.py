@@ -16,12 +16,18 @@ import stat
 import subprocess
 import tempfile
 import uuid
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from typing import Any, Callable, Iterator, Sequence
+from typing import Any
 
 from campaign_evidence import _private_root, _secure_directory
 from campaign_types import (
-    BOOT_ID_COMMAND as _BOOT_ID_COMMAND, BOOT_ID_PATTERN, CampaignError, SAFE_ENV,
+    BOOT_ID_COMMAND as _BOOT_ID_COMMAND,
+)
+from campaign_types import (
+    BOOT_ID_PATTERN,
+    SAFE_ENV,
+    CampaignError,
 )
 from session import LiveSession
 
